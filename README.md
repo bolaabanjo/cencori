@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cencori by FohnAI
 
-## Getting Started
+Cencori is a multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability. It provides the foundational backend and system architecture required to manage AI products in production environments.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Overview
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Cencori is developed by **FohnAI** as part of a broader initiative to modernize AI infrastructure. The goal is to unify how developers create, protect, and scale AI systems across different use cases, ranging from experimental prototypes to enterprise-grade solutions.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+This project represents the **MVP** phase of the Cencori platform, focusing on the foundational backend layer and multi-tenant system design.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Core Objectives
 
-To learn more about Next.js, take a look at the following resources:
+1. Establish a secure and extensible multi-tenant architecture.  
+2. Implement a robust authentication and organization management system.  
+3. Enable developers to deploy and manage AI-powered applications seamlessly.  
+4. Lay the groundwork for FohnAI’s broader runtime and deployment ecosystem.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Technology Stack
 
-## Deploy on Vercel
+| Layer | Technology | Purpose |
+|-------|-------------|----------|
+| **Framework** | Next.js (App Router) | Core web framework and API routing |
+| **Auth & Database** | Supabase | Authentication, data storage, and organization logic |
+| **Language** | TypeScript | Type-safe backend and frontend development |
+| **Deployment** | Vercel | Initial hosting and continuous deployment |
+| **ORM (Future)** | Drizzle ORM or Prisma | Database schema management and migration control |
+| **Backend Core (Future)** | NestJS | Dedicated service backend for scaling and modularity |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture Overview
+
+The MVP backend is composed of:
+
+- **Organizations & Projects:**  
+  Supports multi-tenancy by grouping users and their assets under organizations and projects.  
+- **Supabase Integration:**  
+  Handles authentication, authorization, and secure database operations.  
+- **Server Client Layer:**  
+  A secure abstraction layer for Supabase (`/lib/supabaseServer.ts`) to manage service-role operations safely.  
+- **API Routes:**  
+  Provides REST endpoints for creating, reading, and managing organizational data.  
+
+Future phases will transition this architecture into a service-oriented system powered by NestJS, with dedicated modules for runtime orchestration, metrics, and billing.
+
+---
+
+## Development Setup
+
+### Prerequisites
+- Node.js 18+  
+- A Supabase project (free tier acceptable)  
+- Basic knowledge of TypeScript and Next.js  
+
+### Installation
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/bolaabanjo/cencori.git
+   cd cencori
+
+---
+Roadmap
+Phase	Focus	Description
+Phase 1	Foundation	Multi-tenant backend, authentication, and API endpoints
+Phase 2	Infrastructure	Deployment layer, runtime system, and metrics
+Phase 3	Platform	Developer dashboard, usage analytics, and billing systems
+License
+
+Copyright © 2025 FohnAI
+
+All rights reserved. Unauthorized distribution or reproduction of this codebase, in whole or in part, is strictly prohibited without prior written permission from FohnAI.
