@@ -7,12 +7,12 @@ export default function SignupPage() {
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex justify-center gap-2 md:justify-start">
           <a href="#" className="flex items-center gap-2 font-medium">
-            <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
+            <div className="bg text-primary-foreground flex size-6 items-center justify-center rounded-md">
             <Image
                 src="/cdark.png"
                 alt="FohnAI logo"
-                 width={12}
-                height={12}
+                 width={16}
+                height={16}
             />
             </div>
             Cencori.
