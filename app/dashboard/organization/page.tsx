@@ -33,23 +33,7 @@ export default async function DashboardOrganizationPage() {
       </header>
 
       <section className="grid gap-4">
-        {orgs && orgs.length > 0 ? (
-          orgs.map((o: any) => (
-            <div key={o.id} className="p-4 rounded border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{o.name}</div>
-                  <div className="text-xs text-slate-500">{o.slug}</div>
-                </div>
-                <div>
-                  <Link href={`/dashboard/organization/${o.slug}`} className="text-sm text-blue-600">Open</Link>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
           <div className="p-6 rounded border text-slate-500">No organizations yet. Create one via the API or the dashboard UI.</div>
-        )}
       </section>
     </main>
   );
