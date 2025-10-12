@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 type LoginFormProps = React.ComponentProps<"form">;
 
@@ -182,9 +183,9 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
 
           <FieldDescription className="text-center">
             Don&apos;t have an account?{" "}
-            <a href="/signup" className="underline underline-offset-4">
+            <Link href="/signup" className="underline underline-offset-4">
               Sign up
-            </a>
+            </Link>
           </FieldDescription>
         </Field>
       </FieldGroup>

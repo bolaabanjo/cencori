@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 export default function SignupCompletePage() {
   const [status, setStatus] = useState<"working" | "done" | "error">("working");
@@ -73,7 +74,7 @@ export default function SignupCompletePage() {
         <div className="max-w-md w-full bg-white rounded-lg shadow p-8 text-center">
           <h2 className="text-lg font-semibold mb-2">Signing you in…</h2>
           <p className="text-sm text-slate-600">
-            Finalizing your account. You’ll be redirected to the dashboard shortly.
+            Finalizing your account. You&apos;ll be redirected to the dashboard shortly.
           </p>
         </div>
       </main>
@@ -86,16 +87,16 @@ export default function SignupCompletePage() {
         <div className="max-w-md w-full bg-white rounded-lg shadow p-8 text-center">
           <h2 className="text-lg font-semibold mb-2">Something went wrong</h2>
           <p className="text-sm text-slate-600 mb-4">
-            We couldn't complete sign-in automatically. Try signing in again.
+            We couldn&apos;t complete sign-in automatically. Try signing in again.
           </p>
 
           <div className="flex gap-3 justify-center">
-            <a href="/login" className="px-4 py-2 rounded border">
+            <Link href="/login" className="px-4 py-2 rounded border">
               Sign in
-            </a>
-            <a href="/" className="px-4 py-2 rounded bg-black text-white">
+            </Link>
+            <Link href="/" className="px-4 py-2 rounded bg-black text-white">
               Return home
-            </a>
+            </Link>
           </div>
         </div>
       </main>

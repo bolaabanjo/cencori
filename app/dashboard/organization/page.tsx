@@ -1,5 +1,6 @@
 // app/dashboard/organization/page.tsx
 import { createServerClient } from "@/lib/supabaseServer";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic"; // ensure server auth checks every request
@@ -41,7 +42,7 @@ export default async function DashboardOrganizationPage() {
                   <div className="text-xs text-slate-500">{o.slug}</div>
                 </div>
                 <div>
-                  <a href={`/dashboard/organization/${o.slug}`} className="text-sm text-blue-600">Open</a>
+                  <Link href={`/dashboard/organization/${o.slug}`} className="text-sm text-blue-600">Open</Link>
                 </div>
               </div>
             </div>

@@ -28,7 +28,7 @@ export default function CheckEmailPage() {
         </div>
 
         <p className="text-xs text-slate-400 mt-6">
-          Did not see the email? Check your spam folder or try signing up again.
+          Don&apos;t see the email? Check your spam folder or try signing up again.
         </p>
       </div>
     </main>
