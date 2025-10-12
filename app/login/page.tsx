@@ -29,7 +29,7 @@ export default function LoginPage() {
         <img
           src="/img.jpg"
           alt="FohnAI Image"
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+          className="absolute inset-0 h-full w-full object-cover dark:brightness-[1]"
         />
       </div>
     </div>
