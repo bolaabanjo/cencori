@@ -44,53 +44,34 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     }
 
     try {
-      // If password provided, do password sign in. Otherwise use magic link.
-      if (password.length > 0) {
-        const res = await supabase.auth.signInWithPassword({ email, password });
-        if (res.error) {
-          setError(res.error.message);
-          setLoading(false);
-          return;
-        }
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
         // If login returned a session, redirect to dashboard
-        if (res.data?.session) {
+        if (data?.session) {
           router.push("/dashboard/organization");
           return;
         }
-        // Otherwise Supabase may require confirmation step
-        setLoading(false);
-        setError("Sign in initiated. If you don't see a session, check your email or credentials.");
-        return;
-      }
 
-      // Magic link flow (no password)
-      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/signup/complete`;
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectTo },
-      });
-      if (otpError) {
-        setError(otpError.message);
+        router.push("/dashboard/organization");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unexpected error";
+        setError(msg);
+        setLoading(false)
+      } finally {
         setLoading(false);
-        return;
       }
-
-      // show ephemeral success (user will complete by clicking the email link)
-      setLoading(false);
-      // optional: navigate to a check-email page if you have one
-      router.push("/signup/check-email");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error";
-      setError(message);
-      setLoading(false);
-    }
   }
 
   async function handleOAuth(provider: "github" | "google") {
     setError(null);
     setLoading(true);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/dashboard/organization`;
+      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -124,13 +105,11 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         )}
 
         <Field>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input id="email" name="email" type="email" placeholder="bola@example.com" required />
+          <Input id="email" name="email" type="email" placeholder="Email" required />
         </Field>
 
         <Field>
           <div className="flex items-center">
-            <FieldLabel htmlFor="password">Password</FieldLabel>
             <a
               href="/forgot"
               className="ml-auto text-sm underline-offset-4 hover:underline"
@@ -139,15 +118,12 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
               Forgot your password?
             </a>
           </div>
-          <Input id="password" name="password" type="password" />
-          <div className="text-xs text-slate-500 mt-1">
-            Leave password empty to sign in with a magic link.
-          </div>
+          <Input id="password" name="password" type="password" placeholder="Password" required/>
         </Field>
 
         <Field>
           <Button type="submit" disabled={loading}>
-            {loading ? "Working…" : "Login"}
+            {loading ? "Signing Up…" : "Login"}
           </Button>
         </Field>
 
