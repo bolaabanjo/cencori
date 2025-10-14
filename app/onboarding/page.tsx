@@ -108,13 +108,16 @@ export default function OnboardingPage() {
     setError(null);
     setLoading(true);
     try {
+      const project_label = projectType === "other" ? projectOther.trim() : projectType;
+      const role_label = role === "other" ? roleOther.trim() : role;
+
       const { data: userResp, error: gerr } = await supabase.auth.getUser();
       if (gerr || !userResp.user) throw new Error("No user session. Please sign in again.");
       const userId = userResp.user.id;
 
       const updates = {
-        project_type: projectType === "other" ? projectOther.trim() : projectType,
-        role: role === "other" ? roleOther.trim() : role,
+        project_type: project_label,
+        role: role_label,
         onboarding_completed: true,
       };
 
@@ -126,6 +129,7 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
     }
+  }
     const initials = useMemo(() => {
       const name = displayName ?? email ?? "";
       if (!name) return "";
@@ -133,7 +137,6 @@ export default function OnboardingPage() {
       if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }, [displayName, email]);
-  }
 
   return (
     <div className="max-w-3xl mx-auto mt-20">
