@@ -81,7 +81,7 @@ export default function OnboardingPage() {
     setError(null);
     setLoading(true);
     try {
-      const profileUpdates: Record<string, any> = {
+      const profileUpdates: Record<string, unknown> = {
         project_type: projectType === "other" ? projectTypeOther.trim() : projectType,
         role: role === "other" ? roleOther.trim() : role,
         onboarding_completed: true,
@@ -144,7 +144,7 @@ export default function OnboardingPage() {
             <div>
               <h2 className="text-xl font-medium mb-2">What are you building?</h2>
               <p className="text-sm text-slate-500 mb-4">
-                Tell us whether you're building a production app, a hobby project, or learning.
+                Tell us whether you&apos;re building a production app, a hobby project, or learning.
                 This helps us show the right defaults and guardrails.
               </p>
 
@@ -201,7 +201,7 @@ export default function OnboardingPage() {
 
           {step === 2 && (
             <div>
-              <h2 className="text-xl font-medium mb-2">What's your role?</h2>
+              <h2 className="text-xl font-medium mb-2">What&apos;s your role?</h2>
               <p className="text-sm text-slate-500 mb-4">
                 Your role helps us tailor examples and recommended integrations.
               </p>
@@ -266,7 +266,7 @@ export default function OnboardingPage() {
 
           {step === 3 && (
             <div>
-              <h2 className="text-xl font-medium mb-2">You're almost done</h2>
+              <h2 className="text-xl font-medium mb-2">You&apos;re almost done</h2>
               <p className="text-sm text-slate-500 mb-4">
                 Review your choices below. You can create an organization later from the dashboard.
               </p>
