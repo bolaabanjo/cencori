@@ -12,6 +12,8 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 /**
  * Minimal 3-step onboarding (Vercel-like minimalism)
  * - Step 1: What are you building? (production | hobby | learning | other)
@@ -37,6 +39,8 @@ export default function OnboardingPage() {
   const [roleOther, setRoleOther] = useState<string>("");
 
   const [email, setEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -46,7 +50,27 @@ export default function OnboardingPage() {
         router.push("/login");
         return;
       }
-      if (mounted) setEmail(data.user.email ?? null);
+      const user = data.user;
+
+      // Prefer common avatar keys provided by OAuth providers
+      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const possibleAvatar =
+        (meta.avatar_url as string) ??
+        (meta.picture as string) ??
+        (meta.avatar as string) ??
+        null;
+
+      const name =
+        (meta.name as string) ??
+        (meta.full_name as string) ??
+        (user.email ? user.email.split("@")[0] : "") ??
+        null;
+
+      if (mounted) {
+        setEmail(data.user.email ?? null);
+        setAvatarUrl(possibleAvatar ?? null);
+        setDisplayName(name ?? null);
+      }
     }
     check();
     return () => {
@@ -102,7 +126,13 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
     }
-  }
+    const initials = useMemo(() => {
+      const name = displayName ?? email ?? "";
+      if (!name) return "";
+      const parts = name.split(/[\s._-]+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }, [displayName, email]);
 
   return (
     <div className="max-w-3xl mx-auto mt-20">
@@ -113,7 +143,15 @@ export default function OnboardingPage() {
             A couple questions to personalize your experience.
           </p>
         </div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">{email ?? ""}</div>
+        <div>
+          <Avatar>
+            {avatarUrl ? (
+              <AvatarImage src={avatarUrl} alt={displayName ?? email ?? "User avatar"} />
+            ) : (
+              <AvatarFallback>{initials || "U"}</AvatarFallback>
+            )}
+          </Avatar>
+        </div>
       </div>
 
       <div className="mb-6">
