@@ -127,7 +127,7 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <section className="dark:bg-zinc-950 border border-gray-100 dark:border-gray-700 rounded-lg p-6">
+      <section className="dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-600 rounded-lg p-6">
         {step === 1 && (
           <div>
             <h2 className="text-lg font-medium text-gray-900 dark:text-white">What are you building?</h2>
@@ -139,7 +139,7 @@ export default function OnboardingPage() {
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app; reliability & security matter." />
               <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
               <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
-              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
+              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other project type"
@@ -149,13 +149,13 @@ export default function OnboardingPage() {
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900 dark:text-white">Other</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Short description</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">Other</div>
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">Short description</div>
                     {projectType === "other" && (
                       <input
                         value={projectOther}
                         onChange={(e) => setProjectOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-gray-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
@@ -176,7 +176,7 @@ export default function OnboardingPage() {
               <OptionCard checked={role === "engineer"} onSelect={() => setRole("engineer")} title="Engineer" desc="Systems & integration." />
               <OptionCard checked={role === "designer"} onSelect={() => setRole("designer")} title="Designer" desc="UX, flows, frontend." />
               <OptionCard checked={role === "product"} onSelect={() => setRole("product")} title="Product / PM" desc="Strategy & roadmap." />
-              <div className="p-3 rounded border border-gray-100 dark:border-gray-700">
+              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other role"
@@ -186,13 +186,13 @@ export default function OnboardingPage() {
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium text-slate-900 dark:text-white">Other</div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Tell us</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">Other</div>
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">Tell us</div>
                     {role === "other" && (
                       <input
                         value={roleOther}
                         onChange={(e) => setRoleOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white"
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="e.g. DevOps, Researcher..."
                       />
                     )}
