@@ -56,7 +56,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
       // Decide redirect after sign up
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/signup/complete`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
 
       // Create user with password
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -73,20 +73,15 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
       // If session exists immediately (rare if email confirmation required), go to dashboard
       if (data?.session) {
-        router.push("/dashboard/organization");
+        router.push("/onboarding");
         return;
       }
 
-      // Otherwise user must confirm via email
-      setSuccess("Check your email for a confirmation link to complete signup.");
-      // navigate to check email UI (consistent with login flow)
       router.push("/signup/check-email");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
       setError(msg);
-      setLoading(false);
     } finally {
-      // loading may remain false if we navigated away
       setLoading(false);
     }
   }
@@ -170,7 +165,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
         <Field>
           <Button type="submit" disabled={loading}>
-            {loading ? "Working…" : "Create Account"}
+            {loading ? "Creating…" : "Create Account"}
           </Button>
         </Field>
 

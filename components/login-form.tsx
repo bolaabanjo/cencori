@@ -65,13 +65,12 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
       } finally {
         setLoading(false);
       }
-  }
-
+    }
   async function handleOAuth(provider: "github" | "google") {
     setError(null);
     setLoading(true);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
+      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -105,11 +104,13 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         )}
 
         <Field>
-          <Input id="email" name="email" type="email" placeholder="Email" required />
+          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <Input id="email" name="email" type="email" placeholder="bola@example.com" required />
         </Field>
 
         <Field>
           <div className="flex items-center">
+            <FieldLabel htmlFor="password">Password</FieldLabel>
             <a
               href="/forgot"
               className="ml-auto text-sm underline-offset-4 hover:underline"
@@ -118,12 +119,12 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
               Forgot your password?
             </a>
           </div>
-          <Input id="password" name="password" type="password" placeholder="Password" required/>
+          <Input id="password" name="password" type="password" />
         </Field>
 
         <Field>
           <Button type="submit" disabled={loading}>
-            {loading ? "Signing Up…" : "Login"}
+            {loading ? "Working…" : "Login"}
           </Button>
         </Field>
 
