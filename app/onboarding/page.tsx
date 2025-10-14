@@ -130,13 +130,13 @@ export default function OnboardingPage() {
       <section className="dark:bg-zinc-950 border border-zinc-100 dark:border-zinc-600 rounded-lg p-6">
         {step === 1 && (
           <div>
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white">What are you building?</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-white">What are you building?</h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 mb-4">
               Production, hobby project, or learning? This helps set sensible defaults.
             </p>
 
             <div className="grid gap-3">
-              <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app; reliability & security matter." />
+              <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app, reliability & security heavy." />
               <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
               <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
               <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
@@ -155,7 +155,7 @@ export default function OnboardingPage() {
                       <input
                         value={projectOther}
                         onChange={(e) => setProjectOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-gray-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
@@ -205,18 +205,18 @@ export default function OnboardingPage() {
 
         {step === 3 && (
           <div>
-            <h2 className="text-lg font-medium text-slate-900 dark:text-white">Review</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-white">Review</h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
 
             <div className="grid gap-3">
-              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
-                <div className="text-xs text-slate-500 dark:text-slate-400">Project intent</div>
-                <div className="mt-1 font-medium text-slate-900 dark:text-white">{projectLabel || "-"}</div>
+              <div className="p-3 rounded border border-slate-100 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">Project intent</div>
+                <div className="mt-1 font-medium text-zinc-900 dark:text-white">{projectLabel || "-"}</div>
               </div>
 
-              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
-                <div className="text-xs text-slate-500 dark:text-slate-400">Role</div>
-                <div className="mt-1 font-medium text-slate-900 dark:text-white">{roleLabel || "-"}</div>
+              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">Role</div>
+                <div className="mt-1 font-medium text-zinc-900 dark:text-white">{roleLabel || "-"}</div>
               </div>
             </div>
           </div>
@@ -229,7 +229,7 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => Math.max(1, s - 1))}
-                className="px-3 py-2 rounded border text-sm text-slate-700 dark:text-slate-200"
+                className="px-3 py-2 rounded border text-sm text-zinc-700 dark:text-zinc-200"
               >
                 Back
               </button>
@@ -274,17 +274,17 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-black bg-black/5" : "border-slate-100 bg-white dark:bg-slate-800 dark:border-slate-700"
+      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-black bg-black/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
         }`}
       aria-pressed={checked}
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="font-medium text-slate-900 dark:text-white">{title}</div>
-          {desc && <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">{desc}</div>}
+          <div className="font-medium text-zinc-900 dark:text-white">{title}</div>
+          {desc && <div className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{desc}</div>}
         </div>
         <div className="ml-4">
-          <div className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-black" : "border-slate-300 dark:border-slate-600"}`} aria-hidden />
+          <div className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-black" : "border-zinc-300 dark:border-zinc-600"}`} aria-hidden />
         </div>
       </div>
     </button>
