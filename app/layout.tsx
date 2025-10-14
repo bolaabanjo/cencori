@@ -18,24 +18,11 @@ export const metadata: Metadata = {
   description: "A multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-engineered applications.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-        {children}
-        </ThemeProvider>
+    <html lang="en">
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
