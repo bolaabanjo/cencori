@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-
+import { 
+    Card,
+    CardAction,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card";
 /**
  * Minimal 3-step onboarding (Vercel-like minimalism)
  * - Step 1: What are you building? (production | hobby | learning | other)
@@ -110,7 +118,7 @@ export default function OnboardingPage() {
 
       <div className="mb-6">
         <div className="text-xs text-slate-500 dark:text-slate-400">Step {step} of 3</div>
-        <div className="h-2 mt-2 rounded bg-slate-200 dark:bg-slate-800">
+        <div className="h-2 mt-2 rounded-full bg-slate-200 dark:bg-slate-800">
           <div
             className="h-full bg-black dark:bg-white transition-all"
             style={{ width: `${(step / 3) * 100}%` }}
@@ -119,13 +127,13 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
+      <Card className="dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
         {step === 1 && (
-          <div>
-            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+          <CardHeader>
+            <CardTitle className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</CardTitle>
+            <CardDescription className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
               Production, hobby project, or learning? This helps set sensible defaults.
-            </p>
+            </CardDescription>
 
             <div className="grid gap-3">
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app; reliability & security matter." />
@@ -155,7 +163,7 @@ export default function OnboardingPage() {
                 </label>
               </div>
             </div>
-          </div>
+          </CardHeader>
         )}
 
         {step === 2 && (
@@ -254,7 +262,7 @@ export default function OnboardingPage() {
             )}
           </div>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }
