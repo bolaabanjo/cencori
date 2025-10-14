@@ -116,7 +116,7 @@ export default function OnboardingPage() {
           <div>
             <h2 className="text-xl font-medium mb-2">What are you building?</h2>
             <p className="text-sm text-slate-500 mb-4">
-              Tell us whether you're building a production app, a hobby project, or learning. This helps us show the
+              Tell us whether you&apos;re building a production app, a hobby project, or learning. This helps us show the
               right defaults and guardrails.
             </p>
 
@@ -173,7 +173,7 @@ export default function OnboardingPage() {
 
         {step === 2 && (
           <div>
-            <h2 className="text-xl font-medium mb-2">What's your role?</h2>
+            <h2 className="text-xl font-medium mb-2">What&apos;s your role?</h2>
             <p className="text-sm text-slate-500 mb-4">Your role helps us tailor examples and recommended integrations.</p>
 
             <div className="grid gap-3">
@@ -212,7 +212,7 @@ export default function OnboardingPage() {
 
         {step === 3 && (
           <div>
-            <h2 className="text-xl font-medium mb-2">You're almost done</h2>
+            <h2 className="text-xl font-medium mb-2">You&apos;re almost done</h2>
             <p className="text-sm text-slate-500 mb-4">Review your choices below. You can create an organization later from the dashboard.</p>
 
             <dl className="grid gap-3">
@@ -228,7 +228,7 @@ export default function OnboardingPage() {
             </dl>
 
             <div className="text-sm text-slate-500 mt-4">
-              Tip: You can finalize your organization and projects inside the dashboard. We'll suggest default protections based on your selections.
+              Tip: You can finalize your organization and projects inside the dashboard. We&apos;ll suggest default protections based on your selections.
             </div>
           </div>
         )}
