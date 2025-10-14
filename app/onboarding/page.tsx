@@ -4,6 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+/**
+ * Minimal 3-step onboarding (Vercel-like minimalism)
+ * - Step 1: What are you building? (production | hobby | learning | other)
+ * - Step 2: Your role (founder | engineer | designer | product | other)
+ * - Step 3: Review & finish
+ *
+ * Writes to public.users: project_type, role, onboarding_completed
+ */
+
 type ProjectType = "production" | "hobby" | "learning" | "other";
 type Role = "founder" | "engineer" | "designer" | "product" | "other";
 
@@ -13,18 +22,17 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // form state
+  // state
   const [projectType, setProjectType] = useState<ProjectType | null>(null);
-  const [projectTypeOther, setProjectTypeOther] = useState<string>("");
+  const [projectOther, setProjectOther] = useState<string>("");
   const [role, setRole] = useState<Role | null>(null);
   const [roleOther, setRoleOther] = useState<string>("");
 
-  // user email display
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    async function fetchUser() {
+    async function check() {
       const { data, error: userErr } = await supabase.auth.getUser();
       if (userErr || !data.user) {
         router.push("/login");
@@ -32,28 +40,28 @@ export default function OnboardingPage() {
       }
       if (mounted) setEmail(data.user.email ?? null);
     }
-    fetchUser();
+    check();
     return () => {
       mounted = false;
     };
   }, [router]);
 
-  const projectTypeLabel = useMemo(() => {
+  const projectLabel = useMemo(() => {
     if (!projectType) return "";
-    if (projectType === "other") return projectTypeOther || "Other";
-    return projectType[0].toUpperCase() + projectType.slice(1);
-  }, [projectType, projectTypeOther]);
+    if (projectType === "other") return projectOther || "Other";
+    return capitalize(projectType);
+  }, [projectType, projectOther]);
 
   const roleLabel = useMemo(() => {
     if (!role) return "";
     if (role === "other") return roleOther || "Other";
-    return role[0].toUpperCase() + role.slice(1);
+    return capitalize(role);
   }, [role, roleOther]);
 
-  function canContinueCurrentStep() {
+  function canProceed() {
     if (step === 1) {
       if (!projectType) return false;
-      if (projectType === "other" && projectTypeOther.trim().length === 0) return false;
+      if (projectType === "other" && projectOther.trim().length === 0) return false;
       return true;
     }
     if (step === 2) {
@@ -64,24 +72,21 @@ export default function OnboardingPage() {
     return true;
   }
 
-  async function handleFinish() {
+  async function finish() {
     setError(null);
     setLoading(true);
     try {
-      const profileUpdates: Record<string, unknown> = {
-        project_type: projectType === "other" ? projectTypeOther.trim() : projectType,
+      const { data: userResp, error: gerr } = await supabase.auth.getUser();
+      if (gerr || !userResp.user) throw new Error("No user session. Please sign in again.");
+      const userId = userResp.user.id;
+
+      const updates = {
+        project_type: projectType === "other" ? projectOther.trim() : projectType,
         role: role === "other" ? roleOther.trim() : role,
         onboarding_completed: true,
       };
 
-      const { data: userResp, error: getUserErr } = await supabase.auth.getUser();
-      if (getUserErr || !userResp.user) {
-        throw new Error("User session not found. Try logging in again.");
-      }
-
-      const userId = userResp.user.id;
-
-      const { error: updateErr } = await supabase.from("users").update(profileUpdates).eq("id", userId);
+      const { error: updateErr } = await supabase.from("users").update(updates).eq("id", userId);
       if (updateErr) throw updateErr;
 
       router.push("/dashboard/organization");
@@ -93,75 +98,57 @@ export default function OnboardingPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <header className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold">Welcome to Cencori</h1>
-            <p className="text-sm text-slate-600 mt-2">A few quick questions to personalize your experience.</p>
-          </div>
-          <div className="text-sm text-slate-500">{email ?? ""}</div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Quick setup</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            A couple questions to personalize your experience.
+          </p>
         </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{email ?? ""}</div>
+      </div>
 
-        <div className="mt-6 flex items-center gap-3">
-          <div className="text-xs text-slate-500">Step {step} of 3</div>
-          <div className="flex-1 h-2 bg-slate-200 rounded overflow-hidden">
-            <div aria-hidden className="h-full bg-black transition-all" style={{ width: `${(step / 3) * 100}%` }} />
-          </div>
+      <div className="mb-6">
+        <div className="text-xs text-slate-500 dark:text-slate-400">Step {step} of 3</div>
+        <div className="h-2 mt-2 rounded bg-slate-200 dark:bg-slate-800">
+          <div
+            className="h-full bg-black dark:bg-white transition-all"
+            style={{ width: `${(step / 3) * 100}%` }}
+            aria-hidden
+          />
         </div>
-      </header>
+      </div>
 
-      <section className="bg-white rounded-lg shadow p-6">
-        {/* step content unchanged */}
+      <section className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
         {step === 1 && (
           <div>
-            <h2 className="text-xl font-medium mb-2">What are you building?</h2>
-            <p className="text-sm text-slate-500 mb-4">
-              Tell us whether you&apos;re building a production app, a hobby project, or learning. This helps us show the
-              right defaults and guardrails.
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+              Production, hobby project, or learning? This helps set sensible defaults.
             </p>
 
             <div className="grid gap-3">
-              <RadioCard
-                id="project-production"
-                checked={projectType === "production"}
-                onChange={() => setProjectType("production")}
-                title="Production app"
-                desc="High stakes — uptime, security, compliance matter."
-              />
-              <RadioCard
-                id="project-hobby"
-                checked={projectType === "hobby"}
-                onChange={() => setProjectType("hobby")}
-                title="Hobby / side project"
-                desc="Fast iteration, prototypes, creative experiments."
-              />
-              <RadioCard
-                id="project-learning"
-                checked={projectType === "learning"}
-                onChange={() => setProjectType("learning")}
-                title="Learning / sandbox"
-                desc="Exploration, tutorials, trying new ideas."
-              />
-              <div className="p-3 rounded border">
+              <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app; reliability & security matter." />
+              <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
+              <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
+              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
                 <label className="flex items-start gap-3">
                   <input
-                    id="project-other"
-                    name="project-type"
+                    aria-label="Other project type"
                     type="radio"
                     checked={projectType === "other"}
                     onChange={() => setProjectType("other")}
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium">Other</div>
-                    <div className="text-sm text-slate-500">Tell us in a few words</div>
+                    <div className="font-medium text-slate-900 dark:text-white">Other</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Short description</div>
                     {projectType === "other" && (
                       <input
-                        aria-label="Other project description"
-                        value={projectTypeOther}
-                        onChange={(e) => setProjectTypeOther(e.target.value)}
-                        className="mt-2 block w-full rounded border px-3 py-2"
-                        placeholder="Describe your use case"
+                        value={projectOther}
+                        onChange={(e) => setProjectOther(e.target.value)}
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white"
+                        placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
                   </div>
@@ -173,34 +160,32 @@ export default function OnboardingPage() {
 
         {step === 2 && (
           <div>
-            <h2 className="text-xl font-medium mb-2">What&apos;s your role?</h2>
-            <p className="text-sm text-slate-500 mb-4">Your role helps us tailor examples and recommended integrations.</p>
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What's your role?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">This helps surface relevant docs and examples.</p>
 
             <div className="grid gap-3">
-              <RadioCard id="role-founder" checked={role === "founder"} onChange={() => setRole("founder")} title="Founder" desc="Building a product and leading the team." />
-              <RadioCard id="role-engineer" checked={role === "engineer"} onChange={() => setRole("engineer")} title="Senior Engineer" desc="Building core systems and shipping infrastructure." />
-              <RadioCard id="role-designer" checked={role === "designer"} onChange={() => setRole("designer")} title="Designer" desc="Working on UX, flow, and product polish." />
-              <RadioCard id="role-product" checked={role === "product"} onChange={() => setRole("product")} title="Product / PM" desc="Owning outcomes and product strategy." />
-              <div className="p-3 rounded border">
+              <OptionCard checked={role === "founder"} onSelect={() => setRole("founder")} title="Founder" desc="Building and shipping product." />
+              <OptionCard checked={role === "engineer"} onSelect={() => setRole("engineer")} title="Engineer" desc="Systems & integration." />
+              <OptionCard checked={role === "designer"} onSelect={() => setRole("designer")} title="Designer" desc="UX, flows, frontend." />
+              <OptionCard checked={role === "product"} onSelect={() => setRole("product")} title="Product / PM" desc="Strategy & roadmap." />
+              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
                 <label className="flex items-start gap-3">
                   <input
-                    id="role-other"
-                    name="role"
+                    aria-label="Other role"
                     type="radio"
                     checked={role === "other"}
                     onChange={() => setRole("other")}
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium">Other</div>
-                    <div className="text-sm text-slate-500">Tell us your role</div>
+                    <div className="font-medium text-slate-900 dark:text-white">Other</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Tell us</div>
                     {role === "other" && (
                       <input
-                        aria-label="Your role"
                         value={roleOther}
                         onChange={(e) => setRoleOther(e.target.value)}
-                        className="mt-2 block w-full rounded border px-3 py-2"
-                        placeholder="e.g. DevOps, Researcher, Student..."
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white"
+                        placeholder="e.g. DevOps, Researcher..."
                       />
                     )}
                   </div>
@@ -212,23 +197,19 @@ export default function OnboardingPage() {
 
         {step === 3 && (
           <div>
-            <h2 className="text-xl font-medium mb-2">You&apos;re almost done</h2>
-            <p className="text-sm text-slate-500 mb-4">Review your choices below. You can create an organization later from the dashboard.</p>
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white">Review</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Looks good — we’ll suggest defaults based on these choices.</p>
 
-            <dl className="grid gap-3">
-              <div className="p-3 rounded border">
-                <dt className="text-xs text-slate-500">Project intent</dt>
-                <dd className="mt-1 font-medium">{projectTypeLabel || "—"}</dd>
+            <div className="grid gap-3">
+              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Project intent</div>
+                <div className="mt-1 font-medium text-slate-900 dark:text-white">{projectLabel || "—"}</div>
               </div>
 
-              <div className="p-3 rounded border">
-                <dt className="text-xs text-slate-500">Role</dt>
-                <dd className="mt-1 font-medium">{roleLabel || "—"}</dd>
+              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Role</div>
+                <div className="mt-1 font-medium text-slate-900 dark:text-white">{roleLabel || "—"}</div>
               </div>
-            </dl>
-
-            <div className="text-sm text-slate-500 mt-4">
-              Tip: You can finalize your organization and projects inside the dashboard. We&apos;ll suggest default protections based on your selections.
             </div>
           </div>
         )}
@@ -236,19 +217,27 @@ export default function OnboardingPage() {
         {error && <div className="mt-4 text-sm text-red-700">{error}</div>}
 
         <div className="mt-6 flex items-center justify-between">
-          <div>{step > 1 && <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="px-3 py-2 rounded border">Back</button>}</div>
+          <div>
+            {step > 1 && (
+              <button
+                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                className="px-3 py-2 rounded border text-sm text-slate-700 dark:text-slate-200"
+              >
+                Back
+              </button>
+            )}
+          </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex gap-3">
             {step < 3 ? (
               <button
-                type="button"
                 onClick={() => {
-                  if (!canContinueCurrentStep()) {
-                    setError("Please complete the required fields to continue.");
+                  if (!canProceed()) {
+                    setError("Please complete this step before continuing.");
                     return;
                   }
                   setError(null);
-                  setStep((s) => Math.min(3, s + 1));
+                  setStep((s) => s + 1);
                 }}
                 className="px-4 py-2 rounded bg-black text-white"
               >
@@ -256,12 +245,11 @@ export default function OnboardingPage() {
               </button>
             ) : (
               <button
-                type="button"
-                onClick={() => void handleFinish()}
-                className="px-4 py-2 rounded bg-black text-white"
+                onClick={() => void finish()}
                 disabled={loading}
+                className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
               >
-                {loading ? "Finalizing…" : "Finish onboarding"}
+                {loading ? "Finishing…" : "Finish onboarding"}
               </button>
             )}
           </div>
@@ -271,34 +259,33 @@ export default function OnboardingPage() {
   );
 }
 
-/* ---------- Small presentational RadioCard component ---------- */
+/* ----------------- Small presentational components ----------------- */
 
-function RadioCard({
-  id,
-  title,
-  desc,
-  checked,
-  onChange,
-}: {
-  id: string;
-  title: string;
-  desc?: string;
-  checked: boolean;
-  onChange: () => void;
-}) {
+function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; title: string; desc?: string; onSelect: () => void }) {
   return (
-    <label
-      htmlFor={id}
-      className={`block cursor-pointer rounded-md border p-3 hover:shadow-sm ${checked ? "border-black bg-black/5" : "bg-white"
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-black bg-black/5" : "border-slate-100 bg-white dark:bg-slate-800 dark:border-slate-700"
         }`}
+      aria-pressed={checked}
     >
-      <div className="flex items-start gap-3">
-        <input id={id} type="radio" name="radio" checked={checked} onChange={onChange} className="mt-1" aria-checked={checked} />
-        <div className="flex-1">
-          <div className="font-medium">{title}</div>
-          {desc && <div className="text-sm text-slate-500 mt-1">{desc}</div>}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="font-medium text-slate-900 dark:text-white">{title}</div>
+          {desc && <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">{desc}</div>}
+        </div>
+        <div className="ml-4">
+          <div className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-black" : "border-slate-300 dark:border-slate-600"}`} aria-hidden />
         </div>
       </div>
-    </label>
+    </button>
   );
+}
+
+/* ----------------- Helpers ----------------- */
+
+function capitalize(s: string) {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
