@@ -53,7 +53,7 @@ export default function OnboardingPage() {
       const user = data.user;
 
       // Prefer common avatar keys provided by OAuth providers
-      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const possibleAvatar =
         (meta.avatar_url as string) ??
         (meta.picture as string) ??
@@ -126,7 +126,7 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
     }
-    const initials = useMemo(() => {
+    const initials = UseMemo(() => {
       const name = displayName ?? email ?? "";
       if (!name) return "";
       const parts = name.split(/[\s._-]+/).filter(Boolean);
