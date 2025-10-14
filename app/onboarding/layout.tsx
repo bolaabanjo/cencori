@@ -2,6 +2,7 @@
 import React from "react";
 import { ThemeToggle } from "@/components/theme-toggle"; // client component
 import Image from "next/image";
+import Link from "next/link";
 
 export const metadata = {
   title: "Onboarding — Cencori",
@@ -12,7 +13,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     <div className="min-h-screen bg-slate-50">
       <header className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <a href="/" className="flex items-center gap-3 text-sm font-medium">
+          <Link href="/" className="flex items-center gap-3 text-sm font-medium">
             <div className="bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-md">
               {/* small mark / logo */}
               <Image
@@ -23,7 +24,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
                 className="flex items-center gap-3"/>
             </div>
             <span className="hidden md:inline">Cencori</span>
-          </a>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
