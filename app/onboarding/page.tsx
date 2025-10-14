@@ -126,7 +126,7 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
     }
-    const initials = UseMemo(() => {
+    const initials = useMemo(() => {
       const name = displayName ?? email ?? "";
       if (!name) return "";
       const parts = name.split(/[\s._-]+/).filter(Boolean);
