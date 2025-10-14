@@ -108,17 +108,17 @@ export default function OnboardingPage() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Quick setup</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-white">Quick setup</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             A couple questions to personalize your experience.
           </p>
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400">{email ?? ""}</div>
+        <div className="text-xs text-zinc-500 dark:text-zinc-400">{email ?? ""}</div>
       </div>
 
       <div className="mb-6">
-        <div className="text-xs text-gray-500 dark:text-gray-400">Step {step} of 3</div>
-        <div className="h-2 mt-2 rounded-full bg-gray-200 dark:bg-gray-800">
+        <div className="text-xs text-zinc-500 dark:text-zinc-400">Step {step} of 3</div>
+        <div className="h-2 mt-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
           <div
             className="h-full bg-black dark:bg-white transition-all"
             style={{ width: `${(step / 3) * 100}%` }}
@@ -274,7 +274,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-black bg-black/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
+      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-zinc bg-zinc/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
         }`}
       aria-pressed={checked}
     >
