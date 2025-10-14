@@ -108,17 +108,17 @@ export default function OnboardingPage() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Quick setup</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Quick setup</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             A couple questions to personalize your experience.
           </p>
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">{email ?? ""}</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400">{email ?? ""}</div>
       </div>
 
       <div className="mb-6">
-        <div className="text-xs text-slate-500 dark:text-slate-400">Step {step} of 3</div>
-        <div className="h-2 mt-2 rounded-full bg-slate-200 dark:bg-slate-800">
+        <div className="text-xs text-gray-500 dark:text-gray-400">Step {step} of 3</div>
+        <div className="h-2 mt-2 rounded-full bg-gray-200 dark:bg-gray-800">
           <div
             className="h-full bg-black dark:bg-white transition-all"
             style={{ width: `${(step / 3) * 100}%` }}
@@ -127,11 +127,11 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <section className="dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
+      <section className="dark:bg-gray-950 border border-gray-100 dark:border-gray-700 rounded-lg p-6">
         {step === 1 && (
           <div>
-            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">What are you building?</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">
               Production, hobby project, or learning? This helps set sensible defaults.
             </p>
 
@@ -168,15 +168,15 @@ export default function OnboardingPage() {
 
         {step === 2 && (
           <div>
-            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What&apos;s your role?</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">This helps surface relevant docs and examples.</p>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">What&apos;s your role?</h2>
+            <p className="text-sm text-slate-500 dark:text-gray-400 mt-1 mb-4">This helps surface relevant docs and examples.</p>
 
             <div className="grid gap-3">
               <OptionCard checked={role === "founder"} onSelect={() => setRole("founder")} title="Founder" desc="Building and shipping product." />
               <OptionCard checked={role === "engineer"} onSelect={() => setRole("engineer")} title="Engineer" desc="Systems & integration." />
               <OptionCard checked={role === "designer"} onSelect={() => setRole("designer")} title="Designer" desc="UX, flows, frontend." />
               <OptionCard checked={role === "product"} onSelect={() => setRole("product")} title="Product / PM" desc="Strategy & roadmap." />
-              <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
+              <div className="p-3 rounded border border-gray-100 dark:border-gray-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other role"
@@ -247,7 +247,7 @@ export default function OnboardingPage() {
                   setError(null);
                   setStep((s) => s + 1);
                 }}
-                className="px-4 py-2 rounded bg-black text-white"
+                className="px-4 py-2 rounded-full bg-black text-white"
               >
                 Next
               </button>
