@@ -127,13 +127,13 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <Card className="dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
+      <section className="dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-6">
         {step === 1 && (
-          <CardHeader>
-            <CardTitle className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</CardTitle>
-            <CardDescription className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+          <div>
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What are you building?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
               Production, hobby project, or learning? This helps set sensible defaults.
-            </CardDescription>
+            </p>
 
             <div className="grid gap-3">
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app; reliability & security matter." />
@@ -149,13 +149,13 @@ export default function OnboardingPage() {
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium text-slate-900 dark:text-white">Other</div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Short description</div>
+                    <div className="font-medium text-gray-900 dark:text-white">Other</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Short description</div>
                     {projectType === "other" && (
                       <input
                         value={projectOther}
                         onChange={(e) => setProjectOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white"
+                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
                         placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
@@ -163,7 +163,7 @@ export default function OnboardingPage() {
                 </label>
               </div>
             </div>
-          </CardHeader>
+          </div>
         )}
 
         {step === 2 && (
@@ -262,7 +262,7 @@ export default function OnboardingPage() {
             )}
           </div>
         </div>
-      </Card>
+      </section>
     </div>
   );
 }
