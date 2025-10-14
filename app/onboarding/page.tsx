@@ -169,7 +169,7 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <section className="dark:bg-zinc-950 border">
+      <section className="dark:bg-zinc-950">
         {step === 1 && (
           <div>
             <h2 className="text-lg font-medium text-zinc-900 dark:text-white">What are you building?</h2>
