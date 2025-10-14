@@ -120,7 +120,7 @@ export default function OnboardingPage() {
         <div className="text-xs text-zinc-500 dark:text-zinc-400">Step {step} of 3</div>
         <div className="h-2 mt-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
           <div
-            className="h-full bg-black dark:bg-white transition-all"
+            className="h-full bg-black rounded-full dark:bg-white transition-all"
             style={{ width: `${(step / 3) * 100}%` }}
             aria-hidden
           />
