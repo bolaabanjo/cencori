@@ -160,7 +160,7 @@ export default function OnboardingPage() {
 
         {step === 2 && (
           <div>
-            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What's your role?</h2>
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white">What&apos;s your role?</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">This helps surface relevant docs and examples.</p>
 
             <div className="grid gap-3">
@@ -198,17 +198,17 @@ export default function OnboardingPage() {
         {step === 3 && (
           <div>
             <h2 className="text-lg font-medium text-slate-900 dark:text-white">Review</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Looks good — we’ll suggest defaults based on these choices.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
 
             <div className="grid gap-3">
               <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
                 <div className="text-xs text-slate-500 dark:text-slate-400">Project intent</div>
-                <div className="mt-1 font-medium text-slate-900 dark:text-white">{projectLabel || "—"}</div>
+                <div className="mt-1 font-medium text-slate-900 dark:text-white">{projectLabel || "-"}</div>
               </div>
 
               <div className="p-3 rounded border border-slate-100 dark:border-slate-700">
                 <div className="text-xs text-slate-500 dark:text-slate-400">Role</div>
-                <div className="mt-1 font-medium text-slate-900 dark:text-white">{roleLabel || "—"}</div>
+                <div className="mt-1 font-medium text-slate-900 dark:text-white">{roleLabel || "-"}</div>
               </div>
             </div>
           </div>
