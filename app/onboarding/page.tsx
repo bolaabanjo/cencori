@@ -182,7 +182,7 @@ export default function OnboardingPage() {
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app, reliability & security heavy." />
               <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
               <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
-              <div className="p-3 rounded-2xl border border-zinc-100 dark:border-zinc-700">
+              <div className="p-3 rounded-3xl border border-zinc-100 dark:border-zinc-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other project type"
@@ -316,7 +316,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
   return (
     <RadioGroup
       onClick={onSelect}
-      className={`w-full text-left rounded-3xl border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-white/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-500"
+      className={`w-full text-left rounded-3xl border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-white/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-800"
         }`}
       aria-pressed={checked}
     >
