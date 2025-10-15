@@ -139,16 +139,16 @@ export default function OnboardingPage() {
     }, [displayName, email]);
 
   return (
-    <div className="max-w-3xl mx-auto mt-20">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="max-w-xl sm:max-w-3xl mx-auto px-4 sm:px-0 mt-20">
+      <div className="mb-6 flex flex-col sm:flex-row item-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-white">Quick setup</h1>
+          <h1 className="text-lg sm:text-2xl font-semibold text-zinc-900 dark:text-white">Quick setup</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             A couple questions to personalize your experience.
           </p>
         </div>
         <div>
-          <Avatar>
+          <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
             {avatarUrl ? (
               <AvatarImage src={avatarUrl} alt={displayName ?? email ?? "User avatar"} />
             ) : (
@@ -160,7 +160,7 @@ export default function OnboardingPage() {
 
       <div className="mb-6">
         <div className="text-xs text-zinc-500 dark:text-zinc-400">Step {step} of 3</div>
-        <div className="h-2 mt-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
+        <div className="h-1.5 sm:h-2 mt-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
           <div
             className="h-full bg-black rounded-full dark:bg-white transition-all"
             style={{ width: `${(step / 3) * 100}%` }}
@@ -177,7 +177,7 @@ export default function OnboardingPage() {
               Production, hobby project, or learning? This helps set sensible defaults.
             </p>
 
-            <div className="grid gap-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app, reliability & security heavy." />
               <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
               <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
@@ -213,7 +213,7 @@ export default function OnboardingPage() {
             <h2 className="text-lg font-medium text-gray-900 dark:text-white">What&apos;s your role?</h2>
             <p className="text-sm text-slate-500 dark:text-gray-400 mt-1 mb-4">This helps surface relevant docs and examples.</p>
 
-            <div className="grid gap-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <OptionCard checked={role === "founder"} onSelect={() => setRole("founder")} title="Founder" desc="Building and shipping product." />
               <OptionCard checked={role === "engineer"} onSelect={() => setRole("engineer")} title="Engineer" desc="Systems & integration." />
               <OptionCard checked={role === "designer"} onSelect={() => setRole("designer")} title="Designer" desc="UX, flows, frontend." />
@@ -250,7 +250,7 @@ export default function OnboardingPage() {
             <h2 className="text-lg font-medium text-zinc-900 dark:text-white">Review</h2>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
 
-            <div className="grid gap-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="p-3 rounded border border-slate-100 dark:border-zinc-700">
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">Project intent</div>
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{projectLabel || "-"}</div>
@@ -266,7 +266,7 @@ export default function OnboardingPage() {
 
         {error && <div className="mt-4 text-sm text-red-700">{error}</div>}
 
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div>
             {step > 1 && (
               <button
@@ -278,7 +278,7 @@ export default function OnboardingPage() {
             )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 grid-cols-1 sm:grid-cols-2">
             {step < 3 ? (
               <button
                 onClick={() => {
@@ -316,7 +316,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full text-left rounded-md border px-4 py-3 ${checked ? "border-zinc bg-zinc/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
+      className={`w-full text-left rounded-md border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-zinc/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
         }`}
       aria-pressed={checked}
     >
