@@ -4,18 +4,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from "@supabase/supabase-js";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { MenuIcon, XIcon } from "lucide-react"; // Import icons for mobile menu
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetClose,
-} from "@/components/ui/sheet"; // Assuming you have a Sheet component
+
+import { DesktopNav } from "./navbar-03/desktop-nav";
+import { MobileNav } from "./navbar-03/mobile-nav";
+import { ThemeToggle } from "@/components/theme-toggle"; // Keep ThemeToggle for desktop
 
 interface UserAvatarProps {
   user: User;
@@ -74,75 +69,24 @@ const Navbar: React.FC = () => {
   }, [supabase]);
 
   return (
-    <nav className="flex items-center justify-between p-4 px-6 md:px-8 lg:px-12">
-      {/* Logo */}
-      <Link href="/">
-        {theme === "dark" ? (
-          <img src="/cdark.png" alt="Logo Dark" className="h-6" />
-        ) : (
-          <img src="/clight.png" alt="Logo Light" className="h-6" />
-        )}
-      </Link>
+    <nav className="fixed top-6 inset-x-4 h-16  border dark:border-zinc-900 max-w-6xl mx-auto z-50">
+      <div className="h-full flex items-center justify-between mx-auto px-4">
+        {/* Logo */}
+        <Link href="/">
+          {theme === "dark" ? (
+            <img src="/cdark.png" alt="Logo Dark" className="h-6" />
+          ) : (
+            <img src="/clight.png" alt="Logo Light" className="h-6" />
+          )}
+        </Link>
 
-      {/* Desktop Navigation Links and Auth/Avatar */}
-      <div className="hidden md:flex items-center space-x-4">
-        <ThemeToggle />
-        {user ? (
-          <UserAvatar user={user} />
-        ) : (
-          <>
-            <Link href="/login">
-              <Button variant="ghost">Sign In</Button>
-            </Link>
-            <Link href="/signup">
-              <Button>Get Started</Button>
-            </Link>
-          </>
-        )}
-      </div>
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center space-x-4">
+          <DesktopNav user={user} UserAvatarComponent={UserAvatar} />
+        </div>
 
-      {/* Mobile Menu (Hamburger) */}
-      <div className="md:hidden flex items-center space-x-4">
-        <ThemeToggle />
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MenuIcon className="h-6 w-6" />
-              <span className="sr-only">Toggle navigation menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right">
-            <div className="flex flex-col items-start space-y-4 pt-8">
-              <SheetClose asChild>
-                <Link href="/">
-                  {theme === "dark" ? (
-                    <img src="/cdark.png" alt="Logo Dark" className="h-8" />
-                  ) : (
-                    <img src="/clight.png" alt="Logo Light" className="h-8" />
-                  )}
-                </Link>
-              </SheetClose>
-              {user ? (
-                <SheetClose asChild>
-                  <UserAvatar user={user} />
-                </SheetClose>
-              ) : (
-                <>
-                  <SheetClose asChild>
-                    <Link href="/login">
-                      <Button variant="ghost" className="w-full justify-start">Sign In</Button>
-                    </Link>
-                  </SheetClose>
-                  <SheetClose asChild>
-                    <Link href="/signup">
-                      <Button className="w-full justify-start">Sign Up</Button>
-                    </Link>
-                  </SheetClose>
-                </>
-              )}
-            </div>
-          </SheetContent>
-        </Sheet>
+        {/* Mobile Navigation */}
+        <MobileNav user={user} UserAvatarComponent={UserAvatar} />
       </div>
     </nav>
   );
