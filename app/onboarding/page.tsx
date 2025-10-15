@@ -271,14 +271,14 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => Math.max(1, s - 1))}
-                className="px-3 py-2 rounded border text-sm text-zinc-700 dark:text-zinc-200"
+                className="w-full sm:w-auto px-4 py-2 rounded-full border text-sm text-zinc-700 dark:text-zinc-200"
               >
                 Back
               </button>
             )}
           </div>
 
-          <div className="flex gap-3 grid-cols-1 sm:grid-cols-2">
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             {step < 3 ? (
               <button
                 onClick={() => {
@@ -289,7 +289,7 @@ export default function OnboardingPage() {
                   setError(null);
                   setStep((s) => s + 1);
                 }}
-                className="px-4 py-2 rounded-full bg-black text-white"
+                className="w-full sm:w-auto px-4 py-2 rounded-full bg-black  dark:bg-white text-white dark:text-black"
               >
                 Next
               </button>
@@ -297,7 +297,7 @@ export default function OnboardingPage() {
               <button
                 onClick={() => void finish()}
                 disabled={loading}
-                className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
+                className="w-full sm:w-auto px-4 py-2 rounded bg-black text-white disabled:opacity-60"
               >
                 {loading ? "Finishing…" : "Finish onboarding"}
               </button>
