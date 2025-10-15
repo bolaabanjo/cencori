@@ -31,7 +31,7 @@ const RootPage = () => {
             <p className="text-muted-foreground px-5 lg:text-lg">
             A multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability.{" "}
             </p>
-            <Button className="mx-5 h-12 rounded-lg">Get Started Now</Button>
+            <Button className="mx-5 h-12">Get Started</Button>
           </div>
         </div>
         <ul className="md:h-34 mx-auto grid h-44 w-full max-w-5xl grid-cols-1 border border-b-0 border-dashed md:grid-cols-2 lg:h-24 lg:grid-cols-2">
