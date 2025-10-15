@@ -182,7 +182,7 @@ export default function OnboardingPage() {
               <OptionCard checked={projectType === "production"} onSelect={() => setProjectType("production")} title="Production" desc="High-stakes app, reliability & security heavy." />
               <OptionCard checked={projectType === "hobby"} onSelect={() => setProjectType("hobby")} title="Hobby / side project" desc="Experimentation and fast iteration." />
               <OptionCard checked={projectType === "learning"} onSelect={() => setProjectType("learning")} title="Learning / sandbox" desc="Practice, explore, learn." />
-              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
+              <div className="p-3 rounded-2xl border border-zinc-100 dark:border-zinc-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other project type"
@@ -192,7 +192,7 @@ export default function OnboardingPage() {
                     className="mt-1"
                   />
                   <div className="flex-1">
-                    <div className="font-medium text-zinc-900 rounded-2xl dark:text-white">Other</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">Other</div>
                     <div className="text-sm text-zinc-500 dark:text-zinc-400">Short description</div>
                     {projectType === "other" && (
                       <input
