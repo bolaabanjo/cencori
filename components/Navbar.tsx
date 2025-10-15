@@ -74,7 +74,7 @@ const Navbar: React.FC = () => {
   }, [supabase]);
 
   return (
-    <nav className="flex items-center justify-between p-4 px-6 md:px-8 lg:px-12 border-b">
+    <nav className="flex items-center justify-between p-4 px-6 md:px-8 lg:px-12">
       {/* Logo */}
       <Link href="/">
         {theme === "dark" ? (

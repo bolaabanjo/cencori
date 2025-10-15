@@ -8,7 +8,7 @@ const RootPage = () => {
   return (
     <>
       <Navbar/>
-      <section className="h-full w-full overflow-x-hidden py-12">
+      <section className="h-full w-full overflow-x-hidden py-8">
       <div className="container border-b border-t border-dashed">
         <div className="relative flex w-full max-w-5xl flex-col justify-center border border-t-0 border-dashed px-5 py-12 md:items-center lg:mx-auto md:justify-center lg:mx-auto">
           <p className="text-muted-foreground flex items-center gap-2 gap-3 text-sm">
