@@ -316,7 +316,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
   return (
     <RadioGroup
       onClick={onSelect}
-      className={`w-full text-left rounded-2xl border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-500"
+      className={`w-full text-left rounded-3xl border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-white/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-500"
         }`}
       aria-pressed={checked}
     >
@@ -326,7 +326,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
           {desc && <div className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{desc}</div>}
         </div>
         <RadioGroup className="ml-4">
-          <Label className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-zinc" : "border-zinc-300 dark:border-zinc-600"}`} aria-hidden />
+          <Label className={`h-5 w-5 rounded-full border ${checked ? "bg-black dark:bg-white border-zinc" : "border-zinc-300 dark:border-zinc-100"}`} aria-hidden />
         </RadioGroup>
       </div>
     </RadioGroup>
