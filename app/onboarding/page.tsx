@@ -272,7 +272,7 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => Math.max(1, s - 1))}
-                className="w-full sm:w-auto px-4 py-2 rounded-full border text-sm text-zinc-700 dark:text-zinc-200"
+                className="w-full sm:w-auto px-4 py-2 rounded-full border mb-5 text-sm text-zinc-700 dark:text-zinc-200"
               >
                 Back
               </button>
@@ -316,7 +316,7 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
   return (
     <RadioGroup
       onClick={onSelect}
-      className={`w-full text-left rounded-md border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-black bg-black/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
+      className={`w-full text-left rounded-lg border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-zinc/5 dark" : "border-zinc-500 bg-white dark:bg-zinc-300 dark:border-zinc-100"
         }`}
       aria-pressed={checked}
     >
