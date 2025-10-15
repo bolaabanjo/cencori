@@ -1,9 +1,9 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "@/globals.css";
+import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import Navbar from "@/components/navbar"; // Import the Navbar component
+ // Import the Navbar component
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}> {/* Apply font variables */}
         <ThemeProvider>
-          <Navbar /> {/* Include the Navbar here */}
+           {/* Include the Navbar here */}
           {children}
         </ThemeProvider>
       </body>
