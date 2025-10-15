@@ -12,7 +12,8 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
-
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 /**
  * Minimal 3-step onboarding (Vercel-like minimalism)
@@ -313,8 +314,7 @@ export default function OnboardingPage() {
 
 function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; title: string; desc?: string; onSelect: () => void }) {
   return (
-    <button
-      type="button"
+    <RadioGroup
       onClick={onSelect}
       className={`w-full text-left rounded-md border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-zinc/5" : "border-zinc-100 bg-white dark:bg-zinc-800 dark:border-zinc-700"
         }`}
@@ -322,14 +322,14 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="font-medium text-zinc-900 dark:text-white">{title}</div>
+          <RadioGroup className="font-medium text-zinc-900 dark:text-white">{title}</RadioGroup>
           {desc && <div className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{desc}</div>}
         </div>
-        <div className="ml-4">
-          <div className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-black" : "border-zinc-300 dark:border-zinc-600"}`} aria-hidden />
-        </div>
+        <RadioGroup className="ml-4">
+          <Label className={`h-5 w-5 rounded-full border ${checked ? "bg-black border-black" : "border-zinc-300 dark:border-zinc-600"}`} aria-hidden />
+        </RadioGroup>
       </div>
-    </button>
+    </RadioGroup>
   );
 }
 
