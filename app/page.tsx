@@ -7,8 +7,8 @@ import Navbar from "@/components/navbar";
 const RootPage = () => {
   return (
     <>
-      <Navbar/>
-      <section className="flex h-full w-full overflow-x-hidden py-40 lg:ml-44">
+      <Navbar />
+      <section className="flex h-full w-full overflow-x-hidden py-16 lg:ml-44 md:ml-20">
       <div className="container border-b border-t border-dashed">
         <div className="relative flex w-full max-w-5xl flex-col justify-center border border-t-0 border-dashed px-5 py-12 md:items-center lg:mx-auto md:justify-center lg:mx-auto">
           <p className="text-muted-foreground flex items-center gap-2 gap-3 text-sm">
@@ -31,7 +31,9 @@ const RootPage = () => {
             <p className="text-muted-foreground px-5 lg:text-lg">
             A multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability.{" "}
             </p>
-            <Button className="mx-5 h-12">Get Started</Button>
+            <a href="/signup">
+              <Button className="mx-5 h-8 cursor-pointer">Get Started</Button>
+            </a>
           </div>
         </div>
         <ul className="md:h-34 mx-auto grid h-44 w-full max-w-5xl grid-cols-1 border border-b-0 border-dashed md:grid-cols-2 lg:h-24 lg:grid-cols-2">
