@@ -2,13 +2,12 @@ import React from "react";
 
 import { ContainerTextFlip } from "@/components/ui/container-text-flip";
 import { Button } from "@/components/ui/button";
-import Navbar from "@/components/navbar";
+
 
 const RootPage = () => {
   return (
     <>
-      <Navbar />
-      <section className="flex h-full w-full overflow-x-hidden py-16 lg:ml-44 md:ml-20">
+      <section className="flex h-full w-full overflow-x-hidden py-16 lg:ml-44 md:ml-24">
       <div className="container border-b border-t border-dashed">
         <div className="relative flex w-full max-w-5xl flex-col justify-center border border-t-0 border-dashed px-5 py-12 md:items-center lg:mx-auto md:justify-center lg:mx-auto">
           <p className="text-muted-foreground flex items-center gap-2 gap-3 text-sm">

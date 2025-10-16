@@ -119,7 +119,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex h-16 items-center justify-between">
           {/* left side: logo + desktop nav */}
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-8 mx-5 h-8 cursor-pointer">
             <Link href="/" className="flex items-center gap-3">
               {/* Logo changes with theme */}
                 {/* Light theme logo */}
@@ -138,7 +138,6 @@ export default function Navbar() {
                   width={20}
                   height={20}
                 />
-              <span className="hidden md:inline font-bold">Cencori</span>
             </Link>
 
             {/* Desktop menus - hidden on small screens */}
@@ -155,12 +154,12 @@ export default function Navbar() {
           {/* right side: actions */}
           <div className="flex items-center gap-4">
             {/* Desktop auth buttons */}
-            <div className="hidden md:flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-3 mx-5 h-8 cursor-pointer">
               {!user ? (
                 <>
                   <Link href="/login" className="text-sm">Sign in</Link>
                   <Link href="/signup">
-                    <Button>Sign up</Button>
+                    <Button className="mx-5 h-8 cursor-pointer">Sign up</Button>
                   </Link>
                 </>
               ) : (
