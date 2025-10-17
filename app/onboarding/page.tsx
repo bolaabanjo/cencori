@@ -125,7 +125,7 @@ export default function OnboardingPage() {
       const { error: updateErr } = await supabase.from("users").update(updates).eq("id", userId);
       if (updateErr) throw updateErr;
 
-      router.push("/dashboard/organization");
+      router.push("/dashboard/organizations");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
@@ -153,7 +153,7 @@ export default function OnboardingPage() {
             {avatarUrl ? (
               <AvatarImage src={avatarUrl} alt={displayName ?? email ?? "User avatar"} />
             ) : (
-              <AvatarFallback>{initials || "U"}</AvatarFallback>
+              <AvatarFallback>{initials}</AvatarFallback>
             )}
           </Avatar>
         </div>

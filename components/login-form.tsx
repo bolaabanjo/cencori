@@ -53,11 +53,11 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
       }
         // If login returned a session, redirect to dashboard
         if (data?.session) {
-          router.push("/dashboard/organization");
+          router.push("/dashboard/organizations");
           return;
         }
 
-        router.push("/dashboard/organization");
+        router.push("/dashboard/organizations");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error";
         setError(msg);
