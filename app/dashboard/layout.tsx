@@ -11,7 +11,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<unknown | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -36,9 +36,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // while checking auth, render nothing or a simple skeleton to avoid flash
   if (loading) return null;
 
-  const meta = (user.user_metadata ?? {}) as Record<string, any>;
+  // Fix type issue: ensure 'user' is typed
+  type UserType = {
+    email?: string | null;
+    user_metadata?: Record<string, unknown>;
+  };
+
+  const typedUser = (user ?? {}) as UserType;
+  const meta = typedUser.user_metadata ?? {};
   const avatar = meta.avatar_url ?? meta.picture ?? null;
-  const name = meta.name ?? user.email?.split("@")[0] ?? null;
+  const name =
+    meta.name ??
+    typedUser.email?.split?.("@")[0] ??
+    null;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors">
@@ -53,10 +63,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-3">
           {/* Add other header buttons as needed */}
           <Avatar className="h-8 w-8">
-            {avatar ? (
-              <AvatarImage src={avatar} alt={name ?? "User avatar"} />
+            {typeof avatar === "string" && avatar.length > 0 ? (
+              <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
             ) : (
-              <AvatarFallback>{(name ?? "U").slice(0, 2).toUpperCase()}</AvatarFallback>
+              <AvatarFallback>{(typeof name === "string" ? name : "U").slice(0, 2).toUpperCase()}</AvatarFallback>
             )}
           </Avatar>
         </div>

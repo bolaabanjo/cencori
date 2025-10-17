@@ -56,7 +56,7 @@ export default function OrganizationsPage() {
     supabase.auth.getUser().then(({ data, error: uErr }) => {
       if (uErr || !data.user) return;
       const user = data.user;
-      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const possibleAvatar = (meta.avatar_url as string) ?? (meta.picture as string) ?? null;
       const name = (meta.name as string) ?? (meta.full_name as string) ?? (user.email ? user.email.split("@")[0] : "") ?? null;
       if (mounted) {
