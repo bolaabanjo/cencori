@@ -251,7 +251,7 @@ export default function OnboardingPage() {
             <h2 className="text-lg font-medium text-zinc-900 dark:text-white">Review</h2>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
 
-            <div className="grid gap-3 rounded-3xl grid-cols-1 sm:grid-cols-2">
+            <div className="grid gap-3 rounded-3xl grid-cols-1 sm:grid-cols-2 pl-4">
               <div className="p-3 rounded-3xl border border-slate-100 dark:border-zinc-700">
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">Project intent</div>
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{projectLabel || "-"}</div>
