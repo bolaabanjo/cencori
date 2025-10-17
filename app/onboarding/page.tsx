@@ -141,7 +141,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="max-w-xl sm:max-w-3xl mx-auto px-4 sm:px-0 mt-20">
-      <div className="mb-6 flex flex-col sm:flex-row item-start sm:items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-col item-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-lg sm:text-2xl font-semibold text-zinc-900 dark:text-white">Quick setup</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
