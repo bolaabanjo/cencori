@@ -316,11 +316,11 @@ function OptionCard({ checked, title, desc, onSelect }: { checked: boolean; titl
   return (
     <RadioGroup
       onClick={onSelect}
-      className={`w-full text-left rounded-3xl border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-white/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-800"
+      className={`w-full text-left rounded-3xl rounded-full border px-4 py-3 sm:px-4 sm:py-3 ${checked ? "border-zinc bg-black/5 dark:bg-white/5" : "border-zinc-100 bg-white dark:bg-zinc-950 dark:border-zinc-800"
         }`}
       aria-pressed={checked}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between rounded-full">
         <div>
           <RadioGroup className="font-medium text-zinc-900 dark:text-white">{title}</RadioGroup>
           {desc && <div className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{desc}</div>}
