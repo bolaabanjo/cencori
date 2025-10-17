@@ -257,7 +257,7 @@ export default function OnboardingPage() {
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{projectLabel || "-"}</div>
               </div>
 
-              <div className="p-3 rounded-3xl border border-zinc-100 dark:border-zinc-700">
+              <div className="p-3 rounded-3xl border border-zinc-100 dark:border-zinc-700 pl-4">
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">Role</div>
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{roleLabel || "-"}</div>
               </div>
