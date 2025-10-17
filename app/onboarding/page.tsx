@@ -228,14 +228,14 @@ export default function OnboardingPage() {
                     onChange={() => setRole("other")}
                     className="mt-1"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 rounded-3xl">
                     <div className="font-medium text-zinc-900 dark:text-white">Other</div>
                     <div className="text-sm text-zinc-500 dark:text-zinc-400">Tell us</div>
                     {role === "other" && (
                       <input
                         value={roleOther}
                         onChange={(e) => setRoleOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
+                        className="mt-2 w-full rounded-3xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="e.g. DevOps, Researcher..."
                       />
                     )}
