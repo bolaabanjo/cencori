@@ -198,7 +198,7 @@ export default function OnboardingPage() {
                       <input
                         value={projectOther}
                         onChange={(e) => setProjectOther(e.target.value)}
-                        className="mt-2 w-full rounded-3xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
+                        className="mt-2 w-full rounded-2xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
@@ -235,7 +235,7 @@ export default function OnboardingPage() {
                       <input
                         value={roleOther}
                         onChange={(e) => setRoleOther(e.target.value)}
-                        className="mt-2 w-full rounded-3xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
+                        className="mt-2 w-full rounded-2xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="e.g. DevOps, Researcher..."
                       />
                     )}
