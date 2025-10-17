@@ -125,7 +125,7 @@ export default function OnboardingPage() {
       const { error: updateErr } = await supabase.from("users").update(updates).eq("id", userId);
       if (updateErr) throw updateErr;
 
-      router.push("/dashboard/organizations");
+      router.push("/dashboard/organizations/new");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete onboarding");
       setLoading(false);
