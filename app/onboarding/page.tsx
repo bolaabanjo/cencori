@@ -198,7 +198,7 @@ export default function OnboardingPage() {
                       <input
                         value={projectOther}
                         onChange={(e) => setProjectOther(e.target.value)}
-                        className="mt-2 w-full rounded border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
+                        className="mt-2 w-full rounded-3xl border px-3 py-2 bg-white dark:bg-zinc-700 border-zinc-200 dark:border-zinc-600 text-zinc-900 dark:text-white"
                         placeholder="Describe your use case (e.g. 'internal tooling')"
                       />
                     )}
@@ -219,7 +219,7 @@ export default function OnboardingPage() {
               <OptionCard checked={role === "engineer"} onSelect={() => setRole("engineer")} title="Engineer" desc="Systems & integration." />
               <OptionCard checked={role === "designer"} onSelect={() => setRole("designer")} title="Designer" desc="UX, flows, frontend." />
               <OptionCard checked={role === "product"} onSelect={() => setRole("product")} title="Product / PM" desc="Strategy & roadmap." />
-              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
+              <div className="p-3 rounded-3xl border border-zinc-100 dark:border-zinc-700">
                 <label className="flex items-start gap-3">
                   <input
                     aria-label="Other role"
@@ -251,13 +251,13 @@ export default function OnboardingPage() {
             <h2 className="text-lg font-medium text-zinc-900 dark:text-white">Review</h2>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 mb-4">Looks good, we&apos;ll suggest defaults based on these choices.</p>
 
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-              <div className="p-3 rounded border border-slate-100 dark:border-zinc-700">
+            <div className="grid gap-3 rounded-3xl grid-cols-1 sm:grid-cols-2">
+              <div className="p-3 rounded-3xl border border-slate-100 dark:border-zinc-700">
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">Project intent</div>
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{projectLabel || "-"}</div>
               </div>
 
-              <div className="p-3 rounded border border-zinc-100 dark:border-zinc-700">
+              <div className="p-3 rounded-3xl border border-zinc-100 dark:border-zinc-700">
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">Role</div>
                 <div className="mt-1 font-medium text-zinc-900 dark:text-white">{roleLabel || "-"}</div>
               </div>
