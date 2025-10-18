@@ -111,26 +111,29 @@ export default function OnboardingPage() {
     try {
       const project_label = projectType === "other" ? projectOther.trim() : projectType;
       const role_label = role === "other" ? roleOther.trim() : role;
-
-      const { data: userResp, error: gerr } = await supabase.auth.getUser();
-      if (gerr || !userResp.user) throw new Error("No user session. Please sign in again.");
-      const userId = userResp.user.id;
-
-      const updates = {
-        project_type: project_label,
-        role: role_label,
-        onboarding_completed: true,
-      };
-
-      const { error: updateErr } = await supabase.from("users").update(updates).eq("id", userId);
-      if (updateErr) throw updateErr;
-
+  
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_type: project_label, role: role_label }),
+      });
+  
+      const json = await res.json();
+      if (!res.ok) {
+        // show server message
+        throw new Error(json?.error ?? "Server failed to complete onboarding");
+      }
+  
+      // success -> go to new organization page
       router.push("/dashboard/organizations/new");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to complete onboarding");
+      const message = err instanceof Error ? err.message : "Failed to complete onboarding";
+      setError(message);
+      console.error("Client finish error:", err);
       setLoading(false);
     }
   }
+  
     const initials = useMemo(() => {
       const name = displayName ?? email ?? "";
       if (!name) return "";
