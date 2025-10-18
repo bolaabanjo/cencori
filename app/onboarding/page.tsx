@@ -120,7 +120,6 @@ export default function OnboardingPage() {
   
       const json = await res.json();
       if (!res.ok) {
-        // show server message
         throw new Error(json?.error ?? "Server failed to complete onboarding");
       }
   
@@ -133,6 +132,7 @@ export default function OnboardingPage() {
       setLoading(false);
     }
   }
+  
   
     const initials = useMemo(() => {
       const name = displayName ?? email ?? "";
