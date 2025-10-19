@@ -40,18 +40,18 @@ export async function POST(req: Request) {
     const { data: upserted, error: upsertErr } = await supabase
       .from("users")
       .upsert([updates], { onConflict: "id" })
-      .select()
+      .select("id, project_type, role, onboarding_completed, updated_at") // Explicitly select columns
       .single();
 
     if (upsertErr) {
-      console.error("Upsert error:", upsertErr);
+      console.error("Supabase upsert error:", upsertErr);
       return NextResponse.json({ error: upsertErr.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, user: upserted });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown server error";
-    console.error("Unexpected onboarding error:", message);
+    console.error("Unexpected onboarding API error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
