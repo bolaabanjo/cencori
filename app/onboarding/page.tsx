@@ -275,7 +275,7 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => Math.max(1, s - 1))}
-                className="w-full sm:w-auto px-4 py-2 rounded-full border mb-4 text-sm text-zinc-700 dark:text-zinc-200"
+                className="w-full sm:w-auto px-4 cursor-pointer py-2 rounded-full border mb-4 text-sm text-zinc-700 dark:text-zinc-200"
               >
                 Back
               </button>
@@ -293,7 +293,7 @@ export default function OnboardingPage() {
                   setError(null);
                   setStep((s) => s + 1);
                 }}
-                className="w-full sm:w-auto px-4 py-2 rounded-full bg-black mb-10 dark:bg-white text-white dark:text-black"
+                className="w-full sm:w-auto px-4 cursor-pointer py-2 rounded-full bg-black mb-10 dark:bg-white text-white dark:text-black"
               >
                 Next
               </button>
@@ -301,7 +301,7 @@ export default function OnboardingPage() {
               <button
                 onClick={() => void finish()}
                 disabled={loading}
-                className="w-full sm:w-auto px-4 py-2 rounded-full bg-black text-white dark:bg-white dark:text-black disabled:opacity-60"
+                className="w-full sm:w-auto px-4 cursor-pointer py-2 rounded-full bg-black text-white dark:bg-white dark:text-black disabled:opacity-60"
               >
                 {loading ? "Finishing…" : "Finish onboarding"}
               </button>
