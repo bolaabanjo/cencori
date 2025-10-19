@@ -15,14 +15,6 @@ import {
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-/**
- * Minimal 3-step onboarding (Vercel-like minimalism)
- * - Step 1: What are you building? (production | hobby | learning | other)
- * - Step 2: Your role (founder | engineer | designer | product | other)
- * - Step 3: Review & finish
- *
- * Writes to public.users: project_type, role, onboarding_completed
- */
 
 type ProjectType = "production" | "hobby" | "learning" | "other";
 type Role = "founder" | "engineer" | "designer" | "product" | "other";
@@ -303,7 +295,7 @@ export default function OnboardingPage() {
                 disabled={loading}
                 className="w-full sm:w-auto px-4 cursor-pointer py-2 rounded-full bg-black text-white dark:bg-white dark:text-black disabled:opacity-60"
               >
-                {loading ? "Finishing…" : "Finish onboarding"}
+                {loading ? "Please wait…" : "Done"}
               </button>
             )}
           </div>
