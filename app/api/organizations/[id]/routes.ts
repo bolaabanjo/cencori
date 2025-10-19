@@ -23,10 +23,21 @@ export async function GET(
 
   const supabase = createServerClient();
 
+  // Check auth for GET request
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from("organizations")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id) // Ensure the organization belongs to the authenticated user
     .single();
 
   if (error) {

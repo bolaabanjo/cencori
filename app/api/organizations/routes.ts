@@ -38,9 +38,20 @@ function shortId(): string {
 export async function GET(): Promise<NextResponse> {
   const supabase = createServerClient();
 
+  // Check auth for GET request
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+  }
+
   const { data: organizations, error } = await supabase
     .from("organizations")
-    .select("*");
+    .select("*")
+    .eq("user_id", user.id); // Filter organizations by user ID
 
   if (error) {
     console.error("GET /api/organizations error:", error.message);
