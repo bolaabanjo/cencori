@@ -56,7 +56,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
       // Decide redirect after sign up
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/auth/callback`;
 
       // Create user with password
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -91,7 +91,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setLoading(true);
     try {
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/auth/callback`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
