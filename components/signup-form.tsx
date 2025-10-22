@@ -71,12 +71,6 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      // If session exists immediately (rare if email confirmation required), go to dashboard
-      if (data?.session) {
-        router.push("/onboarding");
-        return;
-      }
-
       router.push("/onboarding");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
@@ -91,7 +85,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setLoading(true);
     try {
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/auth/callback`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
