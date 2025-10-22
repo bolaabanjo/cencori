@@ -95,7 +95,7 @@ export default function NewOrganizationPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Organization name"
-            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-3 py-2 text-slate-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
+            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 text-slate-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
             required
             aria-required
           />
@@ -113,7 +113,7 @@ export default function NewOrganizationPage() {
             name="type"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-3 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
+            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
           >
             <option value="personal">Personal</option>
             <option value="company">Company</option>
