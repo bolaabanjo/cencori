@@ -51,12 +51,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     null;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors">
-      <header className="h-14 border-b border-slate-100 dark:border-slate-800 px-6 flex items-center justify-between">
+    <div className="min-h-screen bg-white-50 dark:bg-black transition-colors">
+      <header className="h-14 border-b border-zinc-100 dark:border-zinc-800 px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <a href="/dashboard/organizations" className="flex items-center gap-3">
-            <Logo variant="mark" />
-            <span className="hidden sm:inline text-sm font-medium text-slate-900 dark:text-white">Dashboard</span>
+            <Logo variant="mark" className="h-4"/>
           </a>
         </div>
 

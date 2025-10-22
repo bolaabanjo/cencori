@@ -127,20 +127,6 @@ export default function OrganizationsPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between gap-6">
             <h1 className="text-2xl font-semibold text-slate-100">Your Organizations</h1>
-
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:block text-sm text-slate-400">Signed in as</div>
-
-              <div>
-                <Avatar className="h-9 w-9">
-                  {avatarUrl ? (
-                    <AvatarImage src={avatarUrl} alt={displayName ?? userEmail ?? "User avatar"} />
-                  ) : (
-                    <AvatarFallback>{initialsFrom(displayName ?? userEmail)}</AvatarFallback>
-                  )}
-                </Avatar>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -154,7 +140,7 @@ export default function OrganizationsPage() {
               placeholder="Search for an organization"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full max-w-xl rounded-md bg-slate-900/50 border border-slate-800 px-4 py-2 text-slate-300 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-60 max-w-xl rounded-3xl bg-black-900/50 border border-zinc-800 px-4 py-2 text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -162,7 +148,7 @@ export default function OrganizationsPage() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="w-full sm:w-auto inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-500 disabled:opacity-60"
+              className="w-full sm:w-auto inline-flex items-center gap-2 rounded-3xl bg-emerald-600 dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500 disabled:opacity-60"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="inline-block">
                 <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -177,10 +163,10 @@ export default function OrganizationsPage() {
           {loading ? (
             <div className="col-span-full py-12 text-center text-sm text-slate-400">Loading organizations…</div>
           ) : filtered.length === 0 ? (
-            <div className="col-span-full rounded-md border border-slate-800 bg-slate-900/30 p-8 text-center">
-              <div className="text-sm text-slate-300 mb-3">No organizations found</div>
+            <div className="col-span-full rounded-3xl border border-zinc-800 bg-black-900/30 p-8 text-center">
+              <div className="text-sm text-white mb-3">No organizations found</div>
               <div className="flex justify-center">
-                <button onClick={handleCreate} className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-500">
+                <button onClick={handleCreate} className="inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500">
                   Create your first organization
                 </button>
               </div>

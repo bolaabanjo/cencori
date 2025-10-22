@@ -70,7 +70,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     setError(null);
     setLoading(true);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
+      const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/dashboard/organizations`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },

@@ -70,10 +70,10 @@ export default function NewOrganizationPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto mt-10">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-100">Create a new organization</h1>
-        <p className="text-sm text-slate-400 mt-1">
+        <h1 className="text-xl font-semibold text-white">Create a new organization</h1>
+        <p className="text-sm text-zinc-400 mt-1">
           Organizations are a way to group your projects. Each organization can be configured with different members and
           billing rules.
         </p>
@@ -81,11 +81,11 @@ export default function NewOrganizationPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 space-y-6"
+        className="rounded-4xl border border-zinc-800 bg-slate-900/60 dark:bg-black p-6 space-y-6"
         aria-labelledby="create-org-heading"
       >
         <div>
-          <label htmlFor="org-name" className="text-xs font-medium text-slate-300">
+          <label htmlFor="org-name" className="text-xs font-medium text-zinc-300">
             Name
           </label>
           <input
@@ -95,7 +95,7 @@ export default function NewOrganizationPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Organization name"
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-2 block w-full rounded-3xl border border-zinc-700 bg-slate-800 dark:bg-zinc-800 px-3 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             required
             aria-required
           />

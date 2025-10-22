@@ -56,7 +56,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
       // Decide redirect after sign up
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/auth/callback`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/dashboard/organizations`;
 
       // Create user with password
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -71,7 +71,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      router.push("/onboarding");
+      router.push("/dashboard/organizations/new");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
       setError(msg);
@@ -85,7 +85,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setLoading(true);
     try {
       const redirectTo =
-        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/onboarding`;
+        `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? ""}/dashboard/organizations/new`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
