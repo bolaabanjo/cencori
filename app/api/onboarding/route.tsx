@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     // get user from the server client (reads cookies)
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) {
+      console.error("Authentication check failed:", { authErr, authData });
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
     const userId = authData.user.id;
