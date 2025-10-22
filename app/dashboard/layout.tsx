@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-3">
         <button
             type="button"
-            className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black/40 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            className="w-7 h-7 cursor-pointer inline-flex items-center justify-center rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black/40 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
             aria-label="Toggle theme"
             onClick={() => {
               if (typeof document !== "undefined") {
@@ -79,7 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             {/* Light (sun) icon */}
             <svg
-              className="h-5 w-5 text-zinc-700 dark:hidden"
+              className="h-3 w-3 text-zinc-700 dark:hidden"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -92,7 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </svg>
             {/* Dark (moon) icon */}
             <svg
-              className="h-5 w-5 text-zinc-300 hidden dark:block"
+              className="h-3 w-3 text-zinc-300 hidden dark:block"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -105,7 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
 
           {/* Add other header buttons as needed */}
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-7 w-7">
             {typeof avatar === "string" && avatar.length > 0 ? (
               <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
             ) : (
