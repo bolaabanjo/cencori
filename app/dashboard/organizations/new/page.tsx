@@ -95,11 +95,11 @@ export default function NewOrganizationPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Organization name"
-            className="mt-2 block w-full rounded-3xl border border-zinc-700 bg-slate-800 dark:bg-zinc-800 px-3 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-2 block w-full rounded-3xl border border-zinc-700 bg-slate-800 dark:bg-black px-3 py-2 text-slate-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             required
             aria-required
           />
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-zinc-500 mt-2">
             What&apos;s the name of your company or team? You can change this later.
           </p>
         </div>
@@ -113,7 +113,7 @@ export default function NewOrganizationPage() {
             name="type"
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-2 block w-full rounded-3xl border border-zinc-700 bg-slate-800 dark:bg-black px-3 py-2 text-slate-100 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
           >
             <option value="personal">Personal</option>
             <option value="company">Company</option>
@@ -121,7 +121,7 @@ export default function NewOrganizationPage() {
             <option value="education">Education</option>
             <option value="other">Other</option>
           </select>
-          <p className="text-xs text-slate-500 mt-2">What best describes your organization?</p>
+          <p className="text-xs text-zinc-500 mt-2">What best describes your organization?</p>
         </div>
 
         <div>
@@ -133,17 +133,17 @@ export default function NewOrganizationPage() {
             name="plan"
             value={plan}
             onChange={(e) => setPlan(e.target.value)}
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-2 block w-full cursor-pointer rounded-3xl border border-zinc-700 bg-slate-800 dark:bg-black px-4 py-2 text-slate-100 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500"
           >
             <option value="free">Free — $0/month</option>
             <option value="pro">Pro — $49/month</option>
             <option value="enterprise">Enterprise — Contact us</option>
           </select>
-          <p className="text-xs text-slate-500 mt-2">Which plan fits your organization&apos;s needs best?</p>
+          <p className="text-xs text-zinc-500 mt-2">Which plan fits your organization&apos;s needs best?</p>
         </div>
 
         <div>
-          <label htmlFor="org-desc" className="text-xs font-medium text-slate-300">
+          <label htmlFor="org-desc" className="text-xs font-medium text-black dark:text-white">
             Description (optional)
           </label>
           <textarea
@@ -152,7 +152,7 @@ export default function NewOrganizationPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="A short description for your organization"
-            className="mt-2 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-2 block w-full rounded-3xl border border-zinc-700 bg-zinc-800 dark:bg-black px-4 py-3 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
             rows={3}
           />
         </div>
@@ -163,14 +163,14 @@ export default function NewOrganizationPage() {
           <button
             type="button"
             onClick={() => router.push("/dashboard/organizations")}
-            className="px-3 py-2 rounded-md border border-slate-700 text-sm text-slate-200 bg-transparent hover:bg-slate-800"
+            className="px-3 py-2 rounded-3xl cursor-pointer border border-zinc-700 text-sm text-slate-200 bg-transparent hover:bg-zinc-800"
           >
             Cancel
           </button>
 
           <button
             type="submit"
-            className="ml-auto inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
+            className="ml-auto inline-flex items-center gap-2 rounded-3xl bg-emerald-600 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-black hover:bg-gray-500 cursor-pointer disabled:opacity-60"
             disabled={loading}
           >
             {loading ? "Creating…" : "Create organization"}
