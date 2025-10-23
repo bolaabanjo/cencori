@@ -123,7 +123,7 @@ export default function OrganizationsPage() {
   return (
     <div className="min-h-[72vh]">
       {/* Header area is inside global layout / header; this is page content */}
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-2 lg:px-6 py-10">
         <div className="mb-8">
           <div className="flex items-center justify-between gap-6">
             <h1 className="text-2xl font-semibold text-slate-100">Your Organizations</h1>
@@ -140,21 +140,20 @@ export default function OrganizationsPage() {
               placeholder="Search for an organization"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-60 max-w-xl rounded-3xl bg-black-900/50 border border-zinc-800 px-4 py-2 text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full lg:w-60 max-w-xl rounded-3xl bg-black-900/50 border border-zinc-800 px-4 py-2 text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
           <div className="w-full sm:w-auto">
-            <button
-              onClick={handleCreate}
-              disabled={creating}
-              className="w-full sm:w-auto inline-flex items-center gap-2 rounded-3xl bg-emerald-600 dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500 disabled:opacity-60"
+            <a
+              href="/dashboard/organizations/new"
+              className="w-full sm:w-auto inline-flex items-center gap-2 rounded-3xl bg-emerald-600 dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="inline-block">
                 <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               New organization
-            </button>
+            </a>
           </div>
         </div>
 
@@ -164,11 +163,14 @@ export default function OrganizationsPage() {
             <div className="col-span-full py-12 text-center text-sm text-slate-400">Loading organizations…</div>
           ) : filtered.length === 0 ? (
             <div className="col-span-full rounded-3xl border border-zinc-800 bg-black-900/30 p-8 text-center">
-              <div className="text-sm text-white mb-3">No organizations found</div>
+              <div className="text-sm text-white mb-3">No organizations</div>
               <div className="flex justify-center">
-                <button onClick={handleCreate} className="inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500">
+                <a
+                  href="/dashboard/organizations/new"
+                  className="inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500"
+                >
                   Create your first organization
-                </button>
+                </a>
               </div>
             </div>
           ) : (
