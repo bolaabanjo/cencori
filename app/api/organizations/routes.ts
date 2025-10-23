@@ -73,6 +73,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      console.error("Organization creation authentication failed:", { authError, user });
       return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
     }
 
