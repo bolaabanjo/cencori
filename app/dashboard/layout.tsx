@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
+import { LogOut, User, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
 
 // Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -105,13 +108,64 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
 
           {/* Add other header buttons as needed */}
-          <Avatar className="h-7 w-7">
-            {typeof avatar === "string" && avatar.length > 0 ? (
-              <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
-            ) : (
-              <AvatarFallback>{(typeof name === "string" ? name : "U").slice(0, 2).toUpperCase()}</AvatarFallback>
-            )}
-          </Avatar>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Avatar className="h-7 w-7 cursor-pointer">
+                {typeof avatar === "string" && avatar.length > 0 ? (
+                  <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
+                ) : (
+                  <AvatarFallback>{(typeof name === "string" ? name : "U").slice(0, 2).toUpperCase()}</AvatarFallback>
+                )}
+              </Avatar>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">My Account</p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {typedUser.email}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
+                <User className="mr-2 h-4 w-4" />
+                <span>Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/billing")}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                <span>Billing</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/")}>
+                <Home className="mr-2 h-4 w-4" />
+                <span>Homepage</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/dashboard/team")}>
+                <Users className="mr-2 h-4 w-4" />
+                <span>Team</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/invite-user")}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span>Invite User</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.push("/login");
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 

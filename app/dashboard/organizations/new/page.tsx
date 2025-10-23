@@ -3,6 +3,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type OrgCreatePayload = {
   name: string;
@@ -108,19 +116,34 @@ export default function NewOrganizationPage() {
           <label htmlFor="org-type" className="text-xs font-medium dark:text-white text-black">
             Type
           </label>
-          <select
-            id="org-type"
-            name="type"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
-          >
-            <option value="personal">Personal</option>
-            <option value="company">Company</option>
-            <option value="open-source">Open source</option>
-            <option value="education">Education</option>
-            <option value="other">Other</option>
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="mt-2 flex w-full items-center justify-between rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 opacity-50"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-full">
+              <DropdownMenuRadioGroup value={type} onValueChange={setType}>
+                <DropdownMenuRadioItem value="personal">Personal</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="company">Company</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="open-source">Open source</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="education">Education</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="other">Other</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <p className="text-xs text-zinc-500 mt-2">What best describes your organization?</p>
         </div>
 
@@ -128,17 +151,32 @@ export default function NewOrganizationPage() {
           <label htmlFor="org-plan" className="text-xs font-medium dark:text-white text-black">
             Plan
           </label>
-          <select
-            id="org-plan"
-            name="plan"
-            value={plan}
-            onChange={(e) => setPlan(e.target.value)}
-            className="mt-2 block w-full cursor-pointer rounded-3xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-black px-4 py-2 dark:text-slate-100 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500"
-          >
-            <option value="free">Free — $0/month</option>
-            <option value="pro">Pro — $49/month</option>
-            <option value="enterprise">Enterprise — Contact us</option>
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="mt-2 flex w-full items-center justify-between rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
+              >
+                {plan === "free" ? "Free — $0/month" : plan === "pro" ? "Pro — $49/month" : "Enterprise — Contact us"}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 opacity-50"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+              <DropdownMenuRadioGroup value={plan} onValueChange={setPlan}>
+                <DropdownMenuRadioItem value="free">Free — $0/month</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="pro">Pro — $49/month</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="enterprise">Enterprise — Contact us</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <p className="text-xs text-zinc-500 mt-2">Which plan fits your organization&apos;s needs best?</p>
         </div>
 

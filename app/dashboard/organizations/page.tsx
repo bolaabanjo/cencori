@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Logo } from "@/components/logo"; // your logo component (inline SVG recommended)
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"; // shadcn avatar
 import { supabase } from "@/lib/supabaseClient";
+import { PackageOpen } from "lucide-react";
 
 type Organization = {
   id: string;
@@ -163,15 +164,10 @@ export default function OrganizationsPage() {
             <div className="col-span-full py-12 text-center text-sm text-slate-400">Loading organizations…</div>
           ) : filtered.length === 0 ? (
             <div className="col-span-full rounded-3xl border border-zinc-800 bg-black-900/30 p-8 text-center">
-              <div className="text-sm text-white mb-3">No organizations</div>
-              <div className="flex justify-center">
-                <a
-                  href="/dashboard/organizations/new"
-                  className="inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500"
-                >
-                  Create your first organization
-                </a>
+              <div className="flex justify-center mb-4">
+                <PackageOpen className="w-8 h-8 text-zinc-400 " />
               </div>
+              <div className="text-sm text-white mb-3">No organizations</div>
             </div>
           ) : (
             filtered.map((org) => (
