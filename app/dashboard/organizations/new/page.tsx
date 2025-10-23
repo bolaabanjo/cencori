@@ -70,7 +70,7 @@ export default function NewOrganizationPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-10">
+    <div className="max-w-2xl mx-auto lg:mt-10">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-black dark:text-white">Create a new organization</h1>
         <p className="text-sm text-zinc-400 mt-1">
