@@ -115,7 +115,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {typeof avatar === "string" && avatar.length > 0 ? (
                   <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
                 ) : (
-                  <AvatarFallback>{(typeof name === "string" ? name : "U").slice(0, 2).toUpperCase()}</AvatarFallback>
+                  <AvatarFallback>
+                    <CircleUserRound className="h-5 w-5 text-zinc-500" />
+                  </AvatarFallback>
                 )}
               </Avatar>
             </DropdownMenuTrigger>

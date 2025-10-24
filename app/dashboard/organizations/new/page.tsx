@@ -79,21 +79,24 @@ export default function NewOrganizationPage() {
 
   return (
     <div className="max-w-2xl mx-auto lg:mt-10">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-black dark:text-white">Create a new organization</h1>
+
+
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-sm border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-6 space-y-6"
+        aria-labelledby="create-org-heading"
+      >
+      <div className="mb-">
+        <h1 className="text-l font-semibold text-black dark:text-white">Create a new organization</h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Organizations are a way to group your projects. Each organization can be configured with different members and
+          Organizations are a way to group your projects. 
+          <br />Each organization can be configured with different members and
           billing rules.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-4xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black p-6 space-y-6"
-        aria-labelledby="create-org-heading"
-      >
         <div>
-          <label htmlFor="org-name" className="text-xs font-medium dark:text-zinc-300 text-black">
+          <label htmlFor="org-name" className="text-xs font-medium dark:text-white text-black">
             Name
           </label>
           <input
@@ -103,11 +106,11 @@ export default function NewOrganizationPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Organization name"
-            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 text-slate-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
+            className="mt-2 block w-full text-sm rounded-md border dark:border-zinc-900 border-zinc-200 bg-white dark:bg-zinc-950 px-4 py-2  placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-500"
             required
             aria-required
           />
-          <p className="text-xs text-zinc-500 mt-2">
+          <p className="text-sm text-zinc-600 mt-2">
             What&apos;s the name of your company or team? You can change this later.
           </p>
         </div>
@@ -120,7 +123,7 @@ export default function NewOrganizationPage() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="mt-2 flex w-full items-center justify-between rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
+                className="mt-2 flex w-full items-center justify-between text-sm rounded-md border dark:border-zinc-900 border-zinc-200 bg-white dark:bg-zinc-950 px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
               >
                 {type.charAt(0).toUpperCase() + type.slice(1)}
                 <svg
@@ -134,7 +137,7 @@ export default function NewOrganizationPage() {
                 </svg>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-full">
+            <DropdownMenuContent className="w-full lg:w-158">
               <DropdownMenuRadioGroup value={type} onValueChange={setType}>
                 <DropdownMenuRadioItem value="personal">Personal</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="company">Company</DropdownMenuRadioItem>
@@ -144,7 +147,7 @@ export default function NewOrganizationPage() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <p className="text-xs text-zinc-500 mt-2">What best describes your organization?</p>
+          <p className="text-sm text-zinc-600 mt-2">What best describes your organization?</p>
         </div>
 
         <div>
@@ -155,7 +158,7 @@ export default function NewOrganizationPage() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="mt-2 flex w-full items-center justify-between rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
+                className="mt-2 flex w-full text-sm items-center justify-between rounded-md border dark:border-zinc-900 border-zinc-200 bg-white dark:bg-zinc-950 px-4 py-2 dark:text-zinc-100 text-zinc-900 focus:outline-none cursor-pointer focus:ring-2 focus:ring-zinc-500"
               >
                 {plan === "free" ? "Free — $0/month" : plan === "pro" ? "Pro — $49/month" : "Enterprise — Contact us"}
                 <svg
@@ -169,7 +172,7 @@ export default function NewOrganizationPage() {
                 </svg>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] lg:w-158">
               <DropdownMenuRadioGroup value={plan} onValueChange={setPlan}>
                 <DropdownMenuRadioItem value="free">Free — $0/month</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="pro">Pro — $49/month</DropdownMenuRadioItem>
@@ -177,7 +180,7 @@ export default function NewOrganizationPage() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <p className="text-xs text-zinc-500 mt-2">Which plan fits your organization&apos;s needs best?</p>
+          <p className="text-sm text-zinc-600 mt-2">Which plan fits your organization&apos;s needs best?</p>
         </div>
 
         {error && <div className="text-sm text-red-500">{error}</div>}
@@ -186,14 +189,14 @@ export default function NewOrganizationPage() {
           <button
             type="button"
             onClick={() => router.push("/dashboard/organizations")}
-            className="px-3 py-2 rounded-3xl cursor-pointer border dark:border-zinc-700 border-zinc-200 text-sm dark:text-white text-black bg-transparent dark:hover:bg-zinc-800 hover:bg-zinc-200"
+            className="px-3 py-2 rounded-md cursor-pointer border dark:border-zinc-700 border-zinc-200 text-xs dark:text-white text-black bg-transparent dark:hover:bg-zinc-800 hover:bg-zinc-200"
           >
             Cancel
           </button>
 
           <button
             type="submit"
-            className="ml-auto inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-black hover:bg-gray-500 cursor-pointer disabled:opacity-60"
+            className="ml-auto inline-flex items-center gap-2 rounded-md bg-black dark:bg-white px-4 py-2 text-xs font-medium text-white dark:text-black hover:bg-gray-500 cursor-pointer disabled:opacity-60"
             disabled={loading}
             onClick={async (e) => {
               e.preventDefault(); // Prevent default form submit
