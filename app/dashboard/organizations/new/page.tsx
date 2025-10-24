@@ -180,21 +180,6 @@ export default function NewOrganizationPage() {
           <p className="text-xs text-zinc-500 mt-2">Which plan fits your organization&apos;s needs best?</p>
         </div>
 
-        <div>
-          <label htmlFor="org-desc" className="text-xs font-medium text-black dark:text-white">
-            Description (optional)
-          </label>
-          <textarea
-            id="org-desc"
-            name="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="A short description for your organization"
-            className="mt-2 block w-full rounded-3xl border dark:border-zinc-700 border-zinc-200 bg-white dark:bg-black px-4 py-3 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-500"
-            rows={3}
-          />
-        </div>
-
         {error && <div className="text-sm text-red-500">{error}</div>}
 
         <div className="flex items-center justify-between gap-4">

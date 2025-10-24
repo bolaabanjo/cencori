@@ -8,7 +8,7 @@ import { Logo } from "@/components/logo";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { LogOut, User, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
+import { LogOut, CircleUserRound, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
 import Link from "next/link";
 
 // Optional header/nav links later
@@ -56,7 +56,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-white-50 dark:bg-black transition-colors">
-      <header className="h-14 border-b border-zinc-100 dark:border-zinc-800 px-6 flex items-center justify-between">
+      <header className="h-12 border-b border-zinc-100 dark:border-zinc-800 px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/dashboard/organizations" className="flex items-center gap-3">
             <Logo variant="mark" className="h-4"/>
@@ -119,41 +119,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </Avatar>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuContent className="w-66" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">My Account</p>
-                  <p className="text-xs leading-none text-muted-foreground">
+                  <p className="text-s leading-none text-white font-semibold">
                     {typedUser.email}
                   </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
+                <CircleUserRound className="mr-2 h-4 w-4" />
+                <span className="text-xs">Profile</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/dashboard/billing")}>
                 <CreditCard className="mr-2 h-4 w-4" />
-                <span>Billing</span>
+                <span className="text-xs">Billing</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
+                <span className="text-xs"> Account Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/")}>
-                <Home className="mr-2 h-4 w-4" />
-                <span>Homepage</span>
+                
+                <span className="text-xs">Homepage</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/dashboard/team")}>
                 <Users className="mr-2 h-4 w-4" />
-                <span>Team</span>
+                <span className="text-xs">Team</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/dashboard/invite-user")}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                <span>Invite User</span>
+                <span className="text-xs">Invite User</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -162,8 +161,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   router.push("/login");
                 }}
               >
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
+                <span className="text-xs">Log out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
