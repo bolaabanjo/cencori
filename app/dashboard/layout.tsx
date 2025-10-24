@@ -116,7 +116,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
                 ) : (
                   <AvatarFallback>
-                    <CircleUserRound className="h-5 w-5 text-zinc-500" />
+                    <CircleUserRound className="h-5 w-5 text-zinc-200" />
                   </AvatarFallback>
                 )}
               </Avatar>
