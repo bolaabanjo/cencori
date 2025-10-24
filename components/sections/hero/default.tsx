@@ -32,7 +32,7 @@ interface HeroProps {
 
 export default function Hero({
   title = "Security as a Service", // Use siteConfig for title
-  description = "Cencori is a multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability. It provides the foundational backend and system architecture required to manage AI products in production environments.", // Updated description
+  description = "Cencori is a multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability.", // Updated description
   mockup = (
     <MockupFrame
       className="animate-appear opacity-0 delay-700"
@@ -43,7 +43,7 @@ export default function Hero({
         className="bg-background/90 w-full rounded-xl border-0"
       >
         <Screenshot
-          srcLight="/mock.png"
+          srcLight="/mocklight.png"
           srcDark="/mock.png"
           alt="Cencori app screenshot"
           width={1248}
