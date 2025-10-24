@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { LogOut, User, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
+import Link from "next/link";
 
 // Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -57,9 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-white-50 dark:bg-black transition-colors">
       <header className="h-14 border-b border-zinc-100 dark:border-zinc-800 px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <a href="/dashboard/organizations" className="flex items-center gap-3">
+          <Link href="/dashboard/organizations" className="flex items-center gap-3">
             <Logo variant="mark" className="h-4"/>
-          </a>
+          </Link>
         </div>
         <div className="flex items-center gap-3">
         <button
