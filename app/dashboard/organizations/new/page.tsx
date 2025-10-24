@@ -210,6 +210,63 @@ export default function NewOrganizationPage() {
             type="submit"
             className="ml-auto inline-flex items-center gap-2 rounded-3xl bg-black dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-black hover:bg-gray-500 cursor-pointer disabled:opacity-60"
             disabled={loading}
+            onClick={async (e) => {
+              e.preventDefault(); // Prevent default form submit
+              setError(null);
+
+              if (!name.trim()) {
+                setError("Organization name is required.");
+                return;
+              }
+
+              setLoading(true);
+
+              const payload: OrgCreatePayload = {
+                name: name.trim(),
+                description: description.trim() || undefined,
+                type,
+                plan,
+              };
+
+              try {
+                const res = await fetch("/api/organizations", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(payload),
+                });
+
+                const json = await res.json();
+
+                if (!res.ok) {
+                  throw new Error(
+                    json?.error?.message ||
+                      (typeof json?.error === "string"
+                        ? json?.error
+                        : "Could not create organization")
+                  );
+                }
+
+                // On success, route to the organization page
+                if (json?.organization) {
+                  router.push(`/dashboard/organizations/${json.organization.id}`);
+                } else if (json?.id) {
+                  router.push(`/dashboard/organizations/${json.id}`);
+                } else {
+                  // fallback: go to organizations list
+                  router.push(`/dashboard/organizations`);
+                }
+              } catch (err) {
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : "An unknown error occurred"
+                );
+              } finally {
+                setLoading(false);
+              }
+            }}
           >
             {loading ? "Creating…" : "Create organization"}
           </button>
