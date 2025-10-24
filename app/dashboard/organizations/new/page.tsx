@@ -78,12 +78,12 @@ export default function NewOrganizationPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto lg:mt-10">
+    <div className="lg:max-w-2xl md:max-w-2xl lg:mx-auto md:mx-auto mx-[-20] lg:mt-10">
 
 
       <form
         onSubmit={handleSubmit}
-        className="rounded-sm border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-6 space-y-6"
+        className="rounded-sm border border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950 p-4 space-y-6"
         aria-labelledby="create-org-heading"
       >
       <div className="mb-">
