@@ -10,7 +10,7 @@ import { ArrowRightIcon } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen lg:px-32 bg-background text-foreground">
       <Navbar
         logo={<Logo variant="mark" className="h-4" />}
         name="Cencori"

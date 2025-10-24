@@ -1,11 +1,18 @@
-// components/ui/section.tsx
-import { cn } from "@/lib/utils";
-import React from "react"; // Import React for ComponentPropsWithoutRef
+import * as React from "react";
 
-export function Section({ className, children, ...props }: React.ComponentPropsWithoutRef<'section'>) {
+import { cn } from "@/lib/utils";
+
+function Section({ className, ...props }: React.ComponentProps<"section">) {
   return (
-    <section className={cn("py-12 md:py-24 lg:py-32", className)} {...props}>
-      {children}
-    </section>
+    <section
+      data-slot="section"
+      className={cn(
+        "bg-background text-foreground px-4 py-12 sm:py-24 md:py-32",
+        className,
+      )}
+      {...props}
+    />
   );
 }
+
+export { Section };

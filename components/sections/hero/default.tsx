@@ -31,8 +31,8 @@ interface HeroProps {
 }
 
 export default function Hero({
-  title = "Give your big idea the design it deserves",
-  description = "Professionally designed blocks and templates built with React, Shadcn/ui and Tailwind that will help your product stand out.",
+  title = "Security as a Service", // Use siteConfig for title
+  description = "Cencori is a multi-tenant AI infrastructure platform designed to help teams build, deploy, and scale AI-driven applications with consistency and reliability. It provides the foundational backend and system architecture required to manage AI products in production environments.", // Updated description
   mockup = (
     <MockupFrame
       className="animate-appear opacity-0 delay-700"
@@ -43,8 +43,8 @@ export default function Hero({
         className="bg-background/90 w-full rounded-xl border-0"
       >
         <Screenshot
-          srcLight="/dashboard-light.png"
-          srcDark="/dashboard-dark.png"
+          srcLight="/mock.png"
+          srcDark="/mock.png"
           alt="Cencori app screenshot"
           width={1248}
           height={765}
@@ -82,7 +82,7 @@ export default function Hero({
   return (
     <Section
       className={cn(
-        "fade-bottom overflow-hidden pb-0 sm:pb-0 md:pb-0",
+        "fade-bottom overflow-hidden lg:mt-[-160] pb-0 sm:pb-0 md:pb-0",
         className,
       )}
     >
@@ -92,7 +92,7 @@ export default function Hero({
           <h1 className="animate-appear from-foreground to-foreground dark:to-muted-foreground relative z-10 inline-block bg-linear-to-r bg-clip-text text-4xl leading-tight font-semibold text-balance text-transparent drop-shadow-2xl sm:text-6xl sm:leading-tight md:text-8xl md:leading-tight">
             {title}
           </h1>
-          <p className="text-md animate-appear text-muted-foreground relative z-10 max-w-[740px] font-medium text-balance opacity-0 delay-100 sm:text-xl">
+          <p className="text-md animate-appear text-black dark:text-muted-foreground relative z-10 max-w-[740px] font-medium text-balance opacity-0 delay-100 sm:text-xl">
             {description}
           </p>
           {buttons !== false && buttons.length > 0 && (
