@@ -85,15 +85,15 @@ export default function HomePage() {
   ];
 
   const unauthenticatedMobileLinks = [
-    { text: "Dashboard", href: "/dashboard/organizations" },
-    { text: "Documentation", href: siteConfig.links.docs },
-    { text: "GitHub", href: siteConfig.links.github },
+    { title: "Dashboard", href: "/dashboard/organizations" },
+    { title: "Documentation", href: siteConfig.links.docs },
+    { title: "GitHub", href: siteConfig.links.github },
   ];
 
   const authenticatedMobileLinks = [
-    { text: "Dashboard", href: "/dashboard/organizations" },
-    { text: "Documentation", href: siteConfig.links.docs },
-    { text: "GitHub", href: siteConfig.links.github },
+    { title: "Dashboard", href: "/dashboard/organizations" },
+    { title: "Documentation", href: siteConfig.links.docs },
+    { title: "GitHub", href: siteConfig.links.github },
   ];
 
   return (
@@ -102,7 +102,7 @@ export default function HomePage() {
         logo={<Logo variant="mark" className="h-4" />}
         name="cencori"
         homeUrl="/"
-        mobileLinks={isAuthenticated ? authenticatedMobileLinks : unauthenticatedMobileLinks}
+        mobileNavItems={isAuthenticated ? authenticatedMobileLinks : unauthenticatedMobileLinks}
         actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
         isAuthenticated={isAuthenticated}
         userProfile={isAuthenticated ? userProfile : undefined}

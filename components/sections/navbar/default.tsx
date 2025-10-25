@@ -30,6 +30,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { supabase } from "@/lib/supabaseClient";
 import router from "next/router";
 
+type NavItem = NavDropdown | NavLink;
+
 interface NavLink {
   title: string;
   href: string;
@@ -73,6 +75,10 @@ interface NavbarProps {
   className?: string;
   isAuthenticated?: boolean;
   userProfile?: { name: string | null; avatar: string | null };
+}
+
+function isNavDropdown(item: NavItem): item is NavDropdown {
+  return "type" in item;
 }
 
 export default function Navbar({
@@ -179,7 +185,7 @@ export default function Navbar({
     ],
   };
 
-  const navItems = [
+  const navItems: NavItem[] = [
     productsDropdown,
     solutionsDropdown,
     resourcesDropdown,
@@ -204,63 +210,65 @@ export default function Navbar({
             <NavigationMenu className="hidden md:flex">
               <NavigationMenuList>
                 {navItems.map((item, index) => {
-                  if ("type" in item && item.type === "mega") {
-                    return (
-                      <NavigationMenuItem key={index}>
-                        <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
-                        <NavigationMenuContent>
-                          <ul className="grid gap-3 p-6 md:w-[400px] lg:w-[500px] lg:grid-cols-2">
-                            {item.columns?.map((col, colIndex) => (
-                              <div key={colIndex}>
-                                {col.map((link, linkIndex) => (
-                                  <ListItem key={linkIndex} title={link.title} href={link.href} icon={link.icon}>
-                                    {link.description}
-                                  </ListItem>
-                                ))}
+                  if (isNavDropdown(item)) {
+                    if (item.type === "mega") {
+                      return (
+                        <NavigationMenuItem key={index}>
+                          <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
+                          <NavigationMenuContent>
+                            <ul className="grid gap-3 p-6 md:w-[400px] lg:w-[500px] lg:grid-cols-2">
+                              {item.columns?.map((col, colIndex) => (
+                                <div key={colIndex}>
+                                  {col.map((link, linkIndex) => (
+                                    <ListItem key={linkIndex} title={link.title} href={link.href} icon={link.icon}>
+                                      {link.description}
+                                    </ListItem>
+                                  ))}
+                                </div>
+                              ))}
+                            </ul>
+                            {(item.footerCtaPrimary || item.footerCtaSecondary) && (
+                              <div className="flex justify-end p-4 border-t">
+                                {item.footerCtaSecondary && (
+                                  <NavigationMenuLink asChild>
+                                    <Button variant="outline" className="mr-2" asChild>
+                                      <a href={item.footerCtaSecondary.href}>
+                                        {item.footerCtaSecondary.title}
+                                      </a>
+                                    </Button>
+                                  </NavigationMenuLink>
+                                )}
+                                {item.footerCtaPrimary && (
+                                  <NavigationMenuLink asChild>
+                                    <Button asChild>
+                                      <a href={item.footerCtaPrimary.href}>
+                                        {item.footerCtaPrimary.title}
+                                      </a>
+                                    </Button>
+                                  </NavigationMenuLink>
+                                )}
                               </div>
-                            ))}
-                          </ul>
-                          {(item.footerCtaPrimary || item.footerCtaSecondary) && (
-                            <div className="flex justify-end p-4 border-t">
-                              {item.footerCtaSecondary && (
-                                <NavigationMenuLink asChild>
-                                  <Button variant="outline" className="mr-2" asChild>
-                                    <a href={item.footerCtaSecondary.href}>
-                                      {item.footerCtaSecondary.title}
-                                    </a>
-                                  </Button>
-                                </NavigationMenuLink>
-                              )}
-                              {item.footerCtaPrimary && (
-                                <NavigationMenuLink asChild>
-                                  <Button asChild>
-                                    <a href={item.footerCtaPrimary.href}>
-                                      {item.footerCtaPrimary.title}
-                                    </a>
-                                  </Button>
-                                </NavigationMenuLink>
-                              )}
-                            </div>
-                          )}
-                        </NavigationMenuContent>
-                      </NavigationMenuItem>
-                    );
-                  } else if ("type" in item && item.type === "dropdown") {
-                    return (
-                      <NavigationMenuItem key={index}>
-                        <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
-                        <NavigationMenuContent>
-                          <ul className="grid w-[200px] gap-3 p-4 md:w-[300px]">
-                            {item.items?.map((link, linkIndex) => (
-                              <ListItem key={linkIndex} title={link.title} href={link.href} icon={link.icon}>
-                                {link.description}
-                              </ListItem>
-                            ))}
-                          </ul>
-                        </NavigationMenuContent>
-                      </NavigationMenuItem>
-                    );
-                  } else {
+                            )}
+                          </NavigationMenuContent>
+                        </NavigationMenuItem>
+                      );
+                    } else { // item.type === "dropdown"
+                      return (
+                        <NavigationMenuItem key={index}>
+                          <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
+                          <NavigationMenuContent>
+                            <ul className="grid w-[200px] gap-3 p-4 md:w-[300px]">
+                              {item.items?.map((link, linkIndex) => (
+                                <ListItem key={linkIndex} title={link.title} href={link.href} icon={link.icon}>
+                                  {link.description}
+                                </ListItem>
+                              ))}
+                            </ul>
+                          </NavigationMenuContent>
+                        </NavigationMenuItem>
+                      );
+                    }
+                  } else { // item is NavLink
                     return (
                       <NavigationMenuItem key={index}>
                         <Link href={item.href} legacyBehavior passHref>
@@ -453,8 +461,6 @@ export default function Navbar({
 
 import * as React from "react";
 import Link from "next/link";
-// import { cn } from "@/lib/utils";
-
 const ListItem = React.forwardRef<React.ElementRef<"a">, React.ComponentPropsWithoutRef<"a"> & { icon?: ReactNode }>(({ className, title, children, icon, ...props }, ref) => {
   return (
     <li>
