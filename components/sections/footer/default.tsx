@@ -10,10 +10,12 @@ import {
   FooterContent,
 } from "../../ui/footer";
 import { ModeToggle } from "../../ui/mode-toggle";
+import { siteConfig } from "@/config/site";
 
 interface FooterLink {
   text: string;
   href: string;
+  icon?: ReactNode;
 }
 
 interface FooterColumnProps {
@@ -33,13 +35,19 @@ interface FooterProps {
 
 export default function FooterSection({
   logo = <LaunchUI />,
-  name = "Launch UI",
   columns = [
     {
       title: "Product",
       links: [
-        { text: "Changelog", href: "https://www.launchuicomponents.com/" },
-        { text: "Documentation", href: "https://www.launchuicomponents.com/" },
+        { text: "AI", href: siteConfig.links.products.ai },
+        { text: "Audit", href: siteConfig.links.products.audit },
+        { text: "Knight", href: siteConfig.links.products.knight },
+        { text: "Sandbox", href: siteConfig.links.products.sandbox },
+        { text: "Insights", href: siteConfig.links.products.insights },
+        { text: "Network", href: siteConfig.links.products.network },
+        { text: "Edge", href: siteConfig.links.products.edge },
+        { text: "Enterprise", href: siteConfig.links.products.enterprise },
+        { text: "Developer Tools", href: siteConfig.links.products.developerTools },
       ],
     },
     {
@@ -53,7 +61,6 @@ export default function FooterSection({
     {
       title: "Contact",
       links: [
-        { text: "Discord", href: "https://www.launchuicomponents.com/" },
         { text: "Twitter", href: "https://www.launchuicomponents.com/" },
         { text: "Github", href: "https://www.launchuicomponents.com/" },
       ],
@@ -75,7 +82,6 @@ export default function FooterSection({
             <FooterColumn className="col-span-2 sm:col-span-3 md:col-span-1">
               <div className="flex items-center gap-2">
                 {logo}
-                <h3 className="text-xl font-bold">{name}</h3>
               </div>
             </FooterColumn>
             {columns.map((column, index) => (
@@ -85,8 +91,9 @@ export default function FooterSection({
                   <a
                     key={linkIndex}
                     href={link.href}
-                    className="text-muted-foreground text-sm"
+                    className="text-muted-foreground text-sm flex items-center gap-2"
                   >
+                    {link.icon && link.icon}
                     {link.text}
                   </a>
                 ))}

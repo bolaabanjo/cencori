@@ -100,7 +100,7 @@ export default function HomePage() {
     <div className="min-h-screen lg:px-32 bg-background text-foreground">
       <Navbar
         logo={<Logo variant="mark" className="h-4" />}
-        name="Cencori"
+        name="cencori"
         homeUrl="/"
         mobileLinks={isAuthenticated ? authenticatedMobileLinks : unauthenticatedMobileLinks}
         actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
@@ -112,13 +112,20 @@ export default function HomePage() {
       </main>
       <FooterSection
         logo={<Logo variant="mark" className="h-4" />}
-        name="Cencori"
         columns={[
           {
             title: "Product",
             links: [
-              { text: "Dashboard", href: "/dashboard/organizations" },
-              { text: "Documentation", href: siteConfig.links.docs },
+
+              { text: "AI", href: siteConfig.links.products.ai },
+              { text: "Audit", href: siteConfig.links.products.audit },
+              { text: "Knight", href: siteConfig.links.products.knight },
+              { text: "Sandbox", href: siteConfig.links.products.sandbox },
+              { text: "Insights", href: siteConfig.links.products.insights },
+              { text: "Network", href: siteConfig.links.products.network },
+              { text: "Edge", href: siteConfig.links.products.edge },
+              { text: "Enterprise", href: siteConfig.links.products.enterprise },
+              { text: "Developer Tools", href: siteConfig.links.products.developerTools },
             ],
           },
           {
@@ -130,9 +137,10 @@ export default function HomePage() {
             ],
           },
           {
-            title: "Contact",
+            title: "Socials",
             links: [
               { text: "GitHub", href: siteConfig.links.github },
+              { text: "X", href: siteConfig.links.x },
             ],
           },
         ]}
