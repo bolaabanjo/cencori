@@ -48,8 +48,8 @@ interface NavbarProps {
   className?: string;
   isAuthenticated?: boolean; // New prop
   userProfile?: { name: string | null; avatar: string | null; email: string | null }; // New prop, added email
-  router?: any; // Add router prop
-  supabase?: any; // Add supabase prop
+  router?: string; // Add router prop
+  supabase?: string; // Add supabase prop
 }
 
 export default function Navbar({
