@@ -1,7 +1,10 @@
 import { type VariantProps } from "class-variance-authority";
 import { Menu } from "lucide-react";
 import { ReactNode } from "react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { CircleUserRound } from "lucide-react";
 
+import { siteConfig } from "@/config/site"; // Import siteConfig
 import { cn } from "@/lib/utils";
 
 import LaunchUI from "../../logos/launch-ui";
@@ -22,10 +25,13 @@ interface NavbarLink {
 interface NavbarActionProps {
   text: string;
   href: string;
-  variant?: VariantProps<typeof buttonVariants>["variant"];
+  variant?: string; // Changed to string for flexibility
   icon?: ReactNode;
   iconRight?: ReactNode;
   isButton?: boolean;
+  isAvatar?: boolean; // New prop
+  avatarSrc?: string | null;
+  avatarFallback?: string; // New prop
 }
 
 interface NavbarProps {
@@ -37,22 +43,24 @@ interface NavbarProps {
   showNavigation?: boolean;
   customNavigation?: ReactNode;
   className?: string;
+  isAuthenticated?: boolean; // New prop
+  userProfile?: { name: string | null; avatar: string | null }; // New prop
 }
 
 export default function Navbar({
   logo = <LaunchUI />,
-  name = "Launch UI",
-  homeUrl = "https://www.launchuicomponents.com/",
+  name = siteConfig.name,
+  homeUrl = siteConfig.url,
   mobileLinks = [
-    { text: "Getting Started", href: "https://www.launchuicomponents.com/" },
-    { text: "Components", href: "https://www.launchuicomponents.com/" },
-    { text: "Documentation", href: "https://www.launchuicomponents.com/" },
+    { text: "Dashboard", href: "/dashboard/organizations" },
+    { text: "Documentation", href: siteConfig.links.docs },
+    { text: "GitHub", href: siteConfig.links.github },
   ],
   actions = [
-    { text: "Sign in", href: "https://www.launchuicomponents.com/", isButton: false },
+    { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
     {
       text: "Get Started",
-      href: "https://www.launchuicomponents.com/",
+      href: siteConfig.links.getStartedUrl,
       isButton: true,
       variant: "default",
     },
@@ -60,6 +68,8 @@ export default function Navbar({
   showNavigation = true,
   customNavigation,
   className,
+  isAuthenticated = false, // Default to false
+  userProfile,
 }: NavbarProps) {
   return (
     <header className={cn("sticky top-0 z-50 -mb-4 px-4 pb-4", className)}>
@@ -77,29 +87,57 @@ export default function Navbar({
             {showNavigation && (customNavigation || <Navigation />)}
           </NavbarLeft>
           <NavbarRight>
-            {actions.map((action, index) =>
-              action.isButton ? (
-                <Button
-                  key={index}
-                  variant={action.variant || "default"}
-                  asChild
-                >
-                  <a href={action.href}>
-                    {action.icon}
+            {actions.map((action, index) => {
+              if (action.isAvatar && isAuthenticated) {
+                return (
+                  <Avatar key={index} className="h-7 w-7 cursor-pointer">
+                    {action.avatarSrc && action.avatarSrc.length > 0 ? (
+                      <AvatarImage src={action.avatarSrc} alt={action.text} />
+                    ) : (
+                      <AvatarFallback>
+                        <CircleUserRound className="h-5 w-5 text-zinc-500" />
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                );
+              } else if (action.isButton) {
+                return (
+                  <Button
+                    key={index}
+                    variant={
+                      action.variant && 
+                      ["default", "link", "destructive", "outline", "glow", "secondary", "ghost"].includes(action.variant)
+                        ? action.variant as
+                            | "default"
+                            | "link"
+                            | "destructive"
+                            | "outline"
+                            | "glow"
+                            | "secondary"
+                            | "ghost"
+                        : "default"
+                    }
+                    asChild
+                  >
+                    <a href={action.href}>
+                      {action.icon}
+                      {action.text}
+                      {action.iconRight}
+                    </a>
+                  </Button>
+                );
+              } else {
+                return (
+                  <a
+                    key={index}
+                    href={action.href}
+                    className="hidden text-sm md:block"
+                  >
                     {action.text}
-                    {action.iconRight}
                   </a>
-                </Button>
-              ) : (
-                <a
-                  key={index}
-                  href={action.href}
-                  className="hidden text-sm md:block"
-                >
-                  {action.text}
-                </a>
-              ),
-            )}
+                );
+              }
+            })}
             <Sheet>
               <SheetTrigger asChild>
                 <Button
