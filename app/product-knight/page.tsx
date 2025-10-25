@@ -16,7 +16,7 @@ export default function ProductKnightPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Knight feature provides a robust build-time code and configuration scanner. It runs in your CI/CD pipeline or as a pre-deploy hook to detect secrets, unsafe patterns, insecure network calls, and suspicious prompt templates, ensuring your AI-powered applications are secure from the ground up.
+          Cencori&apos;s Knight feature provides a robust build-time code and configuration scanner. It runs in your CI/CD pipeline or as a pre-deploy hook to detect secrets, unsafe patterns, insecure network calls, and suspicious prompt templates, ensuring your AI-powered applications are secure from the ground up.
         </p>
       </section>
 

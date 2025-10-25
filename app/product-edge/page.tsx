@@ -13,15 +13,15 @@ export default function ProductEdgePage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Edge feature provides pre-built integrations and middleware for leading platforms such as Vercel and Supabase, as well as various edge runtimes. It offers one-click installs, ready-to-use Edge Middleware snippets, and integration manifests, enabling platform users to activate Cencori Protect capabilities without extensive engineering efforts.
+          Cencori&apos;s Edge feature provides pre-built integrations and middleware for leading platforms such as Vercel and Supabase, as well as various edge runtimes. It offers one-click installs, ready-to-use Edge Middleware snippets, and integration manifests, enabling platform users to activate Cencori Protect capabilities without extensive engineering efforts.
         </p>
       </section>
 
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Key Features</h2>
         <ul className="list-disc list-inside text-zinc-300 leading-relaxed space-y-2">
-          <li><strong className="text-white">Vercel Integration (preview checks + edge protection):</strong> Seamlessly integrate Cencori's protection into your Vercel deployments, including preview checks and edge-level security.</li>
-          <li><strong className="text-white">Supabase extension for edge functions routing:</strong> Extend Supabase capabilities with Cencori's edge function routing for enhanced security and performance.</li>
+          <li><strong className="text-white">Vercel Integration (preview checks + edge protection):</strong> Seamlessly integrate Cencori&apos;s protection into your Vercel deployments, including preview checks and edge-level security.</li>
+          <li><strong className="text-white">Supabase extension for edge functions routing:</strong> Extend Supabase capabilities with Cencori&apos;s edge function routing for enhanced security and performance.</li>
           <li><strong className="text-white">Browser/IDE plugins for pre-deploy checks (Cursor/VSCode):</strong> Get real-time security feedback directly within your development environment before deployment.</li>
         </ul>
       </section>

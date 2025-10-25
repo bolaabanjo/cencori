@@ -16,7 +16,7 @@ export default function ProductSandboxPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Sandbox provides a hardened runtime for safely executing AI-generated code or scripts. It runs generated code (Python/SQL/JS) in an isolated container with strict resource and network policies, ensuring deterministic outputs and comprehensive logs, preventing any malicious code from impacting your systems.
+          Cencori&apos;s Sandbox provides a hardened runtime for safely executing AI-generated code or scripts. It runs generated code (Python/SQL/JS) in an isolated container with strict resource and network policies, ensuring deterministic outputs and comprehensive logs, preventing any malicious code from impacting your systems.
         </p>
       </section>
 

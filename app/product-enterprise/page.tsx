@@ -13,7 +13,7 @@ export default function ProductEnterprisePage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Enterprise offering provides dedicated deployments and comprehensive compliance controls for large organizations. It allows Cencori to run within customer Virtual Private Clouds (VPCs) or data centers, offering features like Single Sign-On (SSO), System for Cross-domain Identity Management (SCIM), dedicated Service Level Agreements (SLAs), SOC2 artifacts, and tailored legal agreements to meet stringent enterprise requirements.
+          Cencori&apos;s Enterprise offering provides dedicated deployments and comprehensive compliance controls for large organizations. It allows Cencori to run within customer Virtual Private Clouds (VPCs) or data centers, offering features like Single Sign-On (SSO), System for Cross-domain Identity Management (SCIM), dedicated Service Level Agreements (SLAs), SOC2 artifacts, and tailored legal agreements to meet stringent enterprise requirements.
         </p>
       </section>
 

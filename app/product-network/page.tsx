@@ -13,7 +13,7 @@ export default function ProductNetworkPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Network feature facilitates an opt-in anonymized threat signal exchange across tenants. It aggregates patterns such as jailbreaks and exfiltration signatures into a shared signature library, delivering timely updates to tenant rule caches to enhance collective defense against emerging threats.
+          Cencori&apos;s Network feature facilitates an opt-in anonymized threat signal exchange across tenants. It aggregates patterns such as jailbreaks and exfiltration signatures into a shared signature library, delivering timely updates to tenant rule caches to enhance collective defense against emerging threats.
         </p>
       </section>
 
@@ -36,7 +36,7 @@ export default function ProductNetworkPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Primary Integration</h2>
         <ul className="list-disc list-inside text-zinc-300 leading-relaxed space-y-2">
-          <li><strong className="text-white">Rule engine subscription, automated rule updates:</strong> Seamlessly integrate with Cencori's rule engine for continuous, automated threat intelligence updates.</li>
+          <li><strong className="text-white">Rule engine subscription, automated rule updates:</strong> Seamlessly integrate with Cencori&apos;s rule engine for continuous, automated threat intelligence updates.</li>
         </ul>
       </section>
 

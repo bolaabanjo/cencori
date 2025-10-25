@@ -13,7 +13,7 @@ export default function ProductInsightsPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Insights feature provides comprehensive dashboards and analytics for monitoring trends, heatmaps, and facilitating incident triage. It visualizes request volume, block rates, top flagged prompts, and user-level risk, while also supporting customizable alerts and robust SLA monitoring.
+          Cencori&apos;s Insights feature provides comprehensive dashboards and analytics for monitoring trends, heatmaps, and facilitating incident triage. It visualizes request volume, block rates, top flagged prompts, and user-level risk, while also supporting customizable alerts and robust SLA monitoring.
         </p>
       </section>
 

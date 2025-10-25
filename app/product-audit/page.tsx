@@ -16,7 +16,7 @@ export default function ProductAuditPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Audit feature provides an append-only audit trail of every AI interaction within your infrastructure. It stores discovery metadata and the full decision lineage for each interaction, offering robust filtering, customizable retention policies, and comprehensive export capabilities for compliance and incident reporting.
+          Cencori&apos;s Audit feature provides an append-only audit trail of every AI interaction within your infrastructure. It stores discovery metadata and the full decision lineage for each interaction, offering robust filtering, customizable retention policies, and comprehensive export capabilities for compliance and incident reporting.
         </p>
       </section>
 
@@ -40,7 +40,7 @@ export default function ProductAuditPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Primary Integration</h2>
         <ul className="list-disc list-inside text-zinc-300 leading-relaxed space-y-2">
-          <li><strong className="text-white">Built into Protect:</strong> Seamlessly integrates with Cencori's AI protection features.</li>
+          <li><strong className="text-white">Built into Protect:</strong> Seamlessly integrates with Cencori&apos;s AI protection features.</li>
           <li><strong className="text-white">Dashboard + API for exports:</strong> Access and manage audit logs directly through the Cencori dashboard or via dedicated APIs for programmatic access.</li>
         </ul>
       </section>

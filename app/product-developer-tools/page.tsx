@@ -13,7 +13,7 @@ export default function ProductDeveloperToolsPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's Developer Tools provide a comprehensive suite of resources, including SDKs, CLI tooling, and ready-made templates, designed to make integration frictionless. With SDKs in TypeScript and Python, a powerful CLI for scans, a robust webhook reference implementation, and a clear OpenAPI specification, developers can quickly and efficiently integrate Cencori into their projects.
+          Cencori&apos;s Developer Tools provide a comprehensive suite of resources, including SDKs, CLI tooling, and ready-made templates, designed to make integration frictionless. With SDKs in TypeScript and Python, a powerful CLI for scans, a robust webhook reference implementation, and a clear OpenAPI specification, developers can quickly and efficiently integrate Cencori into their projects.
         </p>
       </section>
 
@@ -29,7 +29,7 @@ export default function ProductDeveloperToolsPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Who Uses It</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Developer Tools are essential for developers, platform engineers, and DevOps teams who want to seamlessly integrate Cencori's advanced AI security capabilities into their workflows and applications.
+          Developer Tools are essential for developers, platform engineers, and DevOps teams who want to seamlessly integrate Cencori&apos;s advanced AI security capabilities into their workflows and applications.
         </p>
       </section>
 
@@ -41,7 +41,7 @@ export default function ProductDeveloperToolsPage() {
       </section>
 
       <section>
-        <h2 className="text-2xl font-semibold mb-4">Empower your development with Cencori's robust tools.</h2>
+        <h2 className="text-2xl font-semibold mb-4">Empower your development with Cencori&apos;s robust tools.</h2>
         <p className="text-zinc-300 leading-relaxed">
           <Link href={siteConfig.links.getStartedUrl} className="text-blue-400 hover:underline">Get Started with Cencori Developer Tools</Link> today or <Link href="mailto:support@fohnai.com" className="text-blue-400 hover:underline">contact us</Link> for more information.
         </p>

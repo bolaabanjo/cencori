@@ -16,7 +16,7 @@ export default function ProductAIPage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">What it Does</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Cencori's AI feature acts as the inline proxy between your applications and Large Language Models (LLMs). It inspects, redacts, sanitizes, or blocks content in real-time, returning a structured verdict and a trace ID for every interaction.
+          Cencori&apos;s AI feature acts as the inline proxy between your applications and Large Language Models (LLMs). It inspects, redacts, sanitizes, or blocks content in real-time, returning a structured verdict and a trace ID for every interaction.
         </p>
       </section>
 
