@@ -20,6 +20,18 @@ export const siteConfig = {
       enterprise: "/product-enterprise",
       developerTools: "/product-developer-tools",
     },
+    company: {
+      about: "/about",
+      blog: "/blog",
+      careers: "/careers",
+      changelog: "/changelog",
+      contact: "/contact",
+      customers: "/customers",
+      events: "/events",
+      partners: "/partners",
+      shipped: "/shipped",
+      privacyPolicy: "/privacy-policy",
+    },
   },
 };
 

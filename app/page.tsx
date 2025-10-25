@@ -131,9 +131,15 @@ export default function HomePage() {
           {
             title: "Company",
             links: [
-              { text: "About", href: "#" },
-              { text: "Careers", href: "#" },
-              { text: "Blog", href: "#" },
+              { text: "About", href: "/about" },
+              { text: "Careers", href: "/careers" },
+              { text: "Blog", href: "/blog" },
+              { text: "Changelog", href: "/changelog" },
+              { text: "Contact Us", href: "/contact" },
+              { text: "Customers", href: "/customers" },
+              { text: "Events", href: "/events" },
+              { text: "Partners", href: "/partners" },
+              { text: "Shipped", href: "/shipped" },
             ],
           },
           {
@@ -146,7 +152,7 @@ export default function HomePage() {
         ]}
         copyright="© 2025 FohnAI. All rights reserved"
         policies={[
-          { text: "Privacy Policy", href: "/privacy-policy" },
+          { text: "Privacy Policy", href: siteConfig.links.company.privacyPolicy },
           { text: "Terms of Service", href: "/terms-of-service" },
         ]}
         showModeToggle={true}
