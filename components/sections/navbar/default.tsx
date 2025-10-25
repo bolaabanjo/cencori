@@ -47,9 +47,7 @@ interface NavbarProps {
   customNavigation?: ReactNode;
   className?: string;
   isAuthenticated?: boolean; // New prop
-  userProfile?: { name: string | null; avatar: string | null; email: string | null }; // New prop, added email
-  router?: string; // Add router prop
-  supabase?: string; // Add supabase prop
+  userProfile?: { name: string | null; avatar: string | null }; // New prop
 }
 
 export default function Navbar({
@@ -119,9 +117,6 @@ export default function Navbar({
                 <div className="flex flex-col space-y-1">
                   <p className="text-s leading-none text-white font-semibold">
                     {userProfile?.name ?? ""}
-                  </p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {userProfile?.email ?? ""}
                   </p>
                 </div>
               </DropdownMenuLabel>
