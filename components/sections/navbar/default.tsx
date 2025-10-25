@@ -93,7 +93,7 @@ export default function Navbar({
             {actions.map((action, index) => {
               if (action.isAvatar && isAuthenticated) {
                 return (
-          <DropdownMenu>
+          <DropdownMenu key="authenticated-avatar-menu">
             <DropdownMenuTrigger asChild>
               <Avatar className="h-7 w-7 cursor-pointer">
                 {userProfile?.avatar && userProfile.avatar.length > 0 ? (

@@ -15,7 +15,7 @@ export default function TermsOfServicePage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">1. Acceptance of Terms</h2>
         <p className="text-zinc-300 leading-relaxed">
-          Welcome to Cencori, a multi-tenant AI infrastructure platform provided by FohnAI ("we," "our," or "us"). These Terms of Service ("Terms") govern your access to and use of the Cencori platform, including any content, functionality, and services offered on or through our platform (the "Service"). By accessing or using the Service, you agree to be bound by these Terms and our Privacy Policy. If you do not agree to these Terms, you may not access or use the Service.
+          Welcome to Cencori, a multi-tenant AI infrastructure platform provided by FohnAI (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). These Terms of Service (&quot;Terms&quot;) govern your access to and use of the Cencori platform, including any content, functionality, and services offered on or through our platform (the &quot;Service&quot;). By accessing or using the Service, you agree to be bound by these Terms and our Privacy Policy. If you do not agree to these Terms, you may not access or use the Service.
         </p>
       </section>
 
@@ -38,7 +38,7 @@ export default function TermsOfServicePage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">4. User Content and Conduct</h2>
         <ul className="list-disc list-inside text-zinc-300 leading-relaxed space-y-2">
-          <li><strong className="text-white">Your Content:</strong> You retain ownership of any data, information, or content you submit, post, or display on or through the Service ("User Content"). You grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, adapt, publish, and distribute your User Content solely for the purpose of operating, improving, and providing the Service.</li>
+          <li><strong className="text-white">Your Content:</strong> You retain ownership of any data, information, or content you submit, post, or display on or through the Service (&quot;User Content&quot;). You grant us a worldwide, non-exclusive, royalty-free license to use, reproduce, modify, adapt, publish, and distribute your User Content solely for the purpose of operating, improving, and providing the Service.</li>
           <li><strong className="text-white">Prohibited Conduct:</strong> You agree not to use the Service for any unlawful or prohibited purpose, including but not limited to: posting harmful content, infringing intellectual property rights, distributing malware, or engaging in any activity that could damage, disable, or impair the Service.</li>
         </ul>
       </section>
@@ -70,7 +70,7 @@ export default function TermsOfServicePage() {
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">8. Disclaimers</h2>
         <p className="text-zinc-300 leading-relaxed">
-          The Service is provided on an "AS IS" and "AS AVAILABLE" basis, without any warranties of any kind, either express or implied. We do not warrant that the Service will be uninterrupted, secure, or error-free. Your use of the Service is at your sole risk.
+          The Service is provided on an &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; basis, without any warranties of any kind, either express or implied. We do not warrant that the Service will be uninterrupted, secure, or error-free. Your use of the Service is at your sole risk.
         </p>
       </section>
 

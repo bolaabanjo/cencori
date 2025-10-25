@@ -72,7 +72,7 @@ export default function HomePage() {
       text: "Dashboard",
       href: "/dashboard/organizations",
       isButton: true,
-      variant: "default" as "default", // Explicitly cast to literal type
+      variant: "default", // Use a string literal, TS will infer type when array is const
     },
     {
       text: userProfile.name || "User",
