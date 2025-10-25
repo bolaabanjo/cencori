@@ -1,5 +1,5 @@
 import { type VariantProps } from "class-variance-authority";
-import { Menu } from "lucide-react";
+import { CreditCard, Menu, Settings, UserPlus, Users } from "lucide-react";
 import { ReactNode } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CircleUserRound } from "lucide-react";
@@ -16,6 +16,9 @@ import {
 } from "../../ui/navbar";
 import Navigation from "../../ui/navigation";
 import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/lib/supabaseClient";
+import router from "next/router";
 
 interface NavbarLink {
   text: string;
@@ -90,15 +93,71 @@ export default function Navbar({
             {actions.map((action, index) => {
               if (action.isAvatar && isAuthenticated) {
                 return (
-                  <Avatar key={index} className="h-7 w-7 cursor-pointer">
-                    {action.avatarSrc && action.avatarSrc.length > 0 ? (
-                      <AvatarImage src={action.avatarSrc} alt={action.text} />
-                    ) : (
-                      <AvatarFallback>
-                        <CircleUserRound className="h-5 w-5 text-zinc-500" />
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Avatar className="h-7 w-7 cursor-pointer">
+                {userProfile?.avatar && userProfile.avatar.length > 0 ? (
+                  <AvatarImage
+                    src={userProfile.avatar}
+                    alt={
+                      typeof userProfile?.name === "string"
+                        ? userProfile.name
+                        : "User avatar"
+                    }
+                  />
+                ) : (
+                  <AvatarFallback>
+                    <CircleUserRound className="h-5 w-5 text-zinc-200" />
+                  </AvatarFallback>
+                )}
+              </Avatar>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-66" align="end" forceMount>
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-s leading-none text-white font-semibold">
+                    {userProfile?.name ?? ""}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
+                <CircleUserRound className="mr-2 h-4 w-4" />
+                <span className="text-xs">Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/billing")}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                <span className="text-xs">Billing</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                <Settings className="mr-2 h-4 w-4" />
+                <span className="text-xs"> Account Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/")}>
+                
+                <span className="text-xs">Homepage</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/dashboard/team")}>
+                <Users className="mr-2 h-4 w-4" />
+                <span className="text-xs">Team</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/invite-user")}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span className="text-xs">Invite User</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.push("/login");
+                }}
+              >
+                <span className="text-xs">Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
                 );
               } else if (action.isButton) {
                 return (

@@ -106,8 +106,6 @@ export default function HomePage() {
         actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
         isAuthenticated={isAuthenticated}
         userProfile={isAuthenticated ? userProfile : undefined}
-        router={useRouter()} // Pass router instance
-        supabase={supabase} // Pass supabase client
       />
       <main>
         <Hero />
