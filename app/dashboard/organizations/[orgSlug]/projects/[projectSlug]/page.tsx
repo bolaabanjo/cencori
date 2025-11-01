@@ -8,6 +8,20 @@ import { Home as HomeIcon } from "lucide-react";
 import { useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
 import { useEffect, useState } from "react";
 
+interface OrganizationData {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface ProjectData {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  created_at: string;
+}
+
 export default function ProjectDetailsPage({
   params,
 }: { 
@@ -15,8 +29,8 @@ export default function ProjectDetailsPage({
 }) {
   const { orgSlug, projectSlug } = params;
   const { setBreadcrumbs } = useBreadcrumbs();
-  const [organization, setOrganization] = useState<any | null>(null);
-  const [project, setProject] = useState<any | null>(null);
+  const [organization, setOrganization] = useState<OrganizationData | null>(null);
+  const [project, setProject] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +55,7 @@ export default function ProjectDetailsPage({
           .single();
 
         if (orgError || !orgData) {
-          console.error("Error fetching organization in project details page:", orgError?.message);
+          console.error("Error fetching organization:", orgError?.message);
           notFound();
           return;
         }
@@ -70,8 +84,8 @@ export default function ProjectDetailsPage({
           { label: projectData.name },
         ]);
 
-      } catch (err: any) {
-        console.error("Unexpected error:", err.message);
+      } catch (err: unknown) { // Change any to unknown
+        console.error("Unexpected error:", (err as Error).message);
         setError("An unexpected error occurred.");
       } finally {
         setLoading(false);

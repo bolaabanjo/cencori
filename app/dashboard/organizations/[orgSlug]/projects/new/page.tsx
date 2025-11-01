@@ -22,6 +22,12 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
 
+interface OrganizationData {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 const formSchema = z.object({
   name: z.string().min(2, { message: "Project name must be at least 2 characters." }),
   description: z.string().optional(),
@@ -35,7 +41,7 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
   const [loading, setLoading] = useState(false);
   const [orgLoading, setOrgLoading] = useState(true); // New loading state for organization
   const [orgError, setOrgError] = useState<string | null>(null); // New error state for organization
-  const [organization, setOrganization] = useState<any | null>(null); // New state for organization
+  const [organization, setOrganization] = useState<OrganizationData | null>(null); // New state for organization
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,8 +84,8 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
           { label: "New" },
         ]);
 
-      } catch (err: any) {
-        console.error("Unexpected error fetching organization:", err.message);
+      } catch (err: unknown) { // Change any to unknown
+        console.error("Unexpected error fetching organization:", (err as Error).message);
         setOrgError("An unexpected error occurred while loading organization details.");
       } finally {
         setOrgLoading(false);
