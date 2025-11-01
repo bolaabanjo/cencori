@@ -71,7 +71,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      router.push("/dashboard/organizations/new");
+      router.push("/dashboard/organizations");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
       setError(msg);
