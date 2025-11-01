@@ -60,9 +60,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <LayoutContent
         user={typedUser}
         avatar={avatar}
-        name={name}
-        children={children}
-      />
+        name={name}>
+        {children}
+      </LayoutContent>
     </BreadcrumbProvider>
   );
 }
