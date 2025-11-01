@@ -315,29 +315,29 @@ export default function Navbar({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/dashboard/profile")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
                 <CircleUserRound className="mr-2 h-4 w-4" />
                 <span className="text-xs">Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/dashboard/billing")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/billing")}>
                 <CreditCard className="mr-2 h-4 w-4" />
                 <span className="text-xs">Billing</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span className="text-xs"> Account Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/organizations")}>
                 
-                <span className="text-xs">Homepage</span>
+                <span className="text-xs cursor-pointer">Dashboard</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/dashboard/team")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/team")}>
                 <Users className="mr-2 h-4 w-4" />
                 <span className="text-xs">Team</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/dashboard/invite-user")}>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/invite-user")}>
                 <UserPlus className="mr-2 h-4 w-4" />
                 <span className="text-xs">Invite User</span>
               </DropdownMenuItem>
@@ -347,6 +347,7 @@ export default function Navbar({
                   await supabase.auth.signOut();
                   router.push("/login");
                 }}
+                className="cursor-pointer"
               >
                 <span className="text-xs">Log out</span>
               </DropdownMenuItem>
