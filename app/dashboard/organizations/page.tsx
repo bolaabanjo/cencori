@@ -1,202 +1,85 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Logo } from "@/components/logo"; // your logo component (inline SVG recommended)
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"; // shadcn avatar
-import { supabase } from "@/lib/supabaseClient";
-import { PackageOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { siteConfig } from "@/config/site";
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createServerClient } from "@/lib/supabaseServer";
 
-type Organization = {
-  id: string;
-  name: string;
-  description?: string | null;
-  user_id?: string | null;
-  created_at?: string | null;
-};
+export default async function OrganizationsPage() {
+  const supabase = await createServerClient(); // Call without arguments
 
-export default function OrganizationsPage() {
-  const router = useRouter();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const [orgs, setOrgs] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [search, setSearch] = useState<string>("");
-  const [creating, setCreating] = useState<boolean>(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch organizations from your API
-  async function fetchOrgs() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/organizations");
-      const payload = await res.json();
-      if (!res.ok) {
-        console.error("Failed to fetch orgs", payload);
-        setError(payload?.error ?? "Failed to fetch organizations");
-        setOrgs([]);
-      } else {
-        setOrgs(payload.organizations ?? []);
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Network error while fetching organizations");
-      setOrgs([]);
-    } finally {
-      setLoading(false);
-    }
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl">Please log in to view organizations.</p>
+        <Button asChild className="mt-4">
+          <Link href={siteConfig.links.signInUrl}>Log In</Link>
+        </Button>
+      </div>
+    );
   }
 
-  useEffect(() => {
-    fetchOrgs();
+  const { data: organizations, error } = await supabase
+    .from("organizations")
+    .select("id, name, slug, description, type, current_plan")
+    .eq("owner_id", user.id);
 
-    // load user profile for avatar
-    let mounted = true;
-    supabase.auth.getUser().then(({ data, error: uErr }) => {
-      if (uErr || !data.user) return;
-      const user = data.user;
-      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-      const possibleAvatar = (meta.avatar_url as string) ?? (meta.picture as string) ?? null;
-      const name = (meta.name as string) ?? (meta.full_name as string) ?? (user.email ? user.email.split("@")[0] : "") ?? null;
-      if (mounted) {
-        setUserEmail(user.email ?? null);
-        setAvatarUrl(possibleAvatar ?? null);
-        setDisplayName(name ?? null);
-      }
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return orgs;
-    const q = search.toLowerCase();
-    return orgs.filter((o) => (o.name ?? "").toLowerCase().includes(q) || (o.description ?? "").toLowerCase().includes(q));
-  }, [orgs, search]);
-
-  // Create a new organization (simple prompt flow)
-  async function handleCreate() {
-    const name = prompt("Name of new organization?");
-    if (!name || !name.trim()) return;
-    setCreating(true);
-    try {
-      const res = await fetch("/api/organizations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: "" }),
-      });
-      const payload = await res.json();
-      if (!res.ok) {
-        alert(payload?.error ?? "Failed to create organization");
-      } else {
-        // refresh list and navigate to org page (or keep on list)
-        await fetchOrgs();
-        // optional: navigate into the newly created org if payload contains id
-        const created = payload.organization as Organization | undefined;
-        if (created?.id) router.push(`/dashboard/organization/${created.id}`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Network error creating organization");
-    } finally {
-      setCreating(false);
-    }
+  if (error) {
+    console.error("Error fetching organizations:", error.message);
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl text-red-500">Error loading organizations.</p>
+      </div>
+    );
   }
 
-  // click an org card
-  function openOrg(orgId: string) {
-    router.push(`/dashboard/organization/${orgId}`);
-  }
-
-  // initials for avatar fallback
-  function initialsFrom(nameOrEmail?: string | null) {
-    const s = nameOrEmail ?? "";
-    if (!s) return "U";
-    const parts = s.split(/[\s._-]+/).filter(Boolean);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+  // Redirect to new organization page if no organizations exist
+  if (organizations && organizations.length === 0) {
+    redirect("/dashboard/organizations/new");
   }
 
   return (
-    <div className="min-h-[72vh]">
-      {/* Header area is inside global layout / header; this is page content */}
-      <div className="max-w-7xl mx-auto px-2 lg:px-6 py-10">
-        <div className="mb-8">
-          <div className="flex items-center justify-between gap-6">
-            <h1 className="text-2xl font-semibold text-slate-100">Your Organizations</h1>
-          </div>
-        </div>
-
-        {/* Search + CTA */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex-1">
-            <label htmlFor="org-search" className="sr-only">Search organizations</label>
-            <input
-              id="org-search"
-              role="searchbox"
-              placeholder="Search for an organization"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full lg:w-60 max-w-xl rounded-3xl bg-black-900/50 border border-zinc-800 px-4 py-2 text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-
-          <div className="w-full sm:w-auto">
-            <Link
-              href="/dashboard/organizations/new"
-              className="w-full sm:w-auto inline-flex items-center gap-2 rounded-3xl bg-emerald-600 dark:bg-white px-4 py-2 text-sm text-white dark:text-black hover:bg-emerald-500 disabled:opacity-60 cursor-pointer"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="inline-block">
-                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              New organization
-            </Link>
-          </div>
-        </div>
-
-        {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {loading ? (
-            <div className="col-span-full py-12 text-center text-sm text-slate-400">Loading organizations…</div>
-          ) : filtered.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-zinc-800 bg-black-900/30 p-8 text-center">
-              <div className="flex justify-center mb-4">
-                <PackageOpen className="w-8 h-8 text-zinc-400 " />
-              </div>
-              <div className="text-sm text-white mb-3">No organizations</div>
-            </div>
-          ) : (
-            filtered.map((org) => (
-              <article
-                key={org.id}
-                onClick={() => openOrg(org.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openOrg(org.id); }}
-                className="flex items-center gap-4 px-4 py-4 rounded-md border border-slate-800 bg-slate-900/40 hover:bg-slate-900/30 transition cursor-pointer"
-                aria-label={`Open organization ${org.name}`}
-              >
-                <div className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-800/60 text-slate-200 font-medium">
-                  {org.name?.slice(0, 1).toUpperCase() ?? "O"}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="text-slate-100 font-medium truncate">{org.name}</div>
-                  <div className="text-xs text-slate-400 mt-1 truncate">
-                    {/* small metadata; adjust to your data model */}
-                    Free Plan {org.created_at ? `• ${new Date(org.created_at).toLocaleDateString()}` : ""}
-                  </div>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
+    <div className="container mx-auto py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Your Organizations</h1>
+        <Button asChild>
+          <Link href="/dashboard/organizations/new">Create New Organization</Link>
+        </Button>
       </div>
+
+      {organizations && organizations.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {organizations.map((org) => (
+            <Card key={org.id}>
+              <CardHeader>
+                <CardTitle>{org.name}</CardTitle>
+                <CardDescription>{org.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p>Type: {org.type}</p>
+                <p>Plan: {org.current_plan}</p>
+                <Button asChild className="mt-4">
+                  <Link href={`/dashboard/organizations/${org.slug}/projects`}>
+                    View Projects
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center p-10 border rounded-lg">
+          <p className="text-xl mb-4">You don't have any organizations yet.</p>
+          <Button asChild>
+            <Link href="/dashboard/organizations/new">Create Your First Organization</Link>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
