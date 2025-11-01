@@ -65,6 +65,7 @@ export default function ProjectDetailsPage({
         // Set breadcrumbs
         setBreadcrumbs([
           { label: "Organizations", href: "/dashboard/organizations" },
+          { label: orgData.name, href: `/dashboard/organizations/${orgSlug}/projects` },
           { label: "Projects", href: `/dashboard/organizations/${orgSlug}/projects` },
           { label: projectData.name },
         ]);

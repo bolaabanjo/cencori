@@ -11,7 +11,6 @@ import { Separator } from "@/components/ui/separator";
 import { LogOut, CircleUserRound, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { BreadcrumbProvider, useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
-import { OrganizationDropdown, ProjectDropdown } from "@/components/ui/org-project-dropdowns";
 
 // Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -84,21 +83,6 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   const router = useRouter();
   const { breadcrumbs } = useBreadcrumbs();
 
-  const [currentOrgSlug, setCurrentOrgSlug] = useState<string | undefined>(undefined);
-  const [currentProjectSlug, setCurrentProjectSlug] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    const orgItem = breadcrumbs.find(item => item.href?.startsWith("/dashboard/organizations/") && !item.href.includes("/projects"));
-    setCurrentOrgSlug(orgItem?.href?.split('/')[3]);
-
-    if (orgItem) {
-      const projectItem = breadcrumbs.find(item => item.href?.startsWith(`/dashboard/organizations/${orgItem.href?.split('/')[3]}/projects/`) && item.href.split('/').length === 6);
-      setCurrentProjectSlug(projectItem?.href?.split('/')[5]);
-    } else {
-      setCurrentProjectSlug(undefined);
-    }
-  }, [breadcrumbs]);
-
   return (
     <div className="min-h-screen bg-white-50 dark:bg-black transition-colors">
       <header className="h-12 border-b border-zinc-100 dark:border-zinc-800 px-6 flex items-center justify-between">
@@ -108,38 +92,20 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
           </Link>
           {breadcrumbs.length > 0 && (
             <nav className="flex items-center space-x-2 text-sm text-muted-foreground ml-4">
-              {breadcrumbs.map((item, index) => {
-                if (item.label === "Organizations") {
-                  return (
-                    <React.Fragment key={index}>
-                      {index > 0 && <span>/</span>}
-                      <OrganizationDropdown currentOrgSlug={currentOrgSlug} />
-                    </React.Fragment>
-                  );
-                } else if (item.label === "Projects" && currentOrgSlug) {
-                  return (
-                    <React.Fragment key={index}>
-                      {index > 0 && <span>/</span>}
-                      <ProjectDropdown orgSlug={currentOrgSlug} currentProjectSlug={currentProjectSlug} />
-                    </React.Fragment>
-                  );
-                }
-
-                return (
-                  <React.Fragment key={index}>
-                    {index > 0 && <span>/</span>}
-                    {item.href ? (
-                      <Link href={item.href} className="hover:text-primary flex items-center gap-1">
-                        {item.label}
-                      </Link>
-                    ) : (
-                      <span className="text-primary flex items-center gap-1">
-                        {item.label}
-                      </span>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {breadcrumbs.map((item, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && <span>/</span>}
+                  {item.href ? (
+                    <Link href={item.href} className="hover:text-primary flex items-center gap-1">
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <span className="text-primary flex items-center gap-1">
+                      {item.label}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
             </nav>
           )}
         </div>
@@ -197,7 +163,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                   <AvatarImage src={avatar} alt={typeof name === "string" ? name : "User avatar"} />
                 ) : (
                   <AvatarFallback>
-                    <CircleUserRound className="h-5 w-5 text-zinc-200" />
+                    <CircleUserRound className="h-5 w-5 text-zinc-500 dark:text-zinc-200" />
                   </AvatarFallback>
                 )}
               </Avatar>
@@ -205,7 +171,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             <DropdownMenuContent className="w-66" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-s leading-none text-white font-semibold">
+                  <p className="text-s leading-none dark:text-white text-black font-semibold">
                     {user.email}
                   </p>
                 </div>

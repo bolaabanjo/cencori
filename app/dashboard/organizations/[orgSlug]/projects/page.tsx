@@ -44,10 +44,11 @@ export default function OrgProjectsPage({ params }: { params: { orgSlug: string 
         }
         setOrganization(orgData);
 
-        // Set breadcrumbs using the context
+        // Set breadcrumbs
         setBreadcrumbs([
           { label: "Organizations", href: "/dashboard/organizations" },
-          { label: "Projects", href: `/dashboard/organizations/${orgSlug}/projects` },
+          { label: orgData.name, href: `/dashboard/organizations/${orgSlug}/projects` },
+          { label: "Projects" },
         ]);
 
         // Fetch projects for the organization
@@ -72,7 +73,7 @@ export default function OrgProjectsPage({ params }: { params: { orgSlug: string 
     };
 
     fetchOrgAndProjects();
-  }, [orgSlug, setBreadcrumbs, organization]);
+  }, [orgSlug, setBreadcrumbs]);
 
   if (loading) {
     return (
