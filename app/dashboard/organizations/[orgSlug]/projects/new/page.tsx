@@ -3,7 +3,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Import useEffect and useState
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Project name must be at least 2 characters." }),
@@ -32,10 +33,60 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
   const { orgSlug } = params;
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [orgLoading, setOrgLoading] = useState(true); // New loading state for organization
+  const [orgError, setOrgError] = useState<string | null>(null); // New error state for organization
+  const [organization, setOrganization] = useState<any | null>(null); // New state for organization
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
   );
+
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  // Fetch organization details in useEffect
+  useEffect(() => {
+    const fetchOrg = async () => {
+      setOrgLoading(true);
+      setOrgError(null);
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          router.push("/login");
+          return;
+        }
+
+        const { data: orgData, error: fetchError } = await supabase
+          .from("organizations")
+          .select("id, name, slug")
+          .eq("slug", orgSlug)
+          .eq("owner_id", user.id)
+          .single();
+
+        if (fetchError || !orgData) {
+          console.error("Error fetching organization:", fetchError?.message);
+          setOrgError("Organization not found or you don't have permission.");
+          return;
+        }
+        setOrganization(orgData);
+
+        setBreadcrumbs([
+          { label: "Organizations", href: "/dashboard/organizations" },
+          { label: "Projects", href: `/dashboard/organizations/${orgSlug}/projects` },
+          { label: "New" },
+        ]);
+
+      } catch (err: any) {
+        console.error("Unexpected error fetching organization:", err.message);
+        setOrgError("An unexpected error occurred while loading organization details.");
+      } finally {
+        setOrgLoading(false);
+      }
+    };
+
+    fetchOrg();
+  }, [orgSlug, setBreadcrumbs, router, supabase]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -55,17 +106,8 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
       return;
     }
 
-    // Fetch organization_id based on orgSlug
-    const { data: organization, error: orgError } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("slug", orgSlug)
-      .eq("owner_id", user.id)
-      .single();
-
-    if (orgError || !organization) {
-      console.error("Error fetching organization:", orgError?.message);
-      toast.error("Organization not found or you don't have permission.");
+    if (!organization) {
+      toast.error("Organization data is not loaded yet. Please try again.");
       setLoading(false);
       return;
     }
@@ -112,12 +154,28 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
     setLoading(false);
   };
 
+  if (orgLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl">Loading organization details...</p>
+      </div>
+    );
+  }
+
+  if (orgError) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl text-red-500">{orgError}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
       <Card className="w-[350px]">
         <CardHeader>
           <CardTitle>Create New Project</CardTitle>
-          <CardDescription>Create a new project for your organization.</CardDescription>
+          <CardDescription>Create a new project for {organization?.name}.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="grid w-full items-center gap-4">
@@ -140,7 +198,7 @@ export default function NewProjectPage({ params }: { params: { orgSlug: string }
                 {...form.register("description")}
               />
             </div>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || orgLoading}>
               {loading ? "Creating..." : "Create Project"}
             </Button>
           </form>

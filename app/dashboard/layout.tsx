@@ -10,6 +10,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLab
 import { Separator } from "@/components/ui/separator";
 import { LogOut, CircleUserRound, CreditCard, Settings, Home, Users, UserPlus } from "lucide-react";
 import Link from "next/link";
+import { BreadcrumbProvider, useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
+import { OrganizationDropdown, ProjectDropdown } from "@/components/ui/org-project-dropdowns";
 
 // Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -48,11 +50,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const typedUser = (user ?? {}) as UserType;
   const meta = typedUser.user_metadata ?? {};
-  const avatar = meta.avatar_url ?? meta.picture ?? null;
+  const avatar = (meta.avatar_url as string | null) ?? (meta.picture as string | null) ?? null;
   const name =
-    meta.name ??
+    (meta.name as string | null) ??
     typedUser.email?.split?.("@")[0] ??
     null;
+
+  return (
+    <BreadcrumbProvider>
+      <LayoutContent
+        user={typedUser}
+        avatar={avatar}
+        name={name}
+        children={children}
+      />
+    </BreadcrumbProvider>
+  );
+}
+
+type UserType = {
+  email?: string | null;
+  user_metadata?: Record<string, unknown>;
+};
+
+interface LayoutContentProps {
+  user: UserType;
+  avatar: string | null;
+  name: string | null;
+  children: React.ReactNode;
+}
+
+function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
+  const router = useRouter();
+  const { breadcrumbs } = useBreadcrumbs();
+
+  const [currentOrgSlug, setCurrentOrgSlug] = useState<string | undefined>(undefined);
+  const [currentProjectSlug, setCurrentProjectSlug] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const orgItem = breadcrumbs.find(item => item.href?.startsWith("/dashboard/organizations/") && !item.href.includes("/projects"));
+    setCurrentOrgSlug(orgItem?.href?.split('/')[3]);
+
+    if (orgItem) {
+      const projectItem = breadcrumbs.find(item => item.href?.startsWith(`/dashboard/organizations/${orgItem.href?.split('/')[3]}/projects/`) && item.href.split('/').length === 6);
+      setCurrentProjectSlug(projectItem?.href?.split('/')[5]);
+    } else {
+      setCurrentProjectSlug(undefined);
+    }
+  }, [breadcrumbs]);
 
   return (
     <div className="min-h-screen bg-white-50 dark:bg-black transition-colors">
@@ -61,6 +106,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/dashboard/organizations" className="flex items-center gap-3">
             <Logo variant="mark" className="h-4"/>
           </Link>
+          {breadcrumbs.length > 0 && (
+            <nav className="flex items-center space-x-2 text-sm text-muted-foreground ml-4">
+              {breadcrumbs.map((item, index) => {
+                if (item.label === "Organizations") {
+                  return (
+                    <React.Fragment key={index}>
+                      {index > 0 && <span>/</span>}
+                      <OrganizationDropdown currentOrgSlug={currentOrgSlug} />
+                    </React.Fragment>
+                  );
+                } else if (item.label === "Projects" && currentOrgSlug) {
+                  return (
+                    <React.Fragment key={index}>
+                      {index > 0 && <span>/</span>}
+                      <ProjectDropdown orgSlug={currentOrgSlug} currentProjectSlug={currentProjectSlug} />
+                    </React.Fragment>
+                  );
+                }
+
+                return (
+                  <React.Fragment key={index}>
+                    {index > 0 && <span>/</span>}
+                    {item.href ? (
+                      <Link href={item.href} className="hover:text-primary flex items-center gap-1">
+                        {item.label}
+                      </Link>
+                    ) : (
+                      <span className="text-primary flex items-center gap-1">
+                        {item.label}
+                      </span>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </nav>
+          )}
         </div>
         <div className="flex items-center gap-3">
         <button
@@ -125,7 +206,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-s leading-none text-white font-semibold">
-                    {typedUser.email}
+                    {user.email}
                   </p>
                 </div>
               </DropdownMenuLabel>

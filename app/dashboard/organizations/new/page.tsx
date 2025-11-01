@@ -89,21 +89,34 @@ export default function NewOrganizationPage() {
       return;
     }
 
-    const { error } = await supabase.from("organizations").insert({
+    const { data: orgData, error } = await supabase.from("organizations").insert({
       name: values.name,
       slug: newSlug,
       description: values.description,
       type: values.type,
       current_plan: values.plan,
       owner_id: user.id,
-    });
+    }).select('id').single(); // Select the id of the newly created organization
 
     if (error) {
       console.error("Error creating organization:", error.message);
       toast.error("Failed to create organization. " + error.message);
-    } else {
-      toast.success("Organization created successfully!");
-      router.push(`/dashboard/organizations/${newSlug}/projects`);
+    } else if (orgData) {
+      // Add the creating user as an owner in the organization_members table
+      const { error: memberError } = await supabase.from("organization_members").insert({
+        organization_id: orgData.id,
+        user_id: user.id,
+        role: "owner",
+      });
+
+      if (memberError) {
+        console.error("Error adding organization owner:", memberError.message);
+        toast.error("Organization created but failed to add owner. Please contact support.");
+        // Optionally, you might want to delete the organization here if adding owner fails critically
+      } else {
+        toast.success("Organization created successfully!");
+        router.push(`/dashboard/organizations/${newSlug}/projects`);
+      }
     }
     setLoading(false);
   };

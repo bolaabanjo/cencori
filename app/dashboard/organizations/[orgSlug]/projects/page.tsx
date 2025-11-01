@@ -1,46 +1,100 @@
-import { createServerClient } from "@/lib/supabaseServer";
-import { cookies } from "next/headers";
+"use client";
+
+import { supabase as browserSupabase } from "@/lib/supabaseClient"; // Use browser client
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound, redirect } from "next/navigation";
+import { Home as HomeIcon } from "lucide-react";
+import { useBreadcrumbs } from "@/lib/contexts/BreadcrumbContext";
+import { useEffect, useState } from "react"; // Import useState
 
-export default async function OrgProjectsPage({ params }: { params: { orgSlug: string } }) {
+export default function OrgProjectsPage({ params }: { params: { orgSlug: string } }) {
   const { orgSlug } = params;
-  const supabase = await createServerClient();
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const [organization, setOrganization] = useState<any | null>(null);
+  const [projects, setProjects] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    const fetchOrgAndProjects = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data: { user }, error: userError } = await browserSupabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
-  }
+        if (userError || !user) {
+          redirect("/login");
+          return;
+        }
 
-  // Fetch organization details
-  const { data: organization, error: orgError } = await supabase
-    .from("organizations")
-    .select("id, name, slug, description")
-    .eq("slug", orgSlug)
-    .eq("owner_id", user.id) // Ensure only owner can view
-    .single();
+        // Fetch organization details
+        const { data: orgData, error: orgError } = await browserSupabase
+          .from("organizations")
+          .select("id, name, slug")
+          .eq("slug", orgSlug)
+          .eq("owner_id", user.id)
+          .single();
 
-  if (orgError || !organization) {
-    console.error("Error fetching organization:", orgError?.message);
-    notFound();
-  }
+        if (orgError || !orgData) {
+          console.error("Error fetching organization:", orgError?.message);
+          notFound();
+          return;
+        }
+        setOrganization(orgData);
 
-  // Fetch projects for the organization
-  const { data: projects, error: projectsError } = await supabase
-    .from("projects")
-    .select("id, name, slug, description")
-    .eq("organization_id", organization.id);
+        // Set breadcrumbs using the context
+        setBreadcrumbs([
+          { label: "Organizations", href: "/dashboard/organizations" },
+          { label: "Projects", href: `/dashboard/organizations/${orgSlug}/projects` },
+        ]);
 
-  if (projectsError) {
-    console.error("Error fetching projects:", projectsError.message);
+        // Fetch projects for the organization
+        const { data: projectsData, error: projectsError } = await browserSupabase
+          .from("projects")
+          .select("id, name, slug, description")
+          .eq("organization_id", orgData.id);
+
+        if (projectsError) {
+          console.error("Error fetching projects:", projectsError.message);
+          setError("Error loading projects.");
+          return;
+        }
+        setProjects(projectsData);
+
+      } catch (err: any) {
+        console.error("Unexpected error:", err.message);
+        setError("An unexpected error occurred.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrgAndProjects();
+  }, [orgSlug, setBreadcrumbs, organization]);
+
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
-        <p className="text-xl text-red-500">Error loading projects.</p>
+        <p className="text-xl">Loading projects...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!organization) {
+    // Should theoretically be caught by notFound() above, but as a safeguard
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
+        <p className="text-xl text-red-500">Organization not found.</p>
       </div>
     );
   }
