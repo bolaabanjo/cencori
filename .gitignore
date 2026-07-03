@@ -64,8 +64,7 @@ packages/scan/dist
 packages/create-cencori-app/node_modules
 packages/create-cencori-app/dist
 
-# Eline
-packages/eline/dist
+# Eline — framework lives at standalone github.com/cencori/eline
 /dist
 
 # Agents
