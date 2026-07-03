@@ -1,0 +1,86 @@
+---
+title: Cencori Integration
+description: How Zett agents authenticate, bill, stay safe, and deploy on Cencori.
+---
+
+Zett is the authoring layer; **[Cencori](/) is the runtime**. When an agent takes a
+turn, Zett loads its manifest and calls the Cencori Sessions API, which routes the
+model request and applies your project's billing, security, and observability.
+
+## Authentication
+
+The runtime authenticates with a Cencori **project API key**:
+
+```bash
+export CENCORI_API_KEY=csk_...      # required at run time
+export CENCORI_PROJECT_ID=proj_...  # optional; sent as X-Project-ID
+export CENCORI_API_URL=...          # optional; overrides the API endpoint
+```
+
+The key is read from `CENCORI_API_KEY` (or `RunOptions.apiKey`). The project id can
+come from the env or from `cencori.project` in `agent.ts`, and is sent as the
+`X-Project-ID` header. The default endpoint is `https://cencori.com/v1`.
+
+## The `cencori` config block
+
+`agent.ts` carries per-agent Cencori settings:
+
+```ts
+import { defineAgent } from "arcie";
+
+export default defineAgent({
+  model: "claude-sonnet-4-5",
+  cencori: {
+    project: process.env.CENCORI_PROJECT_ID,
+    billing: { budget: "50.00/month", endUserMarkup: 0.2 },
+    security: { policy: "standard" }, // "strict" | "standard" | "permissive"
+  },
+});
+```
+
+- **`billing.budget`** — a spend cap for the agent, e.g. `"50.00/month"`.
+- **`billing.endUserMarkup`** — markup applied when billing your own end users
+  through Cencori.
+- **`security.policy`** — the basarcie safety posture; per-agent
+  [policies](/arcie/docs/policies) tighten it further.
+
+## Outbound auth helpers
+
+When a tool or channel needs to call an external service, `arcie/auth` builds the
+authorization header for you:
+
+```ts
+import { bearer, basic } from "arcie/auth";
+
+const gh = bearer(process.env.GITHUB_TOKEN!);           // static token
+const rotating = bearer(async () => fetchFreshToken());  // lazy / rotating
+const legacy = basic({ username: "svc", password: process.env.PW! });
+
+const { headers } = await gh(); // { authorization: "Bearer …" }
+```
+
+A token can be a string or a `() => string | Promise<string>` function, so secrets
+can be resolved lazily per request.
+
+## Deploying
+
+1. `arcie build` compiles the agent to `.arcie/manifest.json`.
+2. The manifest — config, instructions, tools, policies, sessions — is what Cencori
+   executes.
+3. Set `CENCORI_API_KEY` / `CENCORI_PROJECT_ID` in your deployment environment.
+
+```bash
+npm run build           # → .arcie/manifest.json
+```
+
+What you get from Cencori at run time:
+
+- **Sessions** — durable execution, memory, and human approval ([Sessions](/arcie/docs/sessions)).
+- **Billing** — budgets and end-user billing enforced per project.
+- **Security** — input/output guards and policy enforcement ([Policies](/arcie/docs/policies)).
+- **Observability** — every turn, tool call, and token logged.
+
+<Callout type="info">
+Don't have a key yet? Create a project and generate a `csk_…` key in the Cencori
+dashboard, then confirm provider access for the model your agent uses.
+</Callout>

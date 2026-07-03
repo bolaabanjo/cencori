@@ -1,0 +1,115 @@
+---
+title: Running Agents
+description: Execute an agent from your own code with runAgent and streamAgent, and read ambient state at runtime.
+---
+
+Zett executes agents against the **Cencori Sessions API**. The `arcie/runner`
+subpath gives you two entry points: `runAgent` (await a full result) and
+`streamAgent` (consume events as they arrive).
+
+## `runAgent`
+
+```ts
+import { runAgent } from "arcie/runner"; // also exported from "arcie"
+
+const result = await runAgent("./agent", "What's the weather in Paris?", {
+  apiKey: process.env.CENCORI_API_KEY,
+});
+
+console.log(result.output);
+```
+
+```ts
+async function runAgent(
+  agentDir: string,
+  input: string,
+  options?: RunOptions,
+): Promise<RunResult>;
+
+interface RunResult {
+  output: string;          // the assembled assistant text
+  turns: TurnContext[];
+  events: StreamEvent[];   // every event emitted during the run
+  sessionId: string;
+}
+```
+
+## `streamAgent`
+
+`streamAgent` is an async generator that yields [protocol events](/arcie/docs/events)
+as the turn unfolds:
+
+```ts
+import { streamAgent } from "arcie/runner";
+
+for await (const event of streamAgent("./agent", "Tell me a story")) {
+  if (event.type === "message.appended") {
+    process.stdout.write(event.data.delta);
+  }
+}
+```
+
+## `RunOptions`
+
+```ts
+interface RunOptions {
+  endpoint?: string;   // default: CENCORI_API_URL or https://cencori.com/v1
+  apiKey?: string;     // default: CENCORI_API_KEY
+  maxTurns?: number;
+  sessionId?: string;  // reuse an existing session instead of creating one
+  onEvent?: (event: StreamEvent) => void;
+}
+```
+
+Resolution: `endpoint` falls back to `CENCORI_API_URL`, then
+`https://cencori.com/v1`; `apiKey` falls back to `CENCORI_API_KEY`. **A missing
+key throws** `Cencori API key required`. If you don't pass `sessionId`, a new
+Cencori session is created for the run.
+
+## The local dev server
+
+`arcie dev` wraps `streamAgent` in a small HTTP server so you can exercise an agent
+without writing a host:
+
+```bash
+curl -N -X POST http://localhost:3000 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!", "stream": true}'
+```
+
+- `{ "message": "…", "stream": true }` → newline-delimited [event](/arcie/docs/events) stream.
+- `{ "message": "…" }` (no `stream`) → runs the turn and returns `{ "status": "ok" }`.
+
+## Reading runtime state
+
+Inside tool and hook handlers, the `arcie/context` subpath exposes the ambient
+session and a shared key/value store:
+
+```ts
+import {
+  getSession, getTurn,
+  getContext, requireContext, hasContext, setContext, ensureContext,
+} from "arcie/context";
+
+const session = getSession();           // Session | null
+const turn = getTurn();                 // TurnContext | null
+
+setContext("requestId", "abc123");
+const id = requireContext<string>("requestId");   // throws if absent
+const cache = ensureContext("cache", () => new Map());
+```
+
+| Function | Returns |
+| --- | --- |
+| `getSession()` | The current `Session`, or `null`. |
+| `getTurn()` | The current `TurnContext`, or `null`. |
+| `getContext(key)` | A stored value, or `undefined`. |
+| `requireContext(key)` | A stored value, or throws if missing. |
+| `hasContext(key)` | Whether a key is set. |
+| `setContext(key, value)` | Store a value. |
+| `ensureContext(key, factory)` | Get-or-create a value. |
+
+<Callout type="info">
+The context store is process-scoped ambient state for the current run — handy for
+sharing a request id, a client, or a cache across tools within a turn.
+</Callout>

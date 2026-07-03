@@ -1,0 +1,101 @@
+---
+title: Quickstart
+description: From an empty directory to a running, tool-using agent in a few minutes.
+---
+
+This guide takes you from zero to a streaming, tool-using agent.
+
+## 1. Create the project
+
+```bash
+npx arcie@latest init my-agent
+cd my-agent
+npm install
+```
+
+## 2. Set your Cencori key
+
+```bash
+export CENCORI_API_KEY=csk_...
+export CENCORI_PROJECT_ID=proj_...
+```
+
+## 3. Define the agent
+
+`agent/agent.ts` declares the model and Cencori configuration:
+
+```ts
+import { defineAgent } from "arcie";
+
+export default defineAgent({
+  model: "claude-sonnet-4-5",
+  name: "my-agent",
+  cencori: {
+    project: process.env.CENCORI_PROJECT_ID,
+    billing: { budget: "50.00/month" },
+  },
+});
+```
+
+Write the system prompt in `agent/instructions.md`:
+
+```md
+You are a helpful AI agent built with Zett on Cencori.
+Be concise, accurate, and use your tools when appropriate.
+```
+
+## 4. Run the dev server
+
+```bash
+npm run dev
+```
+
+`arcie dev` validates the agent, prints any diagnostics, and starts a local HTTP
+server on port `3000`. Send it a message — pass `stream: true` to receive the
+event stream as newline-delimited JSON:
+
+```bash
+curl -N -X POST http://localhost:3000 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!", "stream": true}'
+```
+
+You'll see Zett [protocol events](/arcie/docs/events) — `session.started`,
+`message.appended` deltas, `message.completed`, and so on.
+
+## 5. Add a tool
+
+Drop a file in `agent/tools/`. Its default export _is_ the tool — no registration:
+
+```ts
+// agent/tools/get_weather.ts
+import { defineTool } from "arcie/tools";
+import { z } from "zod";
+
+export default defineTool({
+  description: "Get the current weather for a city.",
+  inputSchema: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { city, condition: "Sunny", temperatureF: 72 };
+  },
+});
+```
+
+Restart `arcie dev` and the tool count updates. The file name (`get_weather`)
+becomes the tool name. Learn more in [Tools](/arcie/docs/tools).
+
+## 6. Build for production
+
+```bash
+npm run build
+```
+
+`arcie build` compiles the agent into a manifest at `.arcie/manifest.json` — the
+artifact Cencori runs. See the [CLI reference](/arcie/docs/cli).
+
+## Where to go next
+
+- [Project Layout](/arcie/docs/project-layout) — every slot, explained.
+- [Tools](/arcie/docs/tools) and [Skills](/arcie/docs/skills) — give the agent capabilities and knowledge.
+- [Subagents](/arcie/docs/subagents) — delegate focused subtasks.
+- [Running agents](/arcie/docs/running) — `runAgent` / `streamAgent` in your own code.

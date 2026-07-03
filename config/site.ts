@@ -28,7 +28,7 @@ export const siteConfig = {
       scan: "/scan",
       enterprise: "/solutions/enterprise",
       developerTools: "/developer-tools",
-      eline: "/eline",
+      arcie: "/arcie",
     },
     company: {
       about: "/about",

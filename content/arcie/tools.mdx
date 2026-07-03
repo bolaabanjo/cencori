@@ -1,0 +1,68 @@
+---
+title: Tools
+description: defineTool — give your agent capabilities. Each file in tools/ is a callable tool.
+---
+
+Tools are what an agent can _do_. Each file in `agent/tools/` default-exports a
+tool built with `defineTool`; the file name becomes the tool name. No registry,
+no wiring.
+
+```ts
+// agent/tools/get_weather.ts
+import { defineTool } from "arcie/tools";
+import { z } from "zod";
+
+export default defineTool({
+  description: "Get the current weather for a city.",
+  inputSchema: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { city, condition: "Sunny", temperatureF: 72 };
+  },
+});
+```
+
+`defineTool` requires a `description` and an `execute` function — omitting either
+throws at definition time (`Tool must have a description` / `Tool must have an
+execute function`).
+
+## `ToolConfig`
+
+```ts
+interface ToolConfig<TInput = unknown, TOutput = unknown> {
+  name?: string;                     // defaults to the file name
+  description: string;               // required — shown to the model
+  inputSchema?: z.ZodType<TInput>;   // validates + types the input
+  outputSchema?: z.ZodType<TOutput>; // optional structured output
+  sandbox?: boolean;                 // run in an isolated sandbox
+  execute: (input: TInput) => TOutput | Promise<TOutput>;
+}
+```
+
+| Field | Purpose |
+| --- | --- |
+| `description` | How the model decides when to call the tool. Write it for an LLM reader. |
+| `inputSchema` | A [Zod](https://zod.dev) schema. `execute`'s argument is typed and validated against it. |
+| `outputSchema` | Optional schema describing the result — useful for structured tool output. |
+| `sandbox` | When `true`, marks the tool to run in an isolated execution sandbox. |
+| `execute` | The implementation. Sync or async; receives the parsed input. |
+
+## Typing
+
+`defineTool` is generic, so `inputSchema` flows into `execute`'s parameter type:
+
+```ts
+export default defineTool({
+  description: "Add two numbers.",
+  inputSchema: z.object({ a: z.number(), b: z.number() }),
+  // input is { a: number; b: number }
+  execute: ({ a, b }) => ({ sum: a + b }),
+});
+```
+
+<Callout type="tip">
+Keep one tool per file and name the file after the action (`send_email.ts`,
+`search_docs.ts`). That file name is the tool name the model calls.
+</Callout>
+
+`defineTool` is also re-exported from the package root, so
+`import { defineTool } from "arcie"` works too.

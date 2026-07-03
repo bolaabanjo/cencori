@@ -46,8 +46,8 @@ export const docs = defineDocs({
   },
 });
 
-export const eline = defineDocs({
-  dir: "content/eline",
+export const arcie = defineDocs({
+  dir: "content/arcie",
   docs: {
     schema: pageSchema.extend({
       order: z.number().optional(),
