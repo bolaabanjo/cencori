@@ -1,0 +1,88 @@
+---
+title: Installation
+description: Create a new Zett agent project and install its dependencies.
+---
+
+## Requirements
+
+- **Node.js 18 or newer** (Zett uses native `fetch`, `crypto.randomUUID`, and ES modules).
+- A **Cencori account** and project API key for running agents — see [Cencori integration](/eline/docs/cencori).
+
+## Scaffold a project
+
+The fastest way to start is the `init` command, which scaffolds a complete agent
+from a template:
+
+```bash
+npx eline@latest init my-agent
+```
+
+This creates a `my-agent/` directory:
+
+```text
+my-agent/
+├── agent/
+│   ├── agent.ts          # defineAgent({ model, cencori })
+│   ├── instructions.md   # the system prompt
+│   ├── tools/            # defineTool files
+│   ├── skills/           # defineSkill files
+│   ├── hooks/            # lifecycle hooks
+│   ├── channels/         # HTTP / Slack / custom ingress
+│   ├── schedules/        # cron jobs
+│   ├── subagents/        # nested specialist agents
+│   ├── sessions/         # durable-execution config
+│   └── policies/         # security + budget guardrails
+├── package.json
+└── tsconfig.json
+```
+
+Empty slots ship as `.gitkeep` placeholders — fill them in as you need them.
+
+### Templates
+
+Pass `--template` to choose a starter (defaults to `default`):
+
+```bash
+npx eline@latest init my-agent --template default
+```
+
+Running `init` with no name scaffolds into the **current directory**.
+
+## Install dependencies and run
+
+```bash
+cd my-agent
+npm install
+npm run dev
+```
+
+The generated `package.json` wires the Zett CLI into your scripts:
+
+```json
+{
+  "scripts": {
+    "dev": "eline dev",
+    "build": "eline build"
+  },
+  "dependencies": {
+    "eline": "^0.1.2",
+    "zod": "^3.23.0"
+  }
+}
+```
+
+## Configure Cencori
+
+Running an agent calls the Cencori Sessions API, which needs a key:
+
+```bash
+export CENCORI_API_KEY=csk_...
+export CENCORI_PROJECT_ID=proj_...   # optional; sent as X-Project-ID
+```
+
+<Callout type="info">
+`CENCORI_API_KEY` is required at run time. Without it, `eline dev` and `runAgent`
+throw `Cencori API key required`. See [Cencori integration](/eline/docs/cencori).
+</Callout>
+
+Next: the [Quickstart](/eline/docs/quickstart) walks through your first request end to end.

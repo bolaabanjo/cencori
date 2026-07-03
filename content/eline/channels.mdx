@@ -1,0 +1,73 @@
+---
+title: Channels
+description: defineChannel — give your agent a place to live, like an HTTP endpoint or a Slack app.
+---
+
+Channels are where an agent _lives_ — the ingress that turns an external request
+(an HTTP call, a Slack message) into an agent turn. Each file in `agent/channels/`
+default-exports a channel.
+
+```ts
+// agent/channels/http.ts
+import { defineChannel } from "eline/channels";
+
+export default defineChannel({
+  name: "http",
+  type: "http",
+  async handler(request) {
+    const { message } = request.body as { message: string };
+    return {
+      status: 200,
+      body: { reply: `You said: ${message}` },
+    };
+  },
+});
+```
+
+`defineChannel` requires a `name` and a `handler` — omitting either throws
+`Channel must have name and handler`. Channel names are lowercase slugs
+(`[a-z][a-z0-9-]{0,63}`).
+
+## `ChannelConfig`
+
+```ts
+interface ChannelConfig {
+  name: string;
+  type: "http" | "slack" | "discord" | "custom";
+  handler: (request: ChannelRequest) => ChannelResponse | Promise<ChannelResponse>;
+}
+
+interface ChannelRequest {
+  body: unknown;
+  headers: Record<string, string>;
+  method: string;
+}
+
+interface ChannelResponse {
+  status: number;
+  body: unknown;
+}
+```
+
+## Method helpers
+
+`POST` and `GET` are thin helpers for writing method-specific handlers:
+
+```ts
+import { defineChannel, POST } from "eline/channels";
+
+export default defineChannel({
+  name: "webhook",
+  type: "http",
+  handler: POST(async (request) => {
+    // handle the POST
+    return { status: 202, body: { ok: true } };
+  }),
+});
+```
+
+<Callout type="info">
+During local development, `eline dev` exposes a single built-in HTTP endpoint
+(`POST /`) regardless of your channels — see [Running agents](/eline/docs/running).
+Channels describe how the agent is reached once deployed on Cencori.
+</Callout>

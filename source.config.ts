@@ -46,11 +46,8 @@ export const docs = defineDocs({
   },
 });
 
-// Zett is a separate product (a filesystem-first agent framework) with its own
-// docs design. It gets an independent collection so `content/zett` is rendered
-// at /zett/docs without touching the main Cencori `docs` collection above.
-export const zett = defineDocs({
-  dir: "content/zett",
+export const eline = defineDocs({
+  dir: "content/eline",
   docs: {
     schema: pageSchema.extend({
       order: z.number().optional(),

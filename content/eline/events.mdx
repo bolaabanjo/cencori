@@ -1,0 +1,87 @@
+---
+title: Event Protocol
+description: The typed StreamEvent protocol that runAgent, streamAgent, and eline dev emit.
+---
+
+Every run produces a stream of typed events. Both `streamAgent` (which yields
+them) and `runAgent` (which collects them into `result.events`) speak the same
+`StreamEvent` union, defined in `eline/protocol`.
+
+Each event is `{ type, data }` (a couple are payload-less). Every event carries
+ordering fields — `sequence`, `turnId`, and usually `stepIndex` — so a consumer can
+reconstruct the timeline.
+
+## Event types
+
+| `type` | Key `data` fields |
+| --- | --- |
+| `session.started` | `sessionId`, `runtime?` (`agentId`, `modelId`, `elineVersion`) |
+| `turn.started` | `sequence`, `turnId` |
+| `message.received` | `message`, `sequence`, `turnId` |
+| `message.appended` | `delta`, `textSoFar`, `sequence`, `stepIndex`, `turnId` |
+| `message.completed` | `text` (or `null`), `finishReason`, … |
+| `reasoning.appended` | `delta`, `soFar`, … |
+| `reasoning.completed` | `text`, … |
+| `step.started` | `sequence`, `stepIndex`, `turnId` |
+| `step.completed` | `finishReason`, `usage?` (`inputTokens`, `outputTokens`), … |
+| `step.failed` | `code`, `message`, … |
+| `tool.started` | `name`, `input`, `callId`, … |
+| `tool.completed` | `name`, `output`, `callId`, `status`, `error?`, … |
+| `turn.completed` | `sequence`, `turnId` |
+| `turn.failed` | `code`, `message`, `sequence`, `turnId` |
+| `session.waiting` | `wait: "next-user-message"` |
+| `session.completed` | — |
+| `session.failed` | `code`, `message`, `sessionId` |
+| `subagent.called` | `name`, `callId`, `childSessionId`, `turnId` |
+| `subagent.completed` | `name`, `callId`, `output` |
+
+### Enumerations
+
+```ts
+type AssistantStepFinishReason =
+  | "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other";
+
+type ActionResultStatus = "completed" | "failed" | "rejected";
+```
+
+## Consuming events
+
+Switch on `type` — the union narrows `data` automatically:
+
+```ts
+import { streamAgent } from "eline/runner";
+
+for await (const event of streamAgent("./agent", "Summarize the news")) {
+  switch (event.type) {
+    case "message.appended":
+      process.stdout.write(event.data.delta);
+      break;
+    case "tool.started":
+      console.log(`→ ${event.data.name}`, event.data.input);
+      break;
+    case "step.completed":
+      if (event.data.usage) console.log("tokens:", event.data.usage);
+      break;
+  }
+}
+```
+
+## Constructing and encoding events
+
+`eline/protocol` exports constructor helpers and encoders — useful when you build a
+host that re-emits the stream. Exported creators include `createSessionStarted`,
+`createTurnStarted`, `createMessageReceived`, `createMessageAppended`,
+`createMessageCompleted`, `createStepStarted`, `createStepCompleted`,
+`createTurnCompleted`, `createSessionWaiting`, and `createSessionCompleted`.
+
+```ts
+import { encodeEvent, encodeEvents } from "eline/protocol";
+
+res.write(encodeEvent(event));   // JSON + "\n"  (newline-delimited JSON)
+const blob = encodeEvents(events); // many events, one per line
+```
+
+<Callout type="info">
+The dev server streams events as **newline-delimited JSON** (`application/x-ndjson`)
+— each line is one `StreamEvent`. That's exactly what `encodeEvent` produces.
+</Callout>

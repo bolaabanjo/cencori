@@ -1,0 +1,69 @@
+---
+title: Skills
+description: defineSkill — give your agent reusable knowledge and procedures it can load on demand.
+---
+
+Skills are what an agent _knows_ — reference knowledge or procedures it can pull
+in when relevant, without bloating the always-on system prompt. Each file in
+`agent/skills/` default-exports a skill.
+
+```ts
+// agent/skills/refund_policy.ts
+import { defineSkill } from "eline/skills";
+
+export default defineSkill({
+  name: "refund_policy",
+  description: "How and when refunds are issued.",
+  content: `
+Refunds are available within 30 days of purchase.
+Digital goods are non-refundable once downloaded.
+Escalate disputes over $500 to a human.
+`,
+});
+```
+
+`defineSkill` requires a `name` and `content` — omitting either throws
+`Skill must have a name and content`.
+
+## `SkillConfig`
+
+```ts
+interface SkillConfig {
+  name: string;
+  description: string;
+  content: string;
+}
+```
+
+| Field | Purpose |
+| --- | --- |
+| `name` | Stable identifier for the skill. |
+| `description` | A short summary of when the skill is relevant. |
+| `content` | The knowledge itself — markdown or text the agent can load. |
+
+## Loading skills from a directory
+
+The `getSkill` helper reads a skill's raw content by name:
+
+```ts
+import { getSkill } from "eline/skills";
+
+const skill = getSkill("./agent", "refund_policy");
+// → reads ./agent/knowledge/refund_policy.md (or .ts), or null
+```
+
+<Callout type="warning">
+**Directory naming.** The loader and `eline dev` / `eline build` read skills from
+**`skills/`**, and that's where they belong. Note two quirks in the current
+release: the starter template scaffolds a `knowledge/` directory, and `getSkill()`
+reads from `knowledge/`. Put your skill files in **`skills/`** so they load into
+the manifest; the `knowledge/` naming is being reconciled.
+</Callout>
+
+## Skills vs. tools vs. subagents
+
+- A **skill** is passive knowledge the agent can reference — no code runs.
+- A **[tool](/eline/docs/tools)** executes code and returns a result.
+- A **[subagent](/eline/docs/subagents)** is a separate agent you delegate a whole
+  subtask to. Reach for one only when the work needs its own prompt, tools, or
+  isolated context.

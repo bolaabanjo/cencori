@@ -28,6 +28,7 @@ export const siteConfig = {
       scan: "/scan",
       enterprise: "/solutions/enterprise",
       developerTools: "/developer-tools",
+      eline: "/eline",
     },
     company: {
       about: "/about",

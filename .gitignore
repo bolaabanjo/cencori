@@ -64,8 +64,8 @@ packages/scan/dist
 packages/create-cencori-app/node_modules
 packages/create-cencori-app/dist
 
-# Zett
-packages/zett/dist
+# Eline
+packages/eline/dist
 /dist
 
 # Agents

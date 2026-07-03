@@ -1,0 +1,47 @@
+---
+title: Schedules
+description: defineSchedule — let your agent act on its own on a recurring cron schedule.
+---
+
+Schedules are when an agent acts _on its own_ — recurring jobs that fire without a
+user prompt. Each file in `agent/schedules/` default-exports a schedule.
+
+```ts
+// agent/schedules/daily_digest.ts
+import { defineSchedule } from "eline/schedules";
+
+export default defineSchedule({
+  name: "daily_digest",
+  cron: "0 9 * * *",        // every day at 09:00
+  timezone: "America/New_York",
+  async handler() {
+    // compile and send the digest
+  },
+});
+```
+
+`defineSchedule` requires `name`, `cron`, and `handler` — omitting any throws
+`Schedule must have name, cron, and handler`.
+
+## `ScheduleConfig`
+
+```ts
+interface ScheduleConfig {
+  name: string;
+  cron: string;             // standard 5-field cron expression
+  handler: () => void | Promise<void>;
+  timezone?: string;        // IANA tz, e.g. "America/New_York"
+}
+```
+
+| Field | Purpose |
+| --- | --- |
+| `name` | Identifier for the job (also the file name). |
+| `cron` | A standard cron expression, e.g. `0 9 * * *`. |
+| `timezone` | IANA timezone the `cron` is evaluated in. Defaults to the runtime's zone. |
+| `handler` | The work to run on each tick. |
+
+<Callout type="info">
+Schedules are loaded into the manifest and listed by `eline build`. Triggering them
+on a real clock is handled by the Cencori runtime once the agent is deployed.
+</Callout>
