@@ -1,9 +1,9 @@
-import { Resend } from 'resend';
+import { SendByte } from '@sendbyte/node';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const WELCOME_FROM_EMAIL = process.env.RESEND_WELCOME_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
 const WELCOME_REPLY_TO_EMAIL = process.env.RESEND_WELCOME_REPLY_TO_EMAIL || process.env.RESEND_REPLY_TO_EMAIL || '';
 
@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!RESEND_API_KEY) {
-      console.warn('[Welcome Email] RESEND_API_KEY not configured. Skipping send.');
+    if (!SENDBYTE_API_KEY) {
+      console.warn('[Welcome Email] SENDBYTE_API_KEY not configured. Skipping send.');
       return NextResponse.json({ success: false, skipped: true, reason: 'email_not_configured' }, { status: 202 });
     }
 
@@ -75,13 +75,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const resend = new Resend(RESEND_API_KEY);
-    const { data, error } = await resend.emails.send({
-      from: WELCOME_FROM_EMAIL,
-      to: normalizedEmail,
-      replyTo: parseReplyTo(WELCOME_REPLY_TO_EMAIL),
-      subject: 'Welcome to Cencori!',
-      html: `
+    const sendbyte = new SendByte(SENDBYTE_API_KEY);
+    let emailId: string | undefined;
+    try {
+      const email = await sendbyte.emails.send({
+        from: WELCOME_FROM_EMAIL,
+        to: normalizedEmail,
+        reply_to: parseReplyTo(WELCOME_REPLY_TO_EMAIL),
+        subject: 'Welcome to Cencori!',
+        html: `
         <!DOCTYPE html>
         <html>
           <head>
@@ -136,10 +138,10 @@ export async function POST(request: NextRequest) {
           </body>
         </html>
       `,
-    });
-
-    if (error) {
-      console.error('Welcome email error:', error);
+      });
+      emailId = email.id;
+    } catch (err) {
+      console.error('Welcome email error:', err);
       return NextResponse.json(
         { error: 'Failed to send welcome email' },
         { status: 500 }
@@ -157,7 +159,7 @@ export async function POST(request: NextRequest) {
       console.error('[Welcome Email] Failed to persist send marker:', metadataUpdateError);
     }
 
-    return NextResponse.json({ success: true, id: data?.id });
+    return NextResponse.json({ success: true, id: emailId });
   } catch (error) {
     console.error('Welcome email error:', error);
     return NextResponse.json(

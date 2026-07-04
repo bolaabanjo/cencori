@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
+import { SendByte } from '@sendbyte/node';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { allowAllInternalInDev, isFounderEmail } from '@/lib/internal-admin-auth';
 import { resolvePublicOrigin } from '@/lib/public-origin';
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const ADMIN_INVITE_FROM_EMAIL = process.env.RESEND_ADMIN_INVITE_FROM_EMAIL || process.env.RESEND_TEAM_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
 const ADMIN_INVITE_REPLY_TO_EMAIL = process.env.RESEND_ADMIN_INVITE_REPLY_TO_EMAIL || process.env.RESEND_REPLY_TO_EMAIL || '';
 
@@ -126,16 +126,17 @@ export async function POST(req: NextRequest) {
     const inviteLink = `${baseUrl}/team-invite?token=${invite.invite_token}`;
 
     try {
-        if (!RESEND_API_KEY || !ADMIN_INVITE_FROM_EMAIL) {
-            console.warn('[Admins] Resend sender not configured. Skipping invite email.');
+        if (!SENDBYTE_API_KEY || !ADMIN_INVITE_FROM_EMAIL) {
+            console.warn('[Admins] SendByte sender not configured. Skipping invite email.');
         } else {
-            const resend = new Resend(RESEND_API_KEY);
-            const { error: emailError } = await resend.emails.send({
-                from: ADMIN_INVITE_FROM_EMAIL,
-                to: email.toLowerCase(),
-                replyTo: parseReplyTo(ADMIN_INVITE_REPLY_TO_EMAIL),
-                subject: "You're invited to join the Cencori team",
-                html: `
+            const sendbyte = new SendByte(SENDBYTE_API_KEY);
+            try {
+                await sendbyte.emails.send({
+                    from: ADMIN_INVITE_FROM_EMAIL,
+                    to: email.toLowerCase(),
+                    reply_to: parseReplyTo(ADMIN_INVITE_REPLY_TO_EMAIL),
+                    subject: "You're invited to join the Cencori team",
+                    html: `
 <!DOCTYPE html>
 <html>
 <head>
@@ -174,10 +175,9 @@ export async function POST(req: NextRequest) {
 </body>
 </html>
             `,
-            });
-
-            if (emailError) {
-                console.error('[Admins] Failed to send invite email:', emailError);
+                });
+            } catch (emailErr) {
+                console.error('[Admins] Failed to send invite email:', emailErr);
             }
         }
     } catch (emailErr) {

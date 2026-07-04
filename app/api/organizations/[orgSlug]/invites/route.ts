@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
+import { SendByte } from '@sendbyte/node';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { resolvePublicOrigin } from '@/lib/public-origin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const ORG_INVITE_FROM_EMAIL = process.env.RESEND_ORG_INVITE_FROM_EMAIL || process.env.RESEND_TEAM_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
 const ORG_INVITE_REPLY_TO_EMAIL = process.env.RESEND_ORG_INVITE_REPLY_TO_EMAIL || process.env.RESEND_REPLY_TO_EMAIL || '';
 
@@ -124,16 +124,17 @@ export async function POST(
 
     console.log('[Invites] Attempting to send email to:', normalizedEmail);
     try {
-        if (!RESEND_API_KEY || !ORG_INVITE_FROM_EMAIL) {
-            console.warn('[Invites] Resend sender not configured. Skipping invite email.');
+        if (!SENDBYTE_API_KEY || !ORG_INVITE_FROM_EMAIL) {
+            console.warn('[Invites] SendByte sender not configured. Skipping invite email.');
         } else {
-            const resend = new Resend(RESEND_API_KEY);
-            const { data: emailData, error: emailError } = await resend.emails.send({
-                from: ORG_INVITE_FROM_EMAIL,
-                to: normalizedEmail,
-                replyTo: parseReplyTo(ORG_INVITE_REPLY_TO_EMAIL),
-                subject: `You're invited to join ${org.name} on Cencori`,
-                html: `
+            const sendbyte = new SendByte(SENDBYTE_API_KEY);
+            try {
+                const email = await sendbyte.emails.send({
+                    from: ORG_INVITE_FROM_EMAIL,
+                    to: normalizedEmail,
+                    reply_to: parseReplyTo(ORG_INVITE_REPLY_TO_EMAIL),
+                    subject: `You're invited to join ${org.name} on Cencori`,
+                    html: `
 <!DOCTYPE html>
 <html>
 <head>
@@ -175,12 +176,10 @@ export async function POST(
 </body>
 </html>
             `,
-            });
-
-            if (emailError) {
-                console.error('[Invites] Failed to send invite email:', emailError);
-            } else {
-                console.log('[Invites] Email sent successfully! ID:', emailData?.id);
+                });
+                console.log('[Invites] Email sent successfully! ID:', email.id);
+            } catch (emailErr) {
+                console.error('[Invites] Failed to send invite email:', emailErr);
             }
         }
     } catch (emailErr) {

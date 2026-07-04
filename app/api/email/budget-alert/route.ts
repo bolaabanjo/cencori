@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.RESEND_BUDGET_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
 
 interface BudgetAlertRequest {
@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
         const body: BudgetAlertRequest = await req.json();
         const { to, projectName, threshold, currentSpend, budget, percentUsed } = body;
 
-        if (!RESEND_API_KEY) {
-            console.warn('[Budget Alert] RESEND_API_KEY not configured');
+        if (!SENDBYTE_API_KEY) {
+            console.warn('[Budget Alert] SENDBYTE_API_KEY not configured');
             return NextResponse.json({ error: 'Email not configured' }, { status: 500 });
         }
 
@@ -99,10 +99,10 @@ export async function POST(req: NextRequest) {
 </html>
         `.trim();
 
-        const response = await fetch('https://api.resend.com/emails', {
+        const response = await fetch('https://api.sendbyte.africa/v1/emails', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Authorization': `Bearer ${SENDBYTE_API_KEY}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('[Budget Alert] Resend error:', error);
+            console.error('[Budget Alert] SendByte error:', error);
             return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
         }
 

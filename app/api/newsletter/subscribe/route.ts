@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
+import { SendByte } from '@sendbyte/node';
 import { Redis } from '@upstash/redis';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import {
@@ -11,7 +11,7 @@ import {
     getBaseUrl,
 } from '@/lib/newsletter';
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.RESEND_NEWSLETTER_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
 
 // Per-IP rate limit: 3 newsletter signups per hour.
@@ -48,7 +48,7 @@ async function isRateLimited(ip: string): Promise<boolean> {
 }
 
 export async function POST(req: NextRequest) {
-    if (!RESEND_API_KEY || !FROM_EMAIL) {
+    if (!SENDBYTE_API_KEY || !FROM_EMAIL) {
         return NextResponse.json({ error: 'Newsletter not configured' }, { status: 500 });
     }
 
@@ -159,23 +159,18 @@ export async function POST(req: NextRequest) {
 
     if (isNewSubscriber) {
         try {
-            const resend = new Resend(RESEND_API_KEY);
-            const { error: sendError } = await resend.emails.send({
+            const sendbyte = new SendByte(SENDBYTE_API_KEY);
+            await sendbyte.emails.send({
                 from: FROM_EMAIL,
                 to: email,
                 subject: 'Welcome to Cencori',
                 html: renderWelcomeEmail({ unsubscribeUrl }),
-                headers: {
-                    'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                list_unsubscribe: {
+                    url: unsubscribeUrl,
                 },
             });
-
-            if (sendError) {
-                console.error('[Newsletter] Welcome send failed:', sendError);
-            }
         } catch (err) {
-            console.error('[Newsletter] Welcome send threw:', err);
+            console.error('[Newsletter] Welcome send failed:', err);
         }
     }
 
