@@ -24,10 +24,10 @@ function validReplyTo(): string | string[] | undefined {
     return addresses.length === 1 ? addresses[0] : addresses;
 }
 
-const SEND_CONCURRENCY = 5;
-const SEND_BATCH_PAUSE_MS = 120;
+const SEND_CONCURRENCY = 25;
+const SEND_BATCH_PAUSE_MS = 50;
 const USERS_PAGE_SIZE = 200;
-const HARD_MAX_RECIPIENTS = 2000;
+const HARD_MAX_RECIPIENTS = 10000;
 
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
