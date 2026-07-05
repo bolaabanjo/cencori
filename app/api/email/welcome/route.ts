@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = getBaseUrl();
     const token = generateUserUnsubscribeToken(user.id);
     const unsubscribeUrl = buildUserUnsubscribeUrl(baseUrl, user.id, token);
-    const preferencesUrl = `${baseUrl}/dashboard/settings`;
+    const preferencesUrl = `${baseUrl}/dashboard/organizations`;
 
     const link = (text: string, href: string) =>
       `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Build different.</p>
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
+<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;"><a href="https://cencori.com/docs" style="color:#888;text-decoration:underline;">Docs</a> &nbsp;&middot;&nbsp; <a href="https://cencori.com/blog" style="color:#888;text-decoration:underline;">Blog</a></p>
 <p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
 <p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;line-height:1.5;">Making AI infrastructure accessible &mdash; so builders can build and scale with confidence.</p>
 <p style="margin:0 0 12px;font-size:11px;color:#aaa;text-align:center;line-height:1.5;">You received this because you signed up for Cencori.</p>
