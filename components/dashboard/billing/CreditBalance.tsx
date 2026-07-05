@@ -58,7 +58,12 @@ export function CreditBalance({ orgId, balance, transactions, currency = 'USD' }
                 throw new Error(data?.error || data?.details || 'Failed to start credits checkout');
             }
 
-            window.location.href = data.checkoutUrl;
+            if (paymentMethod === 'crypto') {
+                window.open(data.checkoutUrl, '_blank');
+                toast.info('Crypto checkout opened in a new tab. Credits will appear once payment is confirmed.');
+            } else {
+                window.location.href = data.checkoutUrl;
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to start credits checkout';
             toast.error(message);
