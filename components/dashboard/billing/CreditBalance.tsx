@@ -28,8 +28,11 @@ const CREDIT_PACK_OPTIONS: Array<{ id: CreditPackId; label: string }> = [
     { id: 'scale', label: '$200' },
 ];
 
+type PaymentMethod = 'card' | 'crypto';
+
 export function CreditBalance({ orgId, balance, transactions, currency = 'USD' }: CreditProps) {
     const [selectedPack, setSelectedPack] = React.useState<CreditPackId>('growth');
+    const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>('card');
     const [isRecharging, setIsRecharging] = React.useState(false);
 
     const handleRecharge = async () => {
@@ -37,7 +40,11 @@ export function CreditBalance({ orgId, balance, transactions, currency = 'USD' }
         setIsRecharging(true);
 
         try {
-            const res = await fetch('/api/billing/credits/checkout', {
+            const endpoint = paymentMethod === 'card'
+                ? '/api/billing/credits/checkout'
+                : '/api/billing/credits/crypto-checkout';
+
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -65,6 +72,30 @@ export function CreditBalance({ orgId, balance, transactions, currency = 'USD' }
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                     Credit Balance
                 </p>
+                <div className="flex items-center gap-1 rounded-md border border-border/40 p-0.5">
+                    <button
+                        type="button"
+                        onClick={() => setPaymentMethod('card')}
+                        className={`px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider rounded transition-colors ${
+                            paymentMethod === 'card'
+                                ? 'bg-foreground text-background'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        Card
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPaymentMethod('crypto')}
+                        className={`px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider rounded transition-colors ${
+                            paymentMethod === 'crypto'
+                                ? 'bg-foreground text-background'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        Crypto
+                    </button>
+                </div>
             </div>
             <div className="p-4">
                 <div className="flex items-center justify-between mb-6">
