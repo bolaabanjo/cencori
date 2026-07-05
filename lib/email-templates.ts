@@ -23,6 +23,21 @@ export interface EmailTemplateOptions {
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
+const SOCIAL_ICONS_URL = 'https://cencori.com/social';
+
+function socialFooter(): string {
+  const icons = [
+    { name: 'GitHub', file: 'github-icon.png', url: 'https://github.com/cencori' },
+    { name: 'X', file: 'x-icon.png', url: 'https://x.com/cencori' },
+    { name: 'LinkedIn', file: 'linkedin-icon.png', url: 'https://linkedin.com/company/cencori' },
+    { name: 'Discord', file: 'discord-icon.png', url: 'https://discord.gg/cencori' },
+    { name: 'YouTube', file: 'youtube-icon.png', url: 'https://youtube.com/@cencori' },
+  ];
+  const img = (i: typeof icons[number]) =>
+    `<a href="${i.url}" style="color:#888;text-decoration:none;display:inline-block;vertical-align:middle;"><img src="${SOCIAL_ICONS_URL}/${i.file}" width="20" height="20" alt="${i.name}" style="display:inline-block;vertical-align:middle;border:0;"></a>`;
+  return `<p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${icons.map((i, idx) => img(i) + (idx < icons.length - 1 ? '<span style="color:#ccc;margin:0 6px;vertical-align:middle;">·</span>' : '')).join('')}</p>
+<p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. · San Francisco, CA</p>`;
+}
 
 function baseFooter(extra?: string): string {
   return `
@@ -167,9 +182,37 @@ export function minimalTemplate(options: EmailTemplateOptions): string {
  * logo, body, and a one-line footer. The category param is kept for API
  * compatibility with send/route.ts and for future per-category variance.
  */
+/**
+ * Product update template — text-heavy with grey social icons in footer.
+ * Best for: feature announcements, product news, AI infrastructure updates.
+ */
+export function productUpdateTemplate(options: EmailTemplateOptions): string {
+  const { body, preheader, ctaText, ctaUrl } = options;
+
+  const ctaBlock = ctaText && ctaUrl
+    ? `<div style="text-align:center;margin:24px 0 0;">
+        <a href="${ctaUrl}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">${ctaText}</a>
+      </div>`
+    : '';
+
+  return wrapInContainer(`
+    <div style="font-size:14px;color:#555;line-height:1.6;">
+      ${body}
+    </div>
+    ${ctaBlock}
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
+      ${socialFooter()}
+      <p style="margin:0;font-size:11px;color:#aaa;text-align:center;"><a href="{{unsubscribe_url}}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
+    </div>
+  `, preheader);
+}
+
 export function renderTemplate(
-  _category: string,
+  category: string,
   options: EmailTemplateOptions
 ): string {
+  if (category === 'product_update' || category === 'announcement') {
+    return productUpdateTemplate(options);
+  }
   return minimalTemplate(options);
 }
