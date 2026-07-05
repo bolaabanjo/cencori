@@ -90,6 +90,8 @@ export async function POST(req: NextRequest) {
     const customerEmail = org.billing_email || user.email || '';
 
     const session = await createPaymentSession({
+      title: 'Cencori Credits Top-Up',
+      description: 'Prepaid credits for AI gateway usage',
       amount,
       currency: 'USD',
       customer: {
@@ -104,7 +106,7 @@ export async function POST(req: NextRequest) {
         credits_amount: amount,
         org_id: org.id,
         org_slug: org.slug,
-      },
+      } as any,
     });
 
     return NextResponse.json({
