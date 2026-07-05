@@ -75,6 +75,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const SOCIAL_ICONS_URL = 'https://cencori.com/social';
+    const socialIcons = [
+      { name: 'GitHub', file: 'github-icon.png', url: 'https://github.com/cencori' },
+      { name: 'X', file: 'x-icon.png', url: 'https://x.com/cencori' },
+      { name: 'LinkedIn', file: 'linkedin-icon.png', url: 'https://linkedin.com/company/cencori' },
+      { name: 'Discord', file: 'discord-icon.png', url: 'https://discord.gg/cencori' },
+      { name: 'YouTube', file: 'youtube-icon.png', url: 'https://youtube.com/@cencori' },
+    ];
+    const imgTag = (i: typeof socialIcons[number]) =>
+      `<a href="${i.url}" style="color:#888;text-decoration:none;display:inline-block;vertical-align:middle;"><img src="${SOCIAL_ICONS_URL}/${i.file}" width="20" height="20" alt="${i.name}" style="display:inline-block;vertical-align:middle;border:0;"></a>`;
+    const iconRow = socialIcons.map((i, idx) => imgTag(i) + (idx < socialIcons.length - 1 ? '<span style="color:#ccc;margin:0 6px;vertical-align:middle;">·</span>' : '')).join('');
+
     const sendbyte = new SendByte(SENDBYTE_API_KEY);
     let emailId: string | undefined;
     try {
@@ -83,61 +95,27 @@ export async function POST(request: NextRequest) {
         to: normalizedEmail,
         reply_to: parseReplyTo(WELCOME_REPLY_TO_EMAIL),
         subject: 'Welcome to Cencori!',
-        html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #111111; background: #ffffff; margin: 0; padding: 32px 24px; text-align: left;">
-            <div style="max-width: 620px; text-align: left; margin: 0 auto 28px;">
-              <img src="https://cencori.com/logos/logo-w.png" alt="Cencori" style="display: block; height: 44px; width: 44px; margin: 0 auto 28px;" />
-              <h1 style="color: #111111; margin: 0 0 22px; font-size: 20px; line-height: 1.35; font-weight: 400;">Welcome to Cencori!</h1>
-
-              <p style="margin: 0 0 24px; color: #444444; font-size: 16px; line-height: 1.7;">
-                Cencori gives teams the infrastructure to route, observe, secure, and monetize AI products in production.
-              </p>
-
-              <p style="margin: 0 0 24px; color: #444444; font-size: 16px; line-height: 1.7;">
-                You can start by creating your first organization, setting up a project, and generating an API key. From there, open your
-                <a href="https://cencori.com/dashboard/organizations" style="color: #111111; text-decoration: underline;"> dashboard</a>,
-                read the
-                <a href="https://cencori.com/docs/quick-start" style="color: #111111; text-decoration: underline;"> quick start guide</a>,
-                or go straight to the
-                <a href="https://cencori.com/docs/api" style="color: #111111; text-decoration: underline;"> API reference</a>.
-              </p>
-
-              <p style="margin: 0 0 24px; color: #444444; font-size: 16px; line-height: 1.7;">
-                If you want a broader view of how Cencori fits into your stack, start with the
-                <a href="https://cencori.com/docs" style="color: #111111; text-decoration: underline;"> documentation</a>.
-                If you want to move fast, make your first request and build from there.
-              </p>
-
-              <p style="margin: 0; color: #444444; font-size: 16px; line-height: 1.7;">
-                Need help? Reply to this email or contact
-                <a href="mailto:support@cencori.com" style="color: #111111; text-decoration: underline;"> support@cencori.com</a>.
-              </p>
-            </div>
-
-            <div style="max-width: 620px; text-align: center; margin: 36px auto 0; color: #888888; font-size: 12px; line-height: 1.7;">
-              <p style="margin: 0 0 6px;">
-                Questions? Reply to this email or contact
-                <a href="mailto:support@cencori.com" style="color: #666666; text-decoration: underline;"> support@cencori.com</a>
-              </p>
-              <p style="margin: 0 0 6px;">
-                <a href="https://cencori.com/docs" style="color: #666666; text-decoration: underline;">Documentation</a>
-              </p>
-              <p style="margin: 0 0 10px;">
-                <a href="https://cencori.com/docs" style="color: #666666; text-decoration: underline;">Docs</a>
-                <span style="color: #b0b0b0;"> | </span>
-                <a href="https://cencori.com/blog" style="color: #666666; text-decoration: underline;">Blog</a>
-              </p>
-              <p style="margin: 0;">Copyright © ${new Date().getFullYear()} Cencori, Inc. All rights reserved.</p>
-            </div>
-          </body>
-        </html>
-      `,
+        html: `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#111;">
+<div style="max-width:560px;margin:0 auto;padding:32px 24px;">
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hey ${normalizedEmail.split('@')[0]},</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori. You now have the infrastructure to route, observe, secure, and scale AI products in production.</p>
+<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Start by creating your first organization, setting up a project, and generating an API key. From there, open your <a href="https://cencori.com/dashboard/organizations" style="color:#111;text-decoration:underline;">dashboard</a>, read the <a href="https://cencori.com/docs/quick-start" style="color:#111;text-decoration:underline;">quick start guide</a>, or go straight to the <a href="https://cencori.com/docs/api" style="color:#111;text-decoration:underline;">API reference</a>.</p>
+<p style="margin:0 0 24px;font-size:13px;color:#888;">Learn more at cencori.com</p>
+<a href="https://cencori.com/dashboard/organizations" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Open dashboard</a>
+<div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
+<p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
+<p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. · San Francisco, CA</p>
+<p style="margin:0;font-size:11px;color:#aaa;text-align:center;"><a href="{{unsubscribe_url}}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
+</div>
+</div>
+</body>
+</html>`,
       });
       emailId = email.id;
     } catch (err) {
