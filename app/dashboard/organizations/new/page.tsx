@@ -72,18 +72,7 @@ export default function NewOrganizationPage() {
   const selectedPlan = form.watch("plan");
   const isPaidPlan = selectedPlan === "pro" || selectedPlan === "team";
 
-  // Initialize Polar embed checkout handlers
-  useEffect(() => {
-    const initPolar = async () => {
-      try {
-        const { PolarEmbedCheckout } = await import('@polar-sh/checkout/embed');
-        PolarEmbedCheckout.init();
-      } catch (err) {
-        console.error('Failed to init Polar checkout:', err);
-      }
-    };
-    initPolar();
-  }, []);
+  // Initialize Bachs checkout (no-op, redirect-based)
 
   const cleanupAbandonedOrganization = useCallback(async (orgId: string) => {
     const { error } = await supabase
@@ -100,58 +89,10 @@ export default function NewOrganizationPage() {
     return true;
   }, [supabase, refetchData]);
 
-  // Open Polar checkout as overlay modal
-  const openPolarCheckout = useCallback(async (checkoutUrl: string, org: CreatedOrg) => {
-    try {
-      const { PolarEmbedCheckout } = await import('@polar-sh/checkout/embed');
-
-      console.log('[Checkout] Opening Polar overlay for:', checkoutUrl);
-      paymentSucceededRef.current = false;
-
-      // This creates a fullscreen modal overlay
-      const checkout = await PolarEmbedCheckout.create(checkoutUrl, 'dark');
-
-      checkout.addEventListener('success', () => {
-        console.log('[Checkout] Payment successful!');
-        paymentSucceededRef.current = true;
-        setSuccess(true);
-        toast.success('Payment successful!');
-      });
-
-      checkout.addEventListener('close', () => {
-        console.log('[Checkout] Modal closed');
-        setCheckoutLoading(false);
-
-        if (paymentSucceededRef.current) {
-          void refetchData();
-          router.push(`/dashboard/organizations/${org.slug}/projects`);
-          return;
-        }
-
-        void (async () => {
-          const cleanedUp = await cleanupAbandonedOrganization(org.id);
-          if (!cleanedUp) {
-            toast.error("Checkout canceled. Please delete the unfinished organization from settings.");
-            return;
-          }
-
-          setCreatedOrg(null);
-          toast.info("Checkout canceled. Organization was not created.");
-        })();
-      });
-
-    } catch (err) {
-      console.error('[Checkout] Error opening overlay:', err);
-      setCheckoutLoading(false);
-      const cleanedUp = await cleanupAbandonedOrganization(org.id);
-      setCreatedOrg(null);
-      if (!cleanedUp) {
-        toast.error('Failed to open checkout. Please delete the unfinished organization from settings.');
-      } else {
-        toast.error('Failed to open checkout. Organization was not created.');
-      }
-    }
-  }, [router, cleanupAbandonedOrganization, refetchData]);
+  // Redirect to Bachs hosted checkout
+  const openBachsCheckout = useCallback(async (checkoutUrl: string) => {
+    window.location.href = checkoutUrl;
+  }, []);
 
   const onSubmit = async (values: FormValues) => {
     setLoading(true);
@@ -240,7 +181,7 @@ export default function NewOrganizationPage() {
     if (values.plan === 'enterprise') {
       router.push(`/contact?plan=enterprise&org=${orgData.slug}`);
     } else if (values.plan === 'pro' || values.plan === 'team') {
-      // Open Polar checkout overlay
+      // Redirect to Bachs hosted checkout
       setCheckoutLoading(true);
 
       try {
@@ -249,20 +190,18 @@ export default function NewOrganizationPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tier: values.plan,
-            cycle: 'monthly',
+            interval: 'month',
             orgId: orgData.id,
-            embedOrigin: window.location.origin,
           }),
         });
 
         const data = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || !data.url) {
           throw new Error(data.error || 'Failed to create checkout');
         }
 
-        // Open the overlay checkout
-        openPolarCheckout(data.checkoutUrl, orgData);
+        openBachsCheckout(data.url);
 
       } catch (err) {
         console.error("Error creating checkout:", err);

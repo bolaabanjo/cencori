@@ -1,86 +1,49 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { PolarEmbedCheckout } from "@polar-sh/checkout/embed";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 interface EmbeddedCheckoutProps {
-    checkoutUrl: string;
-    onSuccess?: () => void;
-    onClose?: () => void;
+  checkoutUrl: string;
+  onSuccess?: () => void;
+  onClose?: () => void;
 }
 
-export function EmbeddedCheckout({ checkoutUrl, onSuccess, onClose }: EmbeddedCheckoutProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const checkoutRef = useRef<InstanceType<typeof PolarEmbedCheckout> | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+export function EmbeddedCheckout({
+  checkoutUrl,
+  onSuccess,
+  onClose,
+}: EmbeddedCheckoutProps) {
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!containerRef.current || !checkoutUrl) return;
+  useEffect(() => {
+    if (!checkoutUrl) return;
 
-        const initCheckout = async () => {
-            try {
-                // Create the embed checkout
-                const embed = await PolarEmbedCheckout.create(checkoutUrl, 'dark');
-                checkoutRef.current = embed;
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
 
-                // Listen for events
-                embed.addEventListener('success', () => {
-                    console.log('[EmbeddedCheckout] Success!');
-                    onSuccess?.();
-                });
+    window.location.href = checkoutUrl;
 
-                embed.addEventListener('close', () => {
-                    console.log('[EmbeddedCheckout] Closed');
-                    onClose?.();
-                });
+    return () => clearTimeout(timer);
+  }, [checkoutUrl]);
 
-                embed.addEventListener('loaded', () => {
-                    console.log('[EmbeddedCheckout] Loaded');
-                    setLoading(false);
-                });
-
-            } catch (err) {
-                console.error('[EmbeddedCheckout] Error:', err);
-                setError(err instanceof Error ? err.message : 'Failed to load checkout');
-                setLoading(false);
-            }
-        };
-
-        initCheckout();
-
-        return () => {
-            // Cleanup - close the checkout if it exists
-            if (checkoutRef.current) {
-                try {
-                    checkoutRef.current.close();
-                } catch {
-                    // Ignore errors during cleanup
-                }
-            }
-        };
-    }, [checkoutUrl, onSuccess, onClose]);
-
-    if (error) {
-        return (
-            <div className="flex items-center justify-center p-8 text-sm text-red-500">
-                {error}
-            </div>
-        );
-    }
-
-    return (
-        <div className="relative min-h-[600px]">
-            {loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-card">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span className="text-sm">Loading checkout...</span>
-                    </div>
-                </div>
-            )}
-            <div ref={containerRef} className="w-full" />
-        </div>
-    );
+  return (
+    <div className="flex items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Redirecting to secure checkout...
+        </p>
+        {!loading && (
+          <a
+            href={checkoutUrl}
+            className="text-sm text-primary underline underline-offset-2"
+          >
+            Click here if you are not redirected
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }

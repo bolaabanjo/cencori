@@ -74,16 +74,16 @@ export function UpgradeDialog({
             const res = await fetch('/api/billing/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tier, cycle: billingCycle, orgId }),
+                body: JSON.stringify({ tier, interval: billingCycle === 'annual' ? 'year' : 'month', orgId }),
             });
 
             const data = await res.json();
 
-            if (!res.ok || !data.checkoutUrl) {
-                throw new Error(data.error || data.details || 'Failed to create checkout session');
+            if (!res.ok || !data.url) {
+                throw new Error(data.error || 'Failed to create checkout session');
             }
 
-            window.location.href = data.checkoutUrl;
+            window.location.href = data.url;
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Something went wrong');
             setLoading(null);
@@ -219,7 +219,7 @@ export function UpgradeDialog({
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-border/50 bg-muted/20">
                     <p className="text-[10px] text-muted-foreground text-center">
-                        Secure checkout via Polar. Cancel anytime. All plans include SSL &amp; 99.9% uptime SLA.{' '}
+                        Secure checkout via Bachs. Cancel anytime. All plans include SSL &amp; 99.9% uptime SLA.{' '}
                         <a href="/contact" className="underline underline-offset-2 hover:text-foreground transition-colors">
                             Contact sales
                         </a>{' '}

@@ -4,14 +4,8 @@ import { createServerClient } from "@/lib/supabaseServer";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { adjustCredits } from "@/lib/credits";
 import { revalidatePath } from "next/cache";
-import { Polar } from "@polar-sh/sdk";
-import { getProductId } from "@/lib/polarClient";
-
-// Initialize Polar
-const polar = new Polar({
-    accessToken: process.env.POLAR_API_KEY,
-    server: "production", // Switch to production as we are using live keys
-});
+import { listPayins, getProductId } from "@/lib/bachsClient";
+import type { BachsPayin } from "@/lib/bachsClient";
 
 type OrgBillingDetails = {
     id: string;
@@ -19,7 +13,7 @@ type OrgBillingDetails = {
     name: string;
     owner_id: string;
     billing_email: string | null;
-    polar_customer_id: string | null;
+    bachs_customer_id: string | null;
     subscription_id: string | null;
     subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     billing_frozen?: boolean | null;
@@ -85,7 +79,7 @@ async function getAuthorizedOrgBillingDetails(orgSlug: string): Promise<{ org: O
 
     const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('id, slug, name, owner_id, billing_email, polar_customer_id, subscription_id, subscription_tier')
+        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, subscription_id, subscription_tier')
         .eq('slug', orgSlug)
         .maybeSingle();
 
@@ -129,7 +123,7 @@ async function getAuthorizedOrgOperatorContext(orgSlug: string): Promise<Operato
 
     const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('id, slug, name, owner_id, billing_email, polar_customer_id, subscription_id, subscription_tier, billing_frozen, billing_freeze_reason, billing_frozen_at')
+        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, subscription_id, subscription_tier, billing_frozen, billing_freeze_reason, billing_frozen_at')
         .eq('slug', orgSlug)
         .maybeSingle();
 
@@ -206,81 +200,42 @@ export async function getInvoices(orgSlug: string) {
             return [];
         }
 
-        if (!orgResult.org.polar_customer_id) {
+        const customerId = orgResult.org.bachs_customer_id;
+        if (!customerId) {
             return [];
         }
 
-        const orderIterator = await polar.orders.list({
-            customerId: orgResult.org.polar_customer_id,
-            sorting: ['-created_at'],
-            limit: 20,
-        });
+        const response = await listPayins({ customer_id: customerId, per_page: 20 });
 
-        const orders: Array<{
-            id: string;
-            invoiceNumber: string;
-            createdAt: Date;
-            totalAmount: number;
-            status: string;
-            isInvoiceGenerated: boolean;
-        }> = [];
+        const payins = response.payins || [];
 
-        for await (const page of orderIterator) {
-            if (!page?.result?.items?.length) {
-                continue;
-            }
-
-            for (const order of page.result.items) {
-                orders.push({
-                    id: order.id,
-                    invoiceNumber: order.invoiceNumber,
-                    createdAt: order.createdAt,
-                    totalAmount: order.totalAmount,
-                    status: order.status,
-                    isInvoiceGenerated: order.isInvoiceGenerated,
-                });
-            }
-
-            if (orders.length >= 20) {
-                break;
-            }
-        }
-
-        const invoices = await Promise.all(
-            orders.slice(0, 20).map(async (order): Promise<BillingInvoice> => {
-                let pdfUrl: string | null = null;
-
-                if (order.isInvoiceGenerated) {
-                    try {
-                        const invoice = await polar.orders.invoice({ id: order.id });
-                        pdfUrl = invoice.url;
-                    } catch (invoiceError) {
-                        console.error('[Billing Actions] Failed to fetch invoice URL:', invoiceError);
-                    }
-                }
-
-                const status: BillingInvoice['status'] = order.status === 'paid'
+        return payins.map((payin: BachsPayin): BillingInvoice => {
+            const status: BillingInvoice['status'] =
+                payin.status === 'SUCCEEDED' || payin.status === 'SETTLED'
                     ? 'paid'
-                    : order.status === 'pending'
+                    : payin.status === 'PENDING' || payin.status === 'PENDING'
                         ? 'pending'
                         : 'refunded';
 
-                return {
-                    id: order.invoiceNumber || order.id,
-                    orderId: order.id,
-                    date: order.createdAt.toISOString(),
-                    amount: order.totalAmount / 100,
-                    status,
-                    pdfUrl,
-                };
-            })
-        );
-
-        return invoices;
+            return {
+                id: payin.id,
+                orderId: payin.charge_id || payin.id,
+                date: payin.created_at,
+                amount: Math.round(parseFloat(payin.amount) * 100) / 100,
+                status,
+                pdfUrl: null,
+            };
+        });
     } catch (error) {
         console.error("Error fetching invoices:", error);
         return [];
     }
+}
+
+export async function getPaymentMethods(
+    _orgSlug: string
+): Promise<BillingPaymentMethod[]> {
+    return [];
 }
 
 export async function getCustomerPortalUrl(orgSlug: string) {
@@ -290,86 +245,39 @@ export async function getCustomerPortalUrl(orgSlug: string) {
             return null;
         }
 
-        const org = orgResult.org;
-        const billingReturnUrl = `${getAppBaseUrl()}/dashboard/organizations/${org.slug}/billing`;
+        const billingReturnUrl = `${getAppBaseUrl()}/dashboard/organizations/${orgResult.org.slug}/billing`;
 
-        // Existing customer => customer portal
-        if (org.polar_customer_id) {
-            const session = await polar.customerSessions.create({
-                customerId: org.polar_customer_id,
-                returnUrl: billingReturnUrl,
-            });
-
-            return session.customerPortalUrl;
+        if (orgResult.org.bachs_customer_id) {
+            return 'https://bachs.io/dashboard';
         }
 
-        // No customer yet => generate checkout (free defaults to Pro monthly).
-        if (org.subscription_tier === 'pro' || org.subscription_tier === 'team' || org.subscription_tier === 'free') {
-            const checkoutTier = org.subscription_tier === 'team' ? 'team' : 'pro';
-            const checkout = await polar.checkouts.create({
-                products: [getProductId(checkoutTier, 'monthly')],
-                customerEmail: org.billing_email || undefined,
-                customerName: org.name,
-                metadata: {
-                    org_id: org.id,
-                    org_slug: org.slug,
-                },
-                successUrl: `${billingReturnUrl}?success=true`,
-            });
+        if (orgResult.org.subscription_tier === 'pro' || orgResult.org.subscription_tier === 'team' || orgResult.org.subscription_tier === 'free') {
+            const checkoutTier = orgResult.org.subscription_tier === 'team' ? 'team' : 'pro';
+            const { checkout_url } = await fetch(
+                `${process.env.BACHS_API_BASE || 'https://sandbox-api.bachs.io/v1'}/checkout-sessions`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.BACHS_API_KEY}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        product_cart: [{ product_id: getProductId(checkoutTier, 'monthly'), quantity: 1 }],
+                        customer: { email: orgResult.org.billing_email || undefined },
+                        return_url: billingReturnUrl,
+                        cancel_url: billingReturnUrl,
+                        metadata: { org_id: orgResult.org.id, org_slug: orgResult.org.slug, purchase_type: 'subscription' },
+                    }),
+                }
+            ).then(r => r.json()).catch(() => ({ checkout_url: null }));
 
-            return checkout.url || null;
+            return checkout_url || null;
         }
 
         return null;
     } catch (error) {
         console.error("Error creating billing session:", error);
         return null;
-    }
-}
-
-export async function getPaymentMethods(orgSlug: string) {
-    try {
-        const orgResult = await getAuthorizedOrgBillingDetails(orgSlug);
-        if ('error' in orgResult || !orgResult.org.polar_customer_id) {
-            return [] as BillingPaymentMethod[];
-        }
-
-        const session = await polar.customerSessions.create({
-            customerId: orgResult.org.polar_customer_id,
-            returnUrl: `${getAppBaseUrl()}/dashboard/organizations/${orgResult.org.slug}/billing`,
-        });
-
-        const methodsIterator = await polar.customerPortal.customers.listPaymentMethods(
-            { customerSession: session.token },
-            { limit: 20 }
-        );
-
-        const methods: BillingPaymentMethod[] = [];
-
-        for await (const page of methodsIterator) {
-            for (const method of page.result.items) {
-                if (method.type === 'card' && 'methodMetadata' in method) {
-                    methods.push({
-                        id: method.id,
-                        brand: method.methodMetadata.brand || 'Card',
-                        last4: method.methodMetadata.last4 || '----',
-                        expMonth: method.methodMetadata.expMonth || 0,
-                        expYear: method.methodMetadata.expYear || 0,
-                        isDefault: false,
-                    });
-                    continue;
-                }
-            }
-        }
-
-        if (methods.length > 0) {
-            methods[0].isDefault = true;
-        }
-
-        return methods;
-    } catch (error) {
-        console.error('[Billing Actions] Error fetching payment methods:', error);
-        return [] as BillingPaymentMethod[];
     }
 }
 

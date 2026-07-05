@@ -14,6 +14,7 @@ interface OrganizationRow {
     subscription_status: string | null;
     subscription_id?: string | null;
     polar_customer_id?: string | null;
+    bachs_customer_id?: string | null;
 }
 
 interface ScanSubscriptionRow {
@@ -67,7 +68,8 @@ function isActiveStatus(status: string | null | undefined): boolean {
 function hasBillingIdentity(org: OrganizationRow): boolean {
     const hasSubscriptionId = typeof org.subscription_id === "string" && org.subscription_id.length > 0;
     const hasPolarCustomerId = typeof org.polar_customer_id === "string" && org.polar_customer_id.length > 0;
-    return hasSubscriptionId || hasPolarCustomerId;
+    const hasBachsCustomerId = typeof org.bachs_customer_id === "string" && org.bachs_customer_id.length > 0;
+    return hasSubscriptionId || hasPolarCustomerId || hasBachsCustomerId;
 }
 
 function hasEligiblePlatformAccess(org: OrganizationRow): boolean {
@@ -132,7 +134,7 @@ export async function getScanEntitlementForUser(userId: string): Promise<ScanEnt
     const [{ data: ownedOrgs, error: ownedOrgsError }, { data: memberships, error: membershipsError }] = await Promise.all([
         supabaseAdmin
             .from("organizations")
-            .select("id, subscription_tier, subscription_status, subscription_id, polar_customer_id")
+            .select("id, subscription_tier, subscription_status, subscription_id, polar_customer_id, bachs_customer_id")
             .eq("owner_id", userId),
         supabaseAdmin
             .from("organization_members")
@@ -159,7 +161,7 @@ export async function getScanEntitlementForUser(userId: string): Promise<ScanEnt
     if (membershipOrgIds.length > 0) {
         const { data: membershipOrgs, error: membershipOrgsError } = await supabaseAdmin
             .from("organizations")
-            .select("id, subscription_tier, subscription_status, subscription_id, polar_customer_id")
+            .select("id, subscription_tier, subscription_status, subscription_id, polar_customer_id, bachs_customer_id")
             .in("id", membershipOrgIds);
 
         if (membershipOrgsError) {

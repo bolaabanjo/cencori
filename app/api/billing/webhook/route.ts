@@ -1,562 +1,256 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
-import { addCredits } from '@/lib/credits';
-import { trackEvent } from '@/lib/track-event';
-import { writeAuditLog } from '@/lib/audit-log';
 import {
-    getCreditTopupCreditsByProductId,
-    getLimitForTier,
-    getScanTierByProductId,
-    netCreditsAfterFee,
-    PLATFORM_FEE_PERCENT,
-    type ScanSubscriptionTier,
-    type SubscriptionTier,
-} from '@/lib/polarClient';
-import { validateEvent, WebhookVerificationError } from '@polar-sh/sdk/webhooks';
+  verifyBachsWebhook,
+  getProductTypeFromId,
+  getSubscriptionTierFromProductId,
+  getBillingInterval,
+  getScanTierByProductId,
+  getCreditTopupCreditsByProductId,
+  netCreditsAfterFee,
+  computePeriodEnd,
+  type BachsWebhookEvent,
+} from '@/lib/bachsClient';
+import { addCredits } from '@/lib/credits';
 
-type SubscriptionPayload = {
-    id: string;
-    customerId: string;
-    productId: string;
-    status: string;
-    currentPeriodStart: Date | string;
-    currentPeriodEnd: Date | string | null;
-    metadata?: Record<string, string | number | boolean>;
-};
+export const runtime = 'nodejs';
 
-type PolarMetadata = Record<string, string | number | boolean | null>;
-
-type OrderPaidPayload = {
-    id: string;
-    customerId?: string | null;
-    productId?: string | null;
-    metadata?: PolarMetadata;
-    checkout?: {
-        metadata?: PolarMetadata;
-    };
-};
-
-function getProductIdToTier(productId: string | null | undefined): SubscriptionTier | null {
-    if (!productId) {
-        return null;
-    }
-
-    const proMonthly = process.env.POLAR_PRODUCT_PRO_MONTHLY;
-    const proAnnual = process.env.POLAR_PRODUCT_PRO_ANNUAL;
-    const teamMonthly = process.env.POLAR_PRODUCT_TEAM_MONTHLY;
-    const teamAnnual = process.env.POLAR_PRODUCT_TEAM_ANNUAL;
-
-    if (productId === proMonthly || productId === proAnnual) {
-        return 'pro';
-    }
-    if (productId === teamMonthly || productId === teamAnnual) {
-        return 'team';
-    }
-    return null;
-}
-
-function toNullableISOString(value: Date | string | null | undefined): string | null {
-    if (!value) {
-        return null;
-    }
-
-    try {
-        const date = value instanceof Date ? value : new Date(value);
-        if (Number.isNaN(date.getTime())) {
-            return null;
-        }
-        return date.toISOString();
-    } catch (error) {
-        console.error('[Polar Webhook] Failed to normalize date:', error);
-        return null;
-    }
-}
-
-async function resolveOrganizationId(
-    supabaseAdmin: ReturnType<typeof createAdminClient>,
-    payload: SubscriptionPayload
+async function handleCollectionSucceeded(
+  data: BachsWebhookEvent['data'],
+  supabase: ReturnType<typeof createAdminClient>
 ) {
-    const metadataOrgId = payload.metadata?.org_id;
-    if (typeof metadataOrgId === 'string' && metadataOrgId.length > 0) {
-        return metadataOrgId;
-    }
+  const productId = data.product_cart[0]?.product_id;
+  if (!productId) {
+    console.warn('[Bachs Webhook] No product_id in product_cart', data.charge_id);
+    return;
+  }
 
-    const { data: bySubscription, error: subscriptionLookupError } = await supabaseAdmin
+  const productType =
+    data.metadata?.purchase_type || getProductTypeFromId(productId);
+
+  switch (productType) {
+    case 'subscription': {
+      let orgId: string | undefined = data.metadata?.org_id;
+
+      if (!orgId) {
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('bachs_customer_id', data.customer.id)
+          .maybeSingle();
+        if (!org) {
+          console.warn(
+            '[Bachs Webhook] Could not resolve org for subscription',
+            data.charge_id
+          );
+          return;
+        }
+        orgId = org.id;
+      }
+
+      const tier = getSubscriptionTierFromProductId(productId);
+      if (!tier) {
+        console.warn('[Bachs Webhook] Unknown subscription product', productId);
+        return;
+      }
+
+      const interval = getBillingInterval(productId);
+      const now = new Date();
+      const periodEnd = interval
+        ? computePeriodEnd(interval, now)
+        : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const { error } = await supabase
         .from('organizations')
-        .select('id')
-        .eq('subscription_id', payload.id)
-        .maybeSingle();
+        .update({
+          subscription_tier: tier,
+          subscription_status: 'active',
+          subscription_current_period_start: now.toISOString(),
+          subscription_current_period_end: periodEnd.toISOString(),
+          subscription_id: data.checkout_id,
+          bachs_customer_id: data.customer.id,
+        })
+        .eq('id', orgId);
 
-    if (subscriptionLookupError) {
-        console.error('[Polar Webhook] Failed to resolve org by subscription_id:', subscriptionLookupError);
+      if (error) {
+        console.error('[Bachs Webhook] Failed to update org subscription', error);
+      }
+      break;
     }
 
-    if (bySubscription?.id) {
-        return bySubscription.id;
-    }
+    case 'credits_topup': {
+      const orgId = data.metadata?.org_id;
+      if (!orgId) {
+        console.warn(
+          '[Bachs Webhook] Missing org_id in metadata for credits topup',
+          data.charge_id
+        );
+        return;
+      }
 
-    const { data: byCustomer, error: customerLookupError } = await supabaseAdmin
+      const grossCredits = getCreditTopupCreditsByProductId(productId);
+      if (!grossCredits) {
+        console.warn('[Bachs Webhook] Unknown credits product', productId);
+        return;
+      }
+
+      await addCredits(
+        orgId,
+        netCreditsAfterFee(grossCredits),
+        'topup',
+        'Polar.sh credits top-up'
+      );
+
+      await supabase
         .from('organizations')
-        .select('id')
-        .eq('polar_customer_id', payload.customerId)
-        .maybeSingle();
-
-    if (customerLookupError) {
-        console.error('[Polar Webhook] Failed to resolve org by polar_customer_id:', customerLookupError);
+        .update({ bachs_customer_id: data.customer.id })
+        .eq('id', orgId);
+      break;
     }
 
-    return byCustomer?.id ?? null;
-}
+    case 'scan_subscription': {
+      let userId: string | undefined = data.metadata?.user_id;
 
-async function resolveScanSubscriptionUserId(
-    supabaseAdmin: ReturnType<typeof createAdminClient>,
-    payload: SubscriptionPayload
-) {
-    const metadataUserId = payload.metadata?.user_id;
-    if (typeof metadataUserId === 'string' && metadataUserId.length > 0) {
-        return metadataUserId;
-    }
-
-    const { data: bySubscription, error: subscriptionLookupError } = await supabaseAdmin
-        .from('scan_subscriptions')
-        .select('user_id')
-        .eq('subscription_id', payload.id)
-        .maybeSingle();
-
-    if (subscriptionLookupError) {
-        console.error('[Polar Webhook] Failed to resolve scan user by subscription_id:', subscriptionLookupError);
-    }
-
-    if (bySubscription?.user_id) {
-        return bySubscription.user_id;
-    }
-
-    if (!payload.customerId) {
-        return null;
-    }
-
-    const { data: byCustomer, error: customerLookupError } = await supabaseAdmin
-        .from('scan_subscriptions')
-        .select('user_id')
-        .eq('polar_customer_id', payload.customerId)
-        .maybeSingle();
-
-    if (customerLookupError) {
-        console.error('[Polar Webhook] Failed to resolve scan user by polar_customer_id:', customerLookupError);
-    }
-
-    return byCustomer?.user_id ?? null;
-}
-
-async function upsertScanSubscription(
-    supabaseAdmin: ReturnType<typeof createAdminClient>,
-    payload: SubscriptionPayload,
-    userId: string,
-    scanTier: ScanSubscriptionTier | null,
-    fallbackStatus: 'active' | 'canceled' = 'active'
-) {
-    let resolvedScanTier = scanTier;
-    if (!resolvedScanTier) {
-        const { data: existingRow, error: existingLookupError } = await supabaseAdmin
-            .from('scan_subscriptions')
-            .select('scan_tier')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        if (existingLookupError) {
-            console.error('[Polar Webhook] Failed to resolve existing scan tier:', existingLookupError);
-            throw existingLookupError;
+      if (!userId) {
+        const { data: sub } = await supabase
+          .from('scan_subscriptions')
+          .select('user_id')
+          .eq('bachs_customer_id', data.customer.id)
+          .maybeSingle();
+        if (sub) {
+          userId = sub.user_id;
+        } else {
+          console.warn(
+            '[Bachs Webhook] Could not resolve user for scan subscription',
+            data.charge_id
+          );
+          return;
         }
+      }
 
-        if (!existingRow?.scan_tier) {
-            throw new Error(`Unable to resolve scan tier for scan subscription ${payload.id}`);
-        }
+      const scanTier = getScanTierByProductId(productId);
+      if (!scanTier) {
+        console.warn('[Bachs Webhook] Unknown scan product', productId);
+        return;
+      }
 
-        resolvedScanTier = existingRow.scan_tier as ScanSubscriptionTier;
+      const now = new Date();
+      const { error } = await supabase.from('scan_subscriptions').upsert(
+        {
+          user_id: userId,
+          scan_tier: scanTier,
+          status: 'active',
+          bachs_customer_id: data.customer.id,
+          current_period_start: now.toISOString(),
+          current_period_end: new Date(
+            now.getTime() + 30 * 24 * 60 * 60 * 1000
+          ).toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
+
+      if (error) {
+        console.error(
+          '[Bachs Webhook] Failed to upsert scan subscription',
+          error
+        );
+      }
+      break;
     }
 
-    const updates: {
-        user_id: string;
-        scan_tier: ScanSubscriptionTier;
-        status: string;
-        subscription_id: string;
-        polar_customer_id: string;
-        current_period_start: string | null;
-        current_period_end: string | null;
-    } = {
-        user_id: userId,
-        scan_tier: resolvedScanTier,
-        status: payload.status || fallbackStatus,
-        subscription_id: payload.id,
-        polar_customer_id: payload.customerId,
-        current_period_start: toNullableISOString(payload.currentPeriodStart),
-        current_period_end: toNullableISOString(payload.currentPeriodEnd),
-    };
-
-    const { error } = await supabaseAdmin
-        .from('scan_subscriptions')
-        .upsert(updates, { onConflict: 'user_id' });
-
-    if (error) {
-        console.error('[Polar Webhook] Scan subscription upsert error:', error);
-        throw error;
-    }
+    default:
+      console.warn('[Bachs Webhook] Unhandled purchase type', {
+        productType,
+        productId,
+      });
+  }
 }
 
-function parsePositiveNumber(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-        return value;
-    }
-
-    if (typeof value === 'string') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed;
-        }
-    }
-
-    return null;
-}
-
-function extractOrderMetadata(payload: OrderPaidPayload): PolarMetadata {
-    if (payload.metadata && typeof payload.metadata === 'object') {
-        return payload.metadata;
-    }
-
-    if (payload.checkout?.metadata && typeof payload.checkout.metadata === 'object') {
-        return payload.checkout.metadata;
-    }
-
-    return {};
-}
-
-async function resolveOrganizationIdForOrder(
-    supabaseAdmin: ReturnType<typeof createAdminClient>,
-    payload: OrderPaidPayload,
-    metadata: PolarMetadata
+async function handleCollectionFailed(
+  data: BachsWebhookEvent['data'],
+  supabase: ReturnType<typeof createAdminClient>
 ) {
-    const metadataOrgId = metadata.org_id;
-    if (typeof metadataOrgId === 'string' && metadataOrgId.length > 0) {
-        return metadataOrgId;
-    }
+  const customerId = data.customer.id;
+  if (!customerId) return;
 
-    if (!payload.customerId) {
-        return null;
-    }
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('bachs_customer_id', customerId)
+    .maybeSingle();
 
-    const { data: byCustomer, error: customerLookupError } = await supabaseAdmin
-        .from('organizations')
-        .select('id')
-        .eq('polar_customer_id', payload.customerId)
-        .maybeSingle();
+  if (org) {
+    await supabase
+      .from('organizations')
+      .update({ subscription_status: 'past_due' })
+      .eq('id', org.id);
+  }
 
-    if (customerLookupError) {
-        console.error('[Polar Webhook] Failed to resolve org by polar_customer_id:', customerLookupError);
-    }
+  const { data: scanSub } = await supabase
+    .from('scan_subscriptions')
+    .select('user_id')
+    .eq('bachs_customer_id', customerId)
+    .maybeSingle();
 
-    return byCustomer?.id ?? null;
-}
-
-async function hasExistingTopupForOrder(
-    supabaseAdmin: ReturnType<typeof createAdminClient>,
-    organizationId: string,
-    orderId: string
-) {
-    const description = `Polar top-up order ${orderId}`;
-    const { data, error } = await supabaseAdmin
-        .from('credit_transactions')
-        .select('id')
-        .eq('organization_id', organizationId)
-        .eq('transaction_type', 'topup')
-        .eq('description', description)
-        .maybeSingle();
-
-    if (error) {
-        console.error('[Polar Webhook] Failed checking existing top-up transaction:', error);
-        return false;
-    }
-
-    return !!data?.id;
+  if (scanSub) {
+    await supabase
+      .from('scan_subscriptions')
+      .update({ status: 'past_due' })
+      .eq('user_id', scanSub.user_id);
+  }
 }
 
 export async function POST(req: NextRequest) {
-    try {
-        const rawBody = await req.text();
-        const webhookSecret = process.env.POLAR_WEBHOOK_SECRET;
+  const rawBody = await req.text();
 
-        if (!webhookSecret) {
-            console.error('[Polar Webhook] Missing POLAR_WEBHOOK_SECRET');
-            return NextResponse.json(
-                { error: 'Missing webhook secret configuration' },
-                { status: 500 }
-            );
-        }
+  let event: BachsWebhookEvent;
+  try {
+    event = verifyBachsWebhook(
+      rawBody,
+      req.headers.get('X-Bachs-Timestamp') || '',
+      req.headers.get('X-Bachs-Signature') || ''
+    );
+  } catch (err) {
+    console.error('[Bachs Webhook] Signature verification failed:', err);
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+  }
 
-        let event: ReturnType<typeof validateEvent>;
-        try {
-            event = validateEvent(rawBody, Object.fromEntries(req.headers.entries()), webhookSecret);
-        } catch (error) {
-            if (error instanceof WebhookVerificationError) {
-                console.error('[Polar Webhook] Invalid signature');
-                return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-            }
-            throw error;
-        }
+  const supabase = createAdminClient();
 
-        const supabaseAdmin = createAdminClient();
+  const { data: existing } = await supabase
+    .from('webhook_events')
+    .select('id')
+    .eq('event_id', event.id)
+    .maybeSingle();
 
-        console.log('[Polar Webhook] Received event:', event.type);
+  if (existing) {
+    return NextResponse.json({ received: true });
+  }
 
-        switch (event.type) {
-            case 'subscription.created':
-            case 'subscription.active':
-            case 'subscription.uncanceled':
-            case 'subscription.updated': {
-                const payload: SubscriptionPayload = event.data;
-                const scanTier = getScanTierByProductId(payload.productId);
-                const scanUserId = await resolveScanSubscriptionUserId(supabaseAdmin, payload);
-
-                if (scanTier || scanUserId) {
-                    if (!scanUserId) {
-                        console.warn('[Polar Webhook] Unable to resolve user for scan subscription update:', payload.id);
-                        return NextResponse.json({ received: true, warning: 'scan_user_not_resolved' });
-                    }
-
-                    await upsertScanSubscription(supabaseAdmin, payload, scanUserId, scanTier, 'active');
-                    console.log(`[Polar Webhook] ✓ Updated scan subscription for user ${scanUserId} (${scanTier || 'existing_tier'})`);
-                    break;
-                }
-
-                const orgId = await resolveOrganizationId(supabaseAdmin, payload);
-
-                if (!orgId) {
-                    console.warn('[Polar Webhook] Unable to resolve organization for subscription update:', payload.id);
-                    return NextResponse.json({ received: true, warning: 'org_not_resolved' });
-                }
-
-                const tier = getProductIdToTier(payload.productId);
-                if (!tier) {
-                    console.warn('[Polar Webhook] Subscription update with unmapped product, ignoring:', payload.productId);
-                    break;
-                }
-                const limit = getLimitForTier(tier);
-
-                const { error } = await supabaseAdmin
-                    .from('organizations')
-                    .update({
-                        subscription_tier: tier,
-                        subscription_status: payload.status || 'active',
-                        subscription_id: payload.id,
-                        polar_customer_id: payload.customerId,
-                        subscription_current_period_start: toNullableISOString(payload.currentPeriodStart),
-                        subscription_current_period_end: toNullableISOString(payload.currentPeriodEnd),
-                        monthly_request_limit: limit,
-                    })
-                    .eq('id', orgId);
-
-                if (error) {
-                    console.error('[Polar Webhook] Database update error:', error);
-                    throw error;
-                }
-
-                trackEvent({ event_type: 'subscription.created', product: 'billing', organization_id: orgId, metadata: { tier, subscription_id: payload.id } });
-                writeAuditLog({
-                    organizationId: orgId,
-                    category: 'billing',
-                    action: 'tier_changed',
-                    resourceType: 'subscription',
-                    resourceId: payload.id,
-                    actorType: 'webhook',
-                    description: `Subscription upgraded to ${tier} tier`,
-                    metadata: { tier, subscription_id: payload.id, polar_customer_id: payload.customerId },
-                });
-
-                console.log(`[Polar Webhook] ✓ Updated org ${orgId} to ${tier} tier`);
-                break;
-            }
-
-            case 'subscription.canceled':
-            case 'subscription.revoked': {
-                const payload: SubscriptionPayload = event.data;
-                const scanTier = getScanTierByProductId(payload.productId);
-                const scanUserId = await resolveScanSubscriptionUserId(supabaseAdmin, payload);
-
-                if (scanTier || scanUserId) {
-                    if (!scanUserId) {
-                        console.warn('[Polar Webhook] Unable to resolve user for scan subscription cancellation:', payload.id);
-                        return NextResponse.json({ received: true, warning: 'scan_user_not_resolved' });
-                    }
-
-                    await upsertScanSubscription(supabaseAdmin, payload, scanUserId, scanTier, 'canceled');
-                    console.log(`[Polar Webhook] ✓ Marked scan subscription canceled for user ${scanUserId}`);
-                    break;
-                }
-
-                const orgId = await resolveOrganizationId(supabaseAdmin, payload);
-
-                if (!orgId) {
-                    console.warn('[Polar Webhook] Unable to resolve organization for subscription cancellation:', payload.id);
-                    return NextResponse.json({ received: true, warning: 'org_not_resolved' });
-                }
-
-                const { error } = await supabaseAdmin
-                    .from('organizations')
-                    .update({
-                        subscription_tier: 'free',
-                        subscription_status: payload.status || 'canceled',
-                        subscription_id: payload.id,
-                        polar_customer_id: payload.customerId,
-                        subscription_current_period_end: toNullableISOString(payload.currentPeriodEnd),
-                        monthly_request_limit: getLimitForTier('free'),
-                    })
-                    .eq('id', orgId);
-
-                if (error) {
-                    console.error('[Polar Webhook] Database update error:', error);
-                    throw error;
-                }
-
-                trackEvent({ event_type: 'subscription.canceled', product: 'billing', organization_id: orgId, metadata: { subscription_id: payload.id } });
-                writeAuditLog({
-                    organizationId: orgId,
-                    category: 'billing',
-                    action: 'tier_changed',
-                    resourceType: 'subscription',
-                    resourceId: payload.id,
-                    actorType: 'webhook',
-                    description: 'Subscription canceled, reverted to free tier',
-                    metadata: { subscription_id: payload.id },
-                });
-
-                console.log(`[Polar Webhook] ✓ Reverted org ${orgId} to free tier`);
-                break;
-            }
-
-            case 'order.paid': {
-                const payload: OrderPaidPayload = event.data as OrderPaidPayload;
-                const metadata = extractOrderMetadata(payload);
-
-                if (metadata.purchase_type !== 'credits_topup') {
-                    console.log('[Polar Webhook] Order paid for non-topup product, ignoring.');
-                    break;
-                }
-
-                if (!payload.id) {
-                    console.warn('[Polar Webhook] Missing order id for top-up order');
-                    break;
-                }
-
-                const orgId = await resolveOrganizationIdForOrder(supabaseAdmin, payload, metadata);
-                if (!orgId) {
-                    console.warn('[Polar Webhook] Unable to resolve organization for top-up order:', payload.id);
-                    return NextResponse.json({ received: true, warning: 'org_not_resolved' });
-                }
-
-                const existingTopup = await hasExistingTopupForOrder(supabaseAdmin, orgId, payload.id);
-                if (existingTopup) {
-                    console.log(`[Polar Webhook] Top-up already applied for order ${payload.id}, skipping duplicate event`);
-                    break;
-                }
-
-                const creditsFromMetadata = parsePositiveNumber(metadata.credits_amount);
-                const creditsFromProduct = getCreditTopupCreditsByProductId(payload.productId);
-                const grossCredits = creditsFromMetadata ?? creditsFromProduct;
-
-                if (!grossCredits || grossCredits <= 0) {
-                    console.warn('[Polar Webhook] Unable to determine credits amount for top-up order:', payload.id);
-                    break;
-                }
-
-                const netCredits = netCreditsAfterFee(grossCredits);
-                const feeCredits = Math.round((grossCredits - netCredits) * 100) / 100;
-
-                const credited = await addCredits(
-                    orgId,
-                    netCredits,
-                    'topup',
-                    `Polar top-up order ${payload.id}`,
-                    {
-                        polar_order_id: payload.id,
-                        polar_customer_id: payload.customerId ?? null,
-                        credits_amount: grossCredits,
-                        net_credits: netCredits,
-                        platform_fee: feeCredits,
-                        platform_fee_pct: PLATFORM_FEE_PERCENT,
-                        credit_pack: typeof metadata.credit_pack === 'string' ? metadata.credit_pack : null,
-                    }
-                );
-
-                if (!credited) {
-                    throw new Error(`Failed to apply credits for order ${payload.id}`);
-                }
-
-                if (feeCredits > 0) {
-                    const { adjustCredits } = await import('@/lib/credits');
-                    await adjustCredits(
-                        orgId,
-                        -feeCredits,
-                        'adjustment',
-                        `Platform fee (${(PLATFORM_FEE_PERCENT * 100).toFixed(1)}%) on order ${payload.id}`,
-                        {
-                            polar_order_id: payload.id,
-                            gross_credits: grossCredits,
-                            net_credits: netCredits,
-                            platform_fee_pct: PLATFORM_FEE_PERCENT,
-                        }
-                    );
-                }
-
-                if (payload.customerId) {
-                    await supabaseAdmin
-                        .from('organizations')
-                        .update({ polar_customer_id: payload.customerId })
-                        .eq('id', orgId);
-                }
-
-                trackEvent({ event_type: 'credits.topup', product: 'billing', organization_id: orgId, metadata: { order_id: payload.id, gross_credits: grossCredits, net_credits: netCredits, platform_fee: feeCredits } });
-                writeAuditLog({
-                    organizationId: orgId,
-                    category: 'billing',
-                    action: 'topup',
-                    resourceType: 'credits',
-                    resourceId: payload.id,
-                    actorType: 'webhook',
-                    description: `Credits topped up: $${grossCredits.toFixed(2)} ($${netCredits.toFixed(2)} after ${(PLATFORM_FEE_PERCENT * 100).toFixed(1)}% platform fee)`,
-                    metadata: { order_id: payload.id, gross_credits: grossCredits, net_credits: netCredits, platform_fee: feeCredits },
-                });
-
-                console.log(`[Polar Webhook] ✓ Credited org ${orgId} with $${netCredits.toFixed(2)} (gross: $${grossCredits.toFixed(2)}) from order ${payload.id}`);
-                break;
-            }
-
-            case 'checkout.created':
-            case 'checkout.updated':
-                console.log(`[Polar Webhook] Checkout event: ${event.type}`);
-                break;
-
-            case 'organization.updated':
-            case 'customer.created':
-            case 'customer.updated':
-                console.log(`[Polar Webhook] Informational event: ${event.type}`);
-                break;
-
-            default:
-                console.log(`[Polar Webhook] Unhandled event type: ${event.type}`);
-        }
-
-        return NextResponse.json({ received: true });
-
-    } catch (error: unknown) {
-        console.error('[Polar Webhook] Error processing webhook:', error);
-
-        let errorMessage = 'Unknown error';
-        if (error instanceof Error) {
-            errorMessage = error.message;
-        }
-
-        return NextResponse.json(
-            { error: 'Webhook processing failed', details: errorMessage },
-            { status: 500 }
-        );
+  try {
+    switch (event.type) {
+      case 'collection.succeeded':
+        await handleCollectionSucceeded(event.data, supabase);
+        break;
+      case 'collection.failed':
+        await handleCollectionFailed(event.data, supabase);
+        break;
+      case 'collection.abandoned':
+      case 'collection.underpaid':
+        break;
     }
+
+    await supabase.from('webhook_events').insert({
+      event_id: event.id,
+      event_type: event.type,
+      charge_id: event.data.charge_id || null,
+      checkout_id: event.data.checkout_id || null,
+      processed_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Bachs Webhook] Processing error:', error);
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
 }
