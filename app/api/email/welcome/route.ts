@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#111;">
 <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
+<img src="https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png" alt="Cencori" style="display:block;width:100%;height:auto;margin-bottom:32px;">
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori.</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Cencori helps organizations build and run AI applications by making access to frontier AI models simple, secure, and reliable.</p>
