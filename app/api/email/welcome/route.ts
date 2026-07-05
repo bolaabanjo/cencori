@@ -112,7 +112,6 @@ export async function POST(request: NextRequest) {
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori.</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Cencori helps organizations build and run AI applications by making access to frontier AI models simple, secure, and reliable.</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Your workspace is ready.</p>
 <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#555;">To get started:</p>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Create your first project', 'https://cencori.com/dashboard/organizations')}</p>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Generate an API key', 'https://cencori.com/dashboard/organizations')}</p>
@@ -120,10 +119,8 @@ export async function POST(request: NextRequest) {
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Start building with models from OpenAI, Anthropic, Google, Meta, DeepSeek, Mistral, and more\u2014all through a single API.</p>
 <a href="https://cencori.com/pricing" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Upgrade to Pro</a>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;margin-top:24px;">This is the first step in what we\u2019re building.</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">We\u2019re glad you\u2019re here.</p>
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Build different.</p>
-<p style="margin:0 0 32px;font-size:14px;line-height:1.6;color:#555;">The Cencori Team</p>
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
 <p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
 <p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. &#183; San Francisco, CA</p>
