@@ -35,18 +35,27 @@ async function hasExistingTopup(
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
-    const signature = req.headers.get('x-coincircuit-signature');
+    const headers = Object.fromEntries(req.headers.entries());
+    const signature = req.headers.get('x-coincircuit-signature')
+      || req.headers.get('x-signature')
+      || req.headers.get('authorization')
+      || null;
+
+    if (!process.env.COINCIRCUIT_WEBHOOK_SECRET) {
+      console.error('[CoinCircuit Webhook] Missing COINCIRCUIT_WEBHOOK_SECRET env var');
+      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+    }
 
     const valid = verifyWebhookSignature(rawBody, signature);
     if (!valid) {
-      console.error('[CoinCircuit Webhook] Invalid signature');
+      console.error('[CoinCircuit Webhook] Invalid signature. Headers:', JSON.stringify(headers));
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     const payload: CoinCircuitWebhookPayload = JSON.parse(rawBody);
     console.log('[CoinCircuit Webhook] Received event:', payload.event);
 
-    if (payload.event !== 'PaymentCompleted') {
+    if (payload.event !== 'payment.completed') {
       console.log(`[CoinCircuit Webhook] Ignoring event: ${payload.event}`);
       return NextResponse.json({ received: true });
     }
@@ -101,7 +110,7 @@ export async function POST(req: NextRequest) {
         fee_amount: feeAmount,
         fee_percent: TOTAL_FEE_PERCENT,
         credit_pack: metadata.credit_pack || null,
-        settlements: session.settlements || [],
+        settlements: session.settlements,
       }
     );
 

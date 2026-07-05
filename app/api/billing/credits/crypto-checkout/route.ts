@@ -85,7 +85,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const amount = CREDIT_PACK_AMOUNTS[pack];
+    const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_URL || req.nextUrl.origin).replace(/\/$/, '');
+    const amount = String(CREDIT_PACK_AMOUNTS[pack]);
     const customerEmail = org.billing_email || user.email || '';
 
     const session = await createPaymentSession({
@@ -95,10 +96,12 @@ export async function POST(req: NextRequest) {
         email: customerEmail,
         firstName: org.name,
       },
+      successUrl: `${appBaseUrl}/dashboard/organizations/${org.slug}/billing?success=true&topup=true`,
+      webhookUrl: `${appBaseUrl}/api/billing/coincircuit-webhook`,
       metadata: {
         purchase_type: 'credits_topup',
         credit_pack: pack,
-        credits_amount: String(amount),
+        credits_amount: amount,
         org_id: org.id,
         org_slug: org.slug,
       },
