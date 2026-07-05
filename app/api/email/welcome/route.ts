@@ -2,6 +2,8 @@ import { SendByte } from '@sendbyte/node';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { generateUserUnsubscribeToken, buildUserUnsubscribeUrl } from '@/lib/user-unsubscribe';
+import { getBaseUrl } from '@/lib/newsletter';
 
 const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const WELCOME_FROM_EMAIL = process.env.RESEND_WELCOME_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
@@ -89,6 +91,11 @@ export async function POST(request: NextRequest) {
 
     const firstName = (currentUserMetadata.full_name as string | undefined)?.split(/\s+/)[0] || normalizedEmail.split('@')[0];
 
+    const baseUrl = getBaseUrl();
+    const token = generateUserUnsubscribeToken(user.id);
+    const unsubscribeUrl = buildUserUnsubscribeUrl(baseUrl, user.id, token);
+    const preferencesUrl = `${baseUrl}/dashboard/settings`;
+
     const link = (text: string, href: string) =>
       `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
 
@@ -119,16 +126,19 @@ export async function POST(request: NextRequest) {
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Start building with models from OpenAI, Anthropic, Google, Meta, DeepSeek, Mistral, and more\u2014all through a single API.</p>
 <a href="https://cencori.com/pricing" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Upgrade to Pro</a>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;margin-top:24px;">This is the first step in what we\u2019re building.</p>
-    <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Build different.</p>
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
 <p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
-<p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. &#183; San Francisco, CA</p>
-<p style="margin:0;font-size:11px;color:#aaa;text-align:center;"><a href="{{unsubscribe_url}}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
+<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;line-height:1.5;">Making AI infrastructure accessible &mdash; so builders can build and scale with confidence.</p>
+<p style="margin:0 0 12px;font-size:11px;color:#aaa;text-align:center;line-height:1.5;">You received this because you signed up for Cencori.</p>
+<p style="margin:0 0 4px;font-size:11px;color:#aaa;text-align:center;"><a href="${preferencesUrl}" style="color:#888;text-decoration:underline;">Manage preferences</a> &nbsp;&middot;&nbsp; <a href="${unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
+<p style="margin:0;font-size:11px;color:#aaa;text-align:center;">Cencori, Inc. &middot; San Francisco, CA</p>
 </div>
 </div>
 </body>
 </html>`,
+        list_unsubscribe: { url: unsubscribeUrl },
       });
       emailId = email.id;
     } catch (err) {
