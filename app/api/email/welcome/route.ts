@@ -87,6 +87,11 @@ export async function POST(request: NextRequest) {
       `<a href="${i.url}" style="color:#888;text-decoration:none;display:inline-block;vertical-align:middle;"><img src="${SOCIAL_ICONS_URL}/${i.file}" width="20" height="20" alt="${i.name}" style="display:inline-block;vertical-align:middle;border:0;"></a>`;
     const iconRow = socialIcons.map((i, idx) => imgTag(i) + (idx < socialIcons.length - 1 ? '<span style="color:#ccc;margin:0 6px;vertical-align:middle;">·</span>' : '')).join('');
 
+    const firstName = (currentUserMetadata.full_name as string | undefined)?.split(/\s+/)[0] || normalizedEmail.split('@')[0];
+
+    const link = (text: string, href: string) =>
+      `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
+
     const sendbyte = new SendByte(SENDBYTE_API_KEY);
     let emailId: string | undefined;
     try {
@@ -103,14 +108,24 @@ export async function POST(request: NextRequest) {
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#111;">
 <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hey ${normalizedEmail.split('@')[0]},</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori. You now have the infrastructure to route, observe, secure, and scale AI products in production.</p>
-<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Start by creating your first organization, setting up a project, and generating an API key. From there, open your <a href="https://cencori.com/dashboard/organizations" style="color:#111;text-decoration:underline;">dashboard</a>, read the <a href="https://cencori.com/docs/quick-start" style="color:#111;text-decoration:underline;">quick start guide</a>, or go straight to the <a href="https://cencori.com/docs/api" style="color:#111;text-decoration:underline;">API reference</a>.</p>
-<p style="margin:0 0 24px;font-size:13px;color:#888;">Learn more at cencori.com</p>
-<a href="https://cencori.com/dashboard/organizations" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Open dashboard</a>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Cencori helps organizations build and run AI applications by making access to frontier AI models simple, secure, and reliable.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Your workspace is ready.</p>
+<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#555;">To get started:</p>
+<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Create your first project', 'https://cencori.com/dashboard/organizations')}</p>
+<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Generate an API key', 'https://cencori.com/dashboard/organizations')}</p>
+<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Connect your application', 'https://cencori.com/docs/installation')}</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Start building with models from OpenAI, Anthropic, Google, Meta, DeepSeek, Mistral, and more\u2014all through a single API.</p>
+<a href="https://cencori.com/upgrade" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Upgrade to Pro</a>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;margin-top:24px;">This is the first step in what we\u2019re building.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">We\u2019re glad you\u2019re here.</p>
+<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Build different.</p>
+<p style="margin:0 0 32px;font-size:14px;line-height:1.6;color:#555;">The Cencori Team</p>
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
 <p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
-<p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. · San Francisco, CA</p>
+<p style="margin:0 0 4px;font-size:12px;color:#999;text-align:center;">Cencori, Inc. &#183; San Francisco, CA</p>
 <p style="margin:0;font-size:11px;color:#aaa;text-align:center;"><a href="{{unsubscribe_url}}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
 </div>
 </div>
