@@ -159,12 +159,11 @@ export async function POST(request: NextRequest) {
 <img src="https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png" alt="Cencori" style="display:block;width:100%;height:auto;margin-bottom:32px;">
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">We noticed a new sign-in to your Cencori account.</p>
-<table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 24px;width:100%;border:1px solid #eee;border-radius:6px;font-size:13px;color:#555;line-height:1.8;">
-${detailLines.map((line) => {
+${detailLines.map((line, i) => {
   const [label, ...rest] = line.split(': ');
-  return `<tr><td style="padding:8px 12px 8px 16px;border-bottom:1px solid #eee;white-space:nowrap;color:#999;vertical-align:top;font-weight:500;">${label}</td><td style="padding:8px 16px 8px 4px;border-bottom:1px solid #eee;color:#333;">${rest.join(': ')}</td></tr>`;
+  const margin = i === 0 ? '0' : '8px';
+  return `<p style="margin:${margin} 0 0;font-size:13px;color:#555;line-height:1.8;"><strong style="color:#999;">${label}:</strong> ${rest.join(': ')}</p>`;
 }).join('')}
-</table>
 <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">If this was you, no action needed.</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">If you don\u2019t recognize this sign-in, please secure your account immediately.</p>
 <p style="margin:0 0 32px;font-size:14px;line-height:1.6;color:#555;">${link('Review account activity', preferencesUrl)}</p>
