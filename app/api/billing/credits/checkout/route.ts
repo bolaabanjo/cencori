@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import {
   createCheckoutSession,
-  BACHS_CONFIG,
-  getCreditTopupPackConfig,
+  CREDIT_TOPUP_PACKS,
 } from '@/lib/bachsClient';
+
+const PACK_TO_ID: Record<string, string> = {
+  starter: CREDIT_TOPUP_PACKS[0].productId,
+  growth: CREDIT_TOPUP_PACKS[1].productId,
+  scale: CREDIT_TOPUP_PACKS[2].productId,
+};
 
 export async function POST(req: NextRequest) {
   const supabase = await createServerClient();
@@ -15,17 +20,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { orgId, productId } = await req.json();
+  const body = await req.json();
+  const orgId = body.orgId;
+  const productId = body.productId || PACK_TO_ID[body.pack];
   if (!orgId || !productId) {
     return NextResponse.json(
       { error: 'Missing orgId or productId' },
       { status: 400 }
     );
-  }
-
-  const pack = getCreditTopupPackConfig(productId);
-  if (!pack) {
-    return NextResponse.json({ error: 'Invalid product' }, { status: 400 });
   }
 
   const { data: member } = await supabase
@@ -59,5 +61,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ url: session.checkout_url });
+  return NextResponse.json({ checkoutUrl: session.checkout_url });
 }
