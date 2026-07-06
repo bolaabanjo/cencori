@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabaseServer';
 import {
   createCheckoutSession,
   BACHS_CONFIG,
@@ -8,7 +7,7 @@ import {
 } from '@/lib/bachsClient';
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = await createServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
