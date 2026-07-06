@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
 <img src="https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png" alt="Cencori" style="display:block;width:100%;height:auto;margin-bottom:32px;">
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
 <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">We noticed a new sign-in to your Cencori account.</p>
-<table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 24px;width:100%;border:1px solid #eee;font-size:13px;color:#555;line-height:1.8;">
+<table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 24px;width:100%;border:1px solid #eee;border-radius:6px;font-size:13px;color:#555;line-height:1.8;">
 ${detailLines.map((line, i) => {
   const [label, ...rest] = line.split(': ');
   const b = i < detailLines.length - 1 ? '1px solid #eee' : '0';
