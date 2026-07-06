@@ -247,10 +247,6 @@ export async function getCustomerPortalUrl(orgSlug: string) {
 
         const billingReturnUrl = `${getAppBaseUrl()}/dashboard/organizations/${orgResult.org.slug}/billing`;
 
-        if (orgResult.org.bachs_customer_id) {
-            return 'https://bachs.io/dashboard';
-        }
-
         if (orgResult.org.subscription_tier === 'pro' || orgResult.org.subscription_tier === 'team' || orgResult.org.subscription_tier === 'free') {
             const checkoutTier = orgResult.org.subscription_tier === 'team' ? 'team' : 'pro';
             const { checkout_url } = await fetch(
