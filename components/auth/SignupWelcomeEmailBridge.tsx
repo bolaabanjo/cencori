@@ -17,6 +17,7 @@ export function SignupWelcomeEmailBridge() {
         let cancelled = false;
         let inFlight = false;
         let newsletterInFlight = false;
+        let loginAlertInFlight = false;
         let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
         const isRecentlyCreatedSession = (session: Session | null): boolean => {
@@ -80,12 +81,29 @@ export function SignupWelcomeEmailBridge() {
             }
         };
 
+        const maybeSendLoginAlert = async (session: Session | null) => {
+            const email = session?.user?.email;
+            if (!email || cancelled || loginAlertInFlight) return;
+
+            loginAlertInFlight = true;
+            try {
+                await fetch("/api/email/login-alert", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_agent: navigator.userAgent }),
+                });
+            } catch {
+                // Best-effort — don't block login on a failed alert.
+            } finally {
+                loginAlertInFlight = false;
+            }
+        };
+
         const processSession = async (session: Session | null) => {
-            // Welcome email and newsletter opt-in are independent flows that share the
-            // same trigger (a fresh authenticated session post-signup).
             await Promise.all([
                 maybeSendWelcomeEmail(session),
                 maybeSubscribeToNewsletter(session),
+                maybeSendLoginAlert(session),
             ]);
         };
 
