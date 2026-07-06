@@ -23,9 +23,9 @@ interface CreditProps {
 type CreditPackId = 'starter' | 'growth' | 'scale';
 
 const CREDIT_PACK_OPTIONS: Array<{ id: CreditPackId; label: string }> = [
-    { id: 'starter', label: '$10' },
-    { id: 'growth', label: '$50' },
-    { id: 'scale', label: '$200' },
+    { id: 'starter', label: '$10 — 50,000 credits' },
+    { id: 'growth', label: '$50 — 250,000 credits' },
+    { id: 'scale', label: '$200 — 1,000,000 credits' },
 ];
 
 type PaymentMethod = 'card' | 'crypto';
