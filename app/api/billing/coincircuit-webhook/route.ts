@@ -4,12 +4,13 @@ import { addCredits } from '@/lib/credits';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
 import { verifyWebhookSignature, type CoinCircuitWebhookPayload } from '@/lib/coincircuit';
+import { CREDIT_TOPUP_PACKS } from '@/lib/bachsClient';
 
 const TOTAL_FEE_PERCENT = 0.065;
 
-function netAfterFee(gross: number): number {
-  return Math.round(gross * (1 - TOTAL_FEE_PERCENT) * 100) / 100;
-}
+const PACK_CREDITS: Record<string, number> = Object.fromEntries(
+  CREDIT_TOPUP_PACKS.map((p) => [p.label.toLowerCase(), p.credits])
+);
 
 async function hasExistingTopup(
   supabaseAdmin: ReturnType<typeof createAdminClient>,
@@ -88,28 +89,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    const grossAmount = parseFloat(session.amount);
-    if (!grossAmount || grossAmount <= 0) {
-      console.warn('[CoinCircuit Webhook] Invalid amount:', session.amount);
-      return NextResponse.json({ received: true, warning: 'invalid_amount' });
+    const grossCredits = PACK_CREDITS[metadata.credit_pack as string];
+    if (!grossCredits || grossCredits <= 0) {
+      console.warn('[CoinCircuit Webhook] Unknown credit pack:', metadata.credit_pack);
+      return NextResponse.json({ received: true, warning: 'unknown_pack' });
     }
 
-    const netAmount = netAfterFee(grossAmount);
-    const feeAmount = Math.round((grossAmount - netAmount) * 100) / 100;
+    const netCredits = Math.floor(grossCredits * (1 - TOTAL_FEE_PERCENT));
+    const feeCredits = grossCredits - netCredits;
 
     const credited = await addCredits(
       orgId,
-      netAmount,
+      netCredits,
       'topup',
       `Crypto top-up session ${session.reference}`,
       {
         coincircuit_session_id: session.id,
         coincircuit_reference: session.reference,
-        gross_amount: grossAmount,
-        net_amount: netAmount,
-        fee_amount: feeAmount,
+        gross_credits: grossCredits,
+        net_credits: netCredits,
+        fee_credits: feeCredits,
         fee_percent: TOTAL_FEE_PERCENT,
-        credit_pack: metadata.credit_pack || null,
+        credit_pack: metadata.credit_pack,
         settlements: session.settlements,
       }
     );
@@ -125,9 +126,9 @@ export async function POST(req: NextRequest) {
       metadata: {
         provider: 'coincircuit',
         session_id: session.id,
-        gross_amount: grossAmount,
-        net_amount: netAmount,
-        fee_amount: feeAmount,
+        gross_credits: grossCredits,
+        net_credits: netCredits,
+        fee_credits: feeCredits,
       },
     });
 
@@ -138,18 +139,18 @@ export async function POST(req: NextRequest) {
       resourceType: 'credits',
       resourceId: session.reference,
       actorType: 'webhook',
-      description: `Crypto credits topped up: $${grossAmount.toFixed(2)} ($${netAmount.toFixed(2)} after ${(TOTAL_FEE_PERCENT * 100).toFixed(1)}% total fee)`,
+      description: `Crypto credits topped up: ${grossCredits.toLocaleString()} credits (${netCredits.toLocaleString()} after ${(TOTAL_FEE_PERCENT * 100).toFixed(1)}% total fee)`,
       metadata: {
         provider: 'coincircuit',
         session_id: session.id,
-        gross_amount: grossAmount,
-        net_amount: netAmount,
-        fee_amount: feeAmount,
+        gross_credits: grossCredits,
+        net_credits: netCredits,
+        fee_credits: feeCredits,
       },
     });
 
     console.log(
-      `[CoinCircuit Webhook] Credited org ${orgId} with $${netAmount.toFixed(2)} (gross: $${grossAmount.toFixed(2)}) from session ${session.reference}`
+      `[CoinCircuit Webhook] Credited org ${orgId} with ${netCredits.toLocaleString()} credits (gross: ${grossCredits.toLocaleString()}) from session ${session.reference}`
     );
 
     return NextResponse.json({ received: true });

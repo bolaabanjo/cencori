@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createPaymentSession } from '@/lib/coincircuit';
+import { CREDIT_TOPUP_PACKS } from '@/lib/bachsClient';
 
 type CreditPack = 'starter' | 'growth' | 'scale';
 
@@ -12,11 +13,9 @@ type CryptoCheckoutRequestBody = {
 
 const CREDIT_PACKS: CreditPack[] = ['starter', 'growth', 'scale'];
 
-const CREDIT_PACK_AMOUNTS: Record<CreditPack, number> = {
-  starter: 10,
-  growth: 50,
-  scale: 200,
-};
+const PACK_DOLLAR_AMOUNTS: Record<CreditPack, number> = Object.fromEntries(
+  CREDIT_TOPUP_PACKS.map((p) => [p.label.toLowerCase(), p.price / 100])
+) as Record<CreditPack, number>;
 
 function isValidPack(value: unknown): value is CreditPack {
   return typeof value === 'string' && CREDIT_PACKS.includes(value as CreditPack);
@@ -86,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     const appBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_URL || req.nextUrl.origin).replace(/\/$/, '');
-    const amount = String(CREDIT_PACK_AMOUNTS[pack]);
+    const amount = String(PACK_DOLLAR_AMOUNTS[pack]);
     const customerEmail = org.billing_email || user.email || '';
 
     const session = await createPaymentSession({
