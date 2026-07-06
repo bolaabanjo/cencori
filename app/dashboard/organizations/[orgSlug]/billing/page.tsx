@@ -10,6 +10,7 @@ import { getInvoices, getCustomerPortalUrl, getPaymentMethods } from './actions'
 import { CreditCard, Info } from 'lucide-react';
 import { motion, AnimatePresence } from "framer-motion";
 import Link from 'next/link';
+import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 
 // Import modular components
 import { UsageOverview } from "@/components/dashboard/billing/UsageOverview";
@@ -23,6 +24,7 @@ import { OperationalControls } from "./OperationalControls";
 
 interface Organization {
     id: string;
+    slug: string;
     name: string;
     subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     subscription_status: string;
@@ -158,6 +160,7 @@ export default function BillingPage({ params }: PageProps) {
         }
     }, [searchParams]);
 
+    const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
     const { org, projects, transactions, invoices, portalUrl, paymentMethods, isLoading, error } = useBillingData(orgSlug);
 
     if (isLoading) {
@@ -215,11 +218,6 @@ export default function BillingPage({ params }: PageProps) {
         createdAt: t.created_at
     }));
 
-    const planActionUrl = portalUrl || '/pricing';
-    const planActionLabel = portalUrl
-        ? (org.subscription_tier === 'free' ? 'Upgrade Plan' : 'Manage Subscription')
-        : 'View Plans';
-
     return (
         <div className="w-full max-w-5xl mx-auto px-6 py-8 pb-32">
             <div className="mb-8">
@@ -256,9 +254,10 @@ export default function BillingPage({ params }: PageProps) {
                     status={org.subscription_status}
                     currentPeriodEnd={org.subscription_current_period_end}
                     price={org.subscription_tier === 'pro' ? 49 : org.subscription_tier === 'team' ? 149 : 0}
-                    actionUrl={planActionUrl}
-                    actionLabel={planActionLabel}
+                    actionUrl={org.subscription_tier !== 'free' ? portalUrl : undefined}
+                    actionLabel={portalUrl && org.subscription_tier !== 'free' ? 'Manage Subscription' : 'Upgrade Plan'}
                     actionExternal={Boolean(portalUrl)}
+                    onAction={org.subscription_tier === 'free' ? () => setShowUpgradeDialog(true) : undefined}
                 />
 
                 <CreditBalance
@@ -277,6 +276,13 @@ export default function BillingPage({ params }: PageProps) {
                 <CostControl orgSlug={orgSlug} projects={formattedProjects} />
 
                 <InvoiceHistory invoices={invoices} />
+
+                <UpgradeDialog
+                    open={showUpgradeDialog}
+                    onOpenChange={setShowUpgradeDialog}
+                    orgId={org.id}
+                    orgSlug={orgSlug}
+                />
 
                 <BillingCommunication
                     orgSlug={orgSlug}

@@ -14,6 +14,7 @@ interface PlanProps {
     actionUrl?: string | null;
     actionLabel?: string;
     actionExternal?: boolean;
+    onAction?: () => void;
 }
 
 export function PlanDetails({
@@ -23,7 +24,8 @@ export function PlanDetails({
     price,
     actionUrl,
     actionLabel = 'Manage Plan',
-    actionExternal = false
+    actionExternal = false,
+    onAction
 }: PlanProps) {
     const freeFeatures = [
         "Unlimited requests",
@@ -112,7 +114,16 @@ export function PlanDetails({
                             <p className="text-[10px] text-muted-foreground max-w-[200px] leading-relaxed">
                                 Need more? Explore our Team and Enterprise plans for custom scaling.
                             </p>
-                            {actionUrl ? (
+                            {onAction ? (
+                                <Button
+                                    variant="link"
+                                    className="w-full h-auto p-0 text-[10px] font-medium text-muted-foreground uppercase tracking-widest hover:text-foreground hover:no-underline transition-colors w-auto"
+                                    onClick={onAction}
+                                >
+                                    {actionLabel}
+                                    <ArrowRight size={12} className="ml-1 transition-transform group-hover:translate-x-0.5" />
+                                </Button>
+                            ) : actionUrl ? (
                                 actionExternal ? (
                                     <Button
                                         variant="link"
