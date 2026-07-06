@@ -238,8 +238,8 @@ export const BACHS_CONFIG = {
 
 export const TIER_LIMITS = {
   free: { requestsPerMonth: 1_000, seats: 1, priceMonthly: 0, priceAnnual: 0 },
-  pro: { requestsPerMonth: 10_000, seats: 5, priceMonthly: 2000, priceAnnual: 20000 },
-  team: { requestsPerMonth: 100_000, seats: Infinity, priceMonthly: 10000, priceAnnual: 100000 },
+  pro: { requestsPerMonth: 10_000, seats: 5, priceMonthly: 4900, priceAnnual: 49000 },
+  team: { requestsPerMonth: 100_000, seats: Infinity, priceMonthly: 14900, priceAnnual: 149000 },
   enterprise: { requestsPerMonth: Infinity, seats: Infinity, priceMonthly: null, priceAnnual: null },
 } as const;
 
