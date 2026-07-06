@@ -26,7 +26,7 @@ export type BillingInterval = 'month' | 'year';
 
 export interface BachsCustomerInput {
   email: string;
-  name?: string;
+  name: string;
 }
 
 export interface BachsProductCartItem {

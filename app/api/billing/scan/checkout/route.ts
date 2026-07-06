@@ -16,21 +16,29 @@ export async function POST(req: NextRequest) {
   const returnUrl = new URL('/dashboard/scan', req.url);
   const cancelUrl = new URL('/pricing', req.url);
 
-  const session = await createCheckoutSession({
-    product_cart: [
-      { product_id: getScanProductId(tier as 'scan' | 'scan_team'), quantity: 1 },
-    ],
-    customer: {
-      email: user.email,
-      name: user.user_metadata?.full_name,
-    },
-    return_url: returnUrl.toString(),
-    cancel_url: cancelUrl.toString(),
-    metadata: {
-      user_id: user.id,
-      purchase_type: 'scan_subscription',
-    },
-  });
+  try {
+    const session = await createCheckoutSession({
+      product_cart: [
+        { product_id: getScanProductId(tier as 'scan' | 'scan_team'), quantity: 1 },
+      ],
+      customer: {
+        email: user.email,
+        name: user.user_metadata?.full_name || user.email.split('@')[0] || 'Customer',
+      },
+      return_url: returnUrl.toString(),
+      cancel_url: cancelUrl.toString(),
+      metadata: {
+        user_id: user.id,
+        purchase_type: 'scan_subscription',
+      },
+    });
 
-  return NextResponse.json({ checkoutUrl: session.checkout_url });
+    return NextResponse.json({ checkoutUrl: session.checkout_url });
+  } catch (err) {
+    console.error('[Scan Checkout] Bachs API error:', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Checkout creation failed' },
+      { status: 502 }
+    );
+  }
 }

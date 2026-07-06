@@ -263,7 +263,7 @@ export async function getCustomerPortalUrl(orgSlug: string) {
                     },
                     body: JSON.stringify({
                         product_cart: [{ product_id: getProductId(checkoutTier, 'month'), quantity: 1 }],
-                        customer: { email: orgResult.org.billing_email || undefined },
+                        customer: { email: orgResult.org.billing_email || '', name: orgResult.org.name || orgResult.org.slug },
                         return_url: billingReturnUrl,
                         cancel_url: billingReturnUrl,
                         metadata: { org_id: orgResult.org.id, org_slug: orgResult.org.slug, purchase_type: 'subscription' },

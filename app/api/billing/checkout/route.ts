@@ -19,14 +19,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: member } = await supabase
+  const { data: member, error: memberError } = await supabase
     .from('organization_members')
     .select('id')
     .eq('organization_id', orgId)
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (!member) {
+  if (memberError || !member) {
+    console.error('[Checkout] Membership check error:', memberError);
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -36,21 +37,29 @@ export async function POST(req: NextRequest) {
   );
   const cancelUrl = new URL('/pricing', req.url);
 
-  const session = await createCheckoutSession({
-    product_cart: [
-      { product_id: getProductId(tier, interval), quantity: 1 },
-    ],
-    customer: {
-      email: user.email,
-      name: user.user_metadata?.full_name,
-    },
-    return_url: returnUrl.toString(),
-    cancel_url: cancelUrl.toString(),
-    metadata: {
-      org_id: orgId,
-      purchase_type: 'subscription',
-    },
-  });
+  try {
+    const session = await createCheckoutSession({
+      product_cart: [
+        { product_id: getProductId(tier, interval), quantity: 1 },
+      ],
+      customer: {
+        email: user.email,
+        name: user.user_metadata?.full_name || user.email.split('@')[0] || 'Customer',
+      },
+      return_url: returnUrl.toString(),
+      cancel_url: cancelUrl.toString(),
+      metadata: {
+        org_id: orgId,
+        purchase_type: 'subscription',
+      },
+    });
 
-  return NextResponse.json({ checkoutUrl: session.checkout_url });
+    return NextResponse.json({ checkoutUrl: session.checkout_url });
+  } catch (err) {
+    console.error('[Checkout] Bachs API error:', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Checkout creation failed' },
+      { status: 502 }
+    );
+  }
 }
