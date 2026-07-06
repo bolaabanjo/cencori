@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const { data: member, error: memberError } = await supabase
     .from('organization_members')
-    .select('id')
+    .select('organization_id')
     .eq('organization_id', orgId)
     .eq('user_id', user.id)
     .maybeSingle();

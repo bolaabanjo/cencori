@@ -195,7 +195,7 @@ export async function resolveAgentContext(params: {
         if (!hasOrgAccess) {
             const { data: member } = await supabase
                 .from('organization_members')
-                .select('id')
+                .select('organization_id')
                 .eq('organization_id', agentProject.organization_id)
                 .eq('user_id', authenticatedUserId)
                 .single();

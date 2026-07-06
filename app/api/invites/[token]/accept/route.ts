@@ -62,7 +62,7 @@ export async function POST(
 
     const { data: existingMember } = await supabaseAdmin
         .from('organization_members')
-        .select('id')
+        .select('organization_id')
         .eq('organization_id', invite.organization_id)
         .eq('user_id', user.id)
         .single();

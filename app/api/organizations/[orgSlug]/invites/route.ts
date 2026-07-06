@@ -81,7 +81,7 @@ export async function POST(
     if (matchingUser) {
         const { data: existingMember } = await supabaseAdmin
             .from('organization_members')
-            .select('id')
+            .select('organization_id')
             .eq('organization_id', org.id)
             .eq('user_id', matchingUser.id)
             .single();
@@ -232,7 +232,7 @@ export async function GET(
 
     const { data: membership } = await supabase
         .from('organization_members')
-        .select('id')
+        .select('organization_id')
         .eq('organization_id', org.id)
         .eq('user_id', user.id)
         .single();
