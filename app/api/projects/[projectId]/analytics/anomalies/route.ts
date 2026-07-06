@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 function mean(arr: number[]): number {
     if (arr.length === 0) return 0;
@@ -25,6 +26,19 @@ export async function GET(
     const { projectId } = await params;
 
     try {
+        const { data: project, error: projectError } = await supabaseAdmin
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
+        if (gate) return gate;
+
         const searchParams = req.nextUrl.searchParams;
         const environment = searchParams.get('environment') || 'production';
         const detectionHours = Math.max(1, parseInt(searchParams.get('detection_hours') || '1', 10));

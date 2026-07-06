@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface SecuritySettings {
     filter_harmful_content: boolean;
@@ -39,6 +40,9 @@ export async function GET(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
+    if (gate) return gate;
 
     const { data: settings, error: settingsError } = await supabase
         .from('security_settings')
@@ -94,6 +98,9 @@ export async function PUT(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
+    if (gate) return gate;
 
     const body: Partial<SecuritySettings> = await req.json();
 

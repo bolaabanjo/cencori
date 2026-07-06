@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -9,6 +10,19 @@ export async function GET(
     const supabase = createAdminClient();
 
     // Get budget settings
+    const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .single();
+
+    if (projectError || !projectData) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const gate = await requireTierFeatureForProject(projectId, 'costTracking');
+    if (gate) return gate;
+
     const { data: project } = await supabase
         .from('projects')
         .select('monthly_budget, spend_cap')

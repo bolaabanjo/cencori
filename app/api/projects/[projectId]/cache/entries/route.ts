@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { invalidateCache } from '@/lib/cache/prompt-cache';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -15,6 +16,9 @@ export async function GET(
     const offset = (page - 1) * limit;
 
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'semanticCache');
+    if (gate) return gate;
 
     let query = supabase
         .from('prompt_cache_entries')

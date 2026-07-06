@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -22,6 +23,9 @@ export async function GET(
     const bucketMs = sinceMs <= 86400000 ? 3600000 : 86400000;
 
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'semanticCache');
+    if (gate) return gate;
 
     // Get aggregated counts by event type using RPC
     const { data: counts } = await supabase.rpc('get_cache_event_counts', {

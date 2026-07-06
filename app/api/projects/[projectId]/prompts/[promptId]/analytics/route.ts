@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -9,6 +10,9 @@ export async function GET(
     const url = new URL(req.url);
     const range = url.searchParams.get('range') || '7d';
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const rangeMs: Record<string, number> = {
         '1h': 3600000,

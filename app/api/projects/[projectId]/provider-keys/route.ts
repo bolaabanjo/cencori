@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabaseServer';
 import { encryptApiKey } from '@/lib/encryption';
 import { SUPPORTED_PROVIDERS, getProvider } from '@/lib/providers/config';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface ProviderKeyResponse {
     provider: string;
@@ -41,6 +42,9 @@ export async function GET(
         if (projectError || !project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const ownerId = (project.organizations as { owner_id?: string } | null)?.owner_id || null;
         const isOwner = ownerId === user.id;
@@ -129,6 +133,9 @@ export async function POST(
         if (projectError || !project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const ownerId = (project.organizations as { owner_id?: string } | null)?.owner_id || null;
         const isOwner = ownerId === user.id;

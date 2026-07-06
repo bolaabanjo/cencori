@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { decryptApiKey } from '@/lib/encryption';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface TestRequest {
     provider_id?: string;
@@ -18,6 +19,22 @@ export async function POST(
     const supabase = createAdminClient();
 
     try {
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json(
+                { error: 'Project not found', success: false },
+                { status: 404 }
+            );
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
+
         const body: TestRequest = await req.json();
 
         let baseUrl: string;

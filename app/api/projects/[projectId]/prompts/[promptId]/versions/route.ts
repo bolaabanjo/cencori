@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { extractVariableNames } from '@/lib/prompts/registry';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ projectId: string; promptId: string }> }
 ) {
-    const { promptId } = await params;
+    const { projectId, promptId } = await params;
     const supabase = createAdminClient();
     const url = new URL(req.url);
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
+
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 50);
     const offset = (page - 1) * limit;
@@ -35,6 +40,9 @@ export async function POST(
     const { projectId, promptId } = await params;
     const body = await req.json();
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { content, model_hint, temperature, max_tokens, change_message } = body;
 

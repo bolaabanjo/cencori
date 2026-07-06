@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface WebhookUpdateBody {
     name?: string;
@@ -31,6 +32,9 @@ export async function PATCH(
     if (webhookError || !webhook) {
         return NextResponse.json({ error: 'Webhook not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'webhooks');
+    if (gate) return gate;
 
     const body: WebhookUpdateBody = await req.json();
 
@@ -99,6 +103,9 @@ export async function DELETE(
     if (webhookError || !webhook) {
         return NextResponse.json({ error: 'Webhook not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'webhooks');
+    if (gate) return gate;
 
     const { error: deleteError } = await supabase
         .from('webhooks')

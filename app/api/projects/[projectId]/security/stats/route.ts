@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -22,6 +23,9 @@ export async function GET(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
+    if (gate) return gate;
 
     const now = new Date();
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();

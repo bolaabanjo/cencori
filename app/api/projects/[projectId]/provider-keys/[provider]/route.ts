@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { createServerClient } from '@/lib/supabaseServer';
 import { encryptApiKey } from '@/lib/encryption';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function PATCH(
     req: NextRequest,
@@ -30,6 +31,9 @@ export async function PATCH(
         if (!project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const ownerId = (project.organizations as { owner_id?: string } | null)?.owner_id || null;
         const isOwner = ownerId === user.id;
@@ -157,6 +161,9 @@ export async function DELETE(
         if (!project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const ownerId = (project.organizations as { owner_id?: string } | null)?.owner_id || null;
         const isOwner = ownerId === user.id;

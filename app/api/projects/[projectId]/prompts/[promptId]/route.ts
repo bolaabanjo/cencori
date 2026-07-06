@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { slugify } from '@/lib/prompts/registry';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -9,6 +10,9 @@ export async function GET(
 ) {
     const { projectId, promptId } = await params;
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { data, error } = await supabase
         .from('prompt_registry')
@@ -52,6 +56,9 @@ export async function PATCH(
     const { projectId, promptId } = await params;
     const body = await req.json();
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
@@ -101,6 +108,9 @@ export async function DELETE(
 ) {
     const { projectId, promptId } = await params;
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { error } = await supabase
         .from('prompt_registry')

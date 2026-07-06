@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function POST(
     req: NextRequest,
@@ -9,6 +10,9 @@ export async function POST(
     const { projectId, promptId } = await params;
     const body = await req.json();
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { version_id } = body;
 

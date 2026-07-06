@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface RouteParams {
     params: Promise<{ projectId: string }>;
@@ -12,6 +13,19 @@ export async function GET(request: Request, { params }: RouteParams) {
     const timeRange = searchParams.get('time_range') || '7d';
 
     const supabase = createAdminClient();
+
+    const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', projectId)
+        .single();
+
+    if (projectError || !project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
+    if (gate) return gate;
 
     const now = new Date();
     const startDate = new Date();

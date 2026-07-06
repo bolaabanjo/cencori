@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabaseServer';
 import crypto from 'crypto';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface WebhookBody {
     name: string;
@@ -32,6 +33,9 @@ export async function GET(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'webhooks');
+    if (gate) return gate;
 
     const { data: webhooks, error: webhooksError } = await supabase
         .from('webhooks')
@@ -67,6 +71,9 @@ export async function POST(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'webhooks');
+    if (gate) return gate;
 
     const body: WebhookBody = await req.json();
 

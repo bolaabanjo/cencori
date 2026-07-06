@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -47,6 +48,19 @@ export async function PATCH(
         const { projectId, providerId } = await params;
         const body = await req.json();
         const { name, baseUrl, isActive, format } = body;
+
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const updateData: Record<string, unknown> = {};
         if (name !== undefined) updateData.name = name;
@@ -103,6 +117,19 @@ export async function DELETE(
 
     try {
         const { projectId, providerId } = await params;
+
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const { error } = await supabase
             .from('custom_providers')

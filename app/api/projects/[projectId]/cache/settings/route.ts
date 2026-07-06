@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
 import { invalidateCacheConfig } from '@/lib/config-cache';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -10,6 +11,9 @@ export async function GET(
 ) {
     const { projectId } = await params;
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'semanticCache');
+    if (gate) return gate;
 
     const { data, error } = await supabase
         .from('prompt_cache_settings')
@@ -44,6 +48,9 @@ export async function PATCH(
     const { projectId } = await params;
     const body = await req.json();
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'semanticCache');
+    if (gate) return gate;
 
     const updates: Record<string, any> = {};
     if (typeof body.cache_enabled === 'boolean') updates.cache_enabled = body.cache_enabled;

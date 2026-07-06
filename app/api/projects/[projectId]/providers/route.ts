@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { encryptApiKey } from '@/lib/encryption';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -22,6 +23,9 @@ export async function GET(
         if (projectError || !project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const { data: providers, error } = await supabase
             .from('custom_providers')
@@ -66,6 +70,9 @@ export async function POST(
         if (projectError || !project) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'customProviders');
+        if (gate) return gate;
 
         const body = await req.json();
         const { name, baseUrl, apiKey, format, models } = body;

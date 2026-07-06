@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ projectId: string; promptId: string; versionId: string }> }
 ) {
-    const { promptId, versionId } = await params;
+    const { projectId, promptId, versionId } = await params;
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { data, error } = await supabase
         .from('prompt_versions')

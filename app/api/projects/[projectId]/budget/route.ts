@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { getBudgetStatus, updateBudgetSettings } from '@/lib/budgets';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -10,6 +11,21 @@ export async function GET(
     const { projectId } = await params;
 
     try {
+        const supabase = createAdminClient();
+
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'costTracking');
+        if (gate) return gate;
+
         const status = await getBudgetStatus(projectId);
 
         return NextResponse.json({
@@ -35,6 +51,19 @@ export async function PUT(
     const supabase = createAdminClient();
 
     try {
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'costTracking');
+        if (gate) return gate;
+
         const body = await req.json();
 
         const settings: {
@@ -74,14 +103,14 @@ export async function PUT(
 
         const status = await getBudgetStatus(projectId);
 
-        const { data: project } = await supabase
+        const { data: budgetProject } = await supabase
             .from('projects')
             .select('organization_id')
             .eq('id', projectId)
             .single();
 
         writeAuditLog({
-            organizationId: project?.organization_id || '',
+            organizationId: budgetProject?.organization_id || '',
             projectId,
             category: 'budget',
             action: 'updated',

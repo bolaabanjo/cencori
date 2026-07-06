@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 const COUNTRY_NAMES: Record<string, string> = {
     XX: 'Unknown',
@@ -54,6 +55,19 @@ export async function GET(
     try {
         const { projectId } = await params;
         const supabase = createAdminClient();
+
+        const { data: project, error: projectError } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        }
+
+        const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
+        if (gate) return gate;
 
         const { searchParams } = new URL(request.url);
         const range = searchParams.get('range') || '7d';

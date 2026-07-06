@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 const EVENT_LABELS: Record<string, string> = {
     settings_updated: 'Settings Updated',
@@ -53,6 +54,9 @@ export async function GET(
     if (projectError || !project) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'auditTrails');
+    if (gate) return gate;
 
     const url = new URL(req.url);
     const eventType = url.searchParams.get('event_type');

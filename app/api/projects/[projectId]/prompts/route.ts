@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { slugify, extractVariableNames } from '@/lib/prompts/registry';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -10,6 +11,9 @@ export async function GET(
 ) {
     const { projectId } = await params;
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { data, error } = await supabase
         .from('prompt_registry')
@@ -58,6 +62,9 @@ export async function POST(
     const { projectId } = await params;
     const body = await req.json();
     const supabase = createAdminClient();
+
+    const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
+    if (gate) return gate;
 
     const { name, description, tags, content, model_hint, temperature, max_tokens, change_message } = body;
 

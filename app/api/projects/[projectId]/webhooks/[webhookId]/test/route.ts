@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { deliverWebhook, createWebhookEvent } from '@/lib/webhooks/deliver';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface RouteParams {
     params: Promise<{ projectId: string; webhookId: string }>;
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     if (webhookError || !webhook) {
         return NextResponse.json({ error: 'Webhook not found' }, { status: 404 });
     }
+
+    const gate = await requireTierFeatureForProject(projectId, 'webhooks');
+    if (gate) return gate;
 
     const testPayload = createWebhookEvent('test', projectId, {
         message: 'This is a test webhook delivery from Cencori',

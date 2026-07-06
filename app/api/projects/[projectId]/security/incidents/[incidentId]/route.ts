@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 export async function GET(
     req: NextRequest,
@@ -8,6 +9,9 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, incidentId } = await params;
+
+    const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
+    if (gate) return gate;
 
     try {
         const { data: incident, error } = await supabaseAdmin
@@ -73,6 +77,9 @@ export async function PATCH(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, incidentId } = await params;
+
+    const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
+    if (gate) return gate;
 
     try {
         const body = await req.json();
