@@ -98,7 +98,7 @@ async function handleCollectionSucceeded(
         orgId,
         netCreditsAfterFee(grossCredits),
         'topup',
-        'Polar.sh credits top-up'
+        'Bachs credits top-up'
       );
 
       await supabase

@@ -213,7 +213,7 @@ export async function getInvoices(orgSlug: string) {
             const status: BillingInvoice['status'] =
                 payin.status === 'SUCCEEDED' || payin.status === 'SETTLED'
                     ? 'paid'
-                    : payin.status === 'PENDING' || payin.status === 'PENDING'
+                    : payin.status === 'PENDING'
                         ? 'pending'
                         : 'refunded';
 
@@ -254,7 +254,7 @@ export async function getCustomerPortalUrl(orgSlug: string) {
         if (orgResult.org.subscription_tier === 'pro' || orgResult.org.subscription_tier === 'team' || orgResult.org.subscription_tier === 'free') {
             const checkoutTier = orgResult.org.subscription_tier === 'team' ? 'team' : 'pro';
             const { checkout_url } = await fetch(
-                `${process.env.BACHS_API_BASE || 'https://sandbox-api.bachs.io/v1'}/checkout-sessions`,
+                `${process.env.BACHS_API_BASE || (process.env.NODE_ENV === 'production' ? 'https://api.bachs.io/v1' : 'https://sandbox-api.bachs.io/v1')}/checkout-sessions`,
                 {
                     method: 'POST',
                     headers: {

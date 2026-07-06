@@ -197,11 +197,11 @@ export default function NewOrganizationPage() {
 
         const data = await response.json();
 
-        if (!response.ok || !data.url) {
+        if (!response.ok || !data.checkoutUrl) {
           throw new Error(data.error || 'Failed to create checkout');
         }
 
-        openBachsCheckout(data.url);
+        openBachsCheckout(data.checkoutUrl);
 
       } catch (err) {
         console.error("Error creating checkout:", err);

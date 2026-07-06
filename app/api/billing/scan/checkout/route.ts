@@ -32,5 +32,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ url: session.checkout_url });
+  return NextResponse.json({ checkoutUrl: session.checkout_url });
 }

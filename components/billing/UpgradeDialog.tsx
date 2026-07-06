@@ -79,11 +79,11 @@ export function UpgradeDialog({
 
             const data = await res.json();
 
-            if (!res.ok || !data.url) {
+            if (!res.ok || !data.checkoutUrl) {
                 throw new Error(data.error || 'Failed to create checkout session');
             }
 
-            window.location.href = data.url;
+            window.location.href = data.checkoutUrl;
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Something went wrong');
             setLoading(null);

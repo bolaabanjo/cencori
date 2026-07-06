@@ -399,7 +399,7 @@ export function Pricing() {
             const res = await fetch("/api/billing/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tier, cycle: billingPeriod, orgId }),
+                body: JSON.stringify({ tier, interval: billingPeriod === 'annual' ? 'year' : 'month', orgId }),
             });
             const data = await res.json();
             if (data.checkoutUrl) {
