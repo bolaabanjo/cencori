@@ -1,0 +1,260 @@
+---
+title: "Build a Contract Analyzer"
+description: "Ship a contract Q&A tool in twenty minutes. Upload a PDF, ask questions, and get answers with quoted excerpts. The free path handles most contracts — you only pay tokens on the actual questions."
+section: "Guides"
+order: 10
+---
+
+By the end of this guide you'll have a working "chat with your contract" tool: a user uploads a PDF, types a question, and gets an answer grounded in the document. Twenty minutes if you have a Next.js app running.
+
+We'll use `cencori.documents.extract()` (free for text-based PDFs) and `cencori.documents.query()` (a few cents per question) to keep costs sensible even on 100-page contracts.
+
+## What you're building
+
+- Upload a PDF once, ask many questions
+- Each question hits `/api/ai/documents/query`
+- Answers cite the relevant excerpt when possible
+- The system prompt guarantees "Not found in the document" instead of hallucinated legal opinions
+
+## Prerequisites
+
+- A Cencori project + API key (`csk_...`)
+- Next.js app (adapt trivially to any Node backend)
+- `npm install cencori`
+
+## Step 1 — Upload once, ask many
+
+We only want to parse the PDF once per session. Cache the extracted text server-side (or in Redis for production), then run each question against it.
+
+```typescript
+// app/api/contract/upload/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Cencori } from 'cencori';
+import { setContract } from '@/lib/contract-store';
+
+const cencori = new Cencori();
+
+export async function POST(req: NextRequest) {
+  const form = await req.formData();
+  const file = form.get('file');
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: 'file required' }, { status: 400 });
+  }
+
+  const buf = Buffer.from(await file.arrayBuffer());
+
+  // One shot: parse the PDF and store the text.
+  const result = await cencori.documents.extract({
+    document: {
+      base64: buf.toString('base64'),
+      mimeType: file.type || 'application/pdf',
+      filename: file.name,
+    },
+  });
+
+  const contractId = crypto.randomUUID();
+  await setContract(contractId, {
+    filename: file.name,
+    text: result.text,
+    pageCount: result.pageCount,
+    extractMethod: result.method,
+  });
+
+  return NextResponse.json({
+    contractId,
+    pageCount: result.pageCount,
+    method: result.method,          // 'pdf_text' means the parse was free
+    charCount: result.text.length,
+  });
+}
+```
+
+`method: 'pdf_text'` in the response means no LLM tokens were spent — the parse was free. That's the case for almost every contract exported from Word, DocuSign, PandaDoc, etc.
+
+`lib/contract-store.ts` can be as simple as an in-memory Map for a demo, or Redis / DynamoDB / your database of choice for production:
+
+```typescript
+// lib/contract-store.ts
+const store = new Map<string, { filename: string; text: string; pageCount: number; extractMethod: string }>();
+
+export async function setContract(id: string, data: { filename: string; text: string; pageCount: number; extractMethod: string }) {
+  store.set(id, data);
+}
+
+export async function getContract(id: string) {
+  return store.get(id);
+}
+```
+
+## Step 2 — Ask questions
+
+Each question is a small `POST /api/ai/documents/query` call. The strict system prompt guarantees no invented text.
+
+```typescript
+// app/api/contract/[id]/ask/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Cencori } from 'cencori';
+import { getContract } from '@/lib/contract-store';
+
+const cencori = new Cencori();
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { question } = await req.json();
+
+  const contract = await getContract(id);
+  if (!contract) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  // Rebuild a data URL so cencori.documents.query re-parses.
+  // Simpler: use the text we already cached and hit chat directly.
+  // For a full walkthrough we'll use the composed endpoint.
+  const result = await cencori.documents.query({
+    document: {
+      // We stored the text, but the endpoint needs a document.
+      // In practice you'd cache the original bytes, not just the text.
+      // For this guide, keep the original in your store.
+      base64: contract.originalBase64,        // <— add this to setContract
+      mimeType: 'application/pdf',
+    },
+    question,
+  });
+
+  return NextResponse.json({
+    answer: result.answer,
+    cost: result.cost.cencoriChargeUsd,
+    tokens: result.usage.totalTokens,
+  });
+}
+```
+
+That works but re-parses the PDF on every question. **Cheaper trick:** once you have the text cached, use `cencori.ai.chat()` for the question with a strict system prompt. You skip a round of parsing and get the same behavior:
+
+```typescript
+const response = await cencori.ai.chat({
+  model: 'gpt-4o-mini',
+  temperature: 0,
+  messages: [
+    {
+      role: 'system',
+      content:
+        'You answer questions strictly from the provided document. ' +
+        'If the answer is not present, say "Not found in the document." ' +
+        'Do not invent details. Include short quoted excerpts when useful.',
+    },
+    { role: 'user', content: `Document:\n\n${contract.text}\n\n---\n\nQuestion: ${question}` },
+  ],
+});
+```
+
+Same result, one fewer round-trip on repeat questions.
+
+## Step 3 — Drop in the upload UI
+
+Reuse `<VisionUploader />` from `cencori/react` — it handles drag-drop, format validation (PDF is unsupported by that widget today, so pass an explicit `accept` and disable image validation).
+
+For simplicity, roll a minimal uploader:
+
+```tsx
+// app/contract/page.tsx
+'use client';
+
+import { useState } from 'react';
+
+export default function ContractPage() {
+  const [contractId, setContractId] = useState<string | null>(null);
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/contract/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    setContractId(data.contractId);
+    setLoading(false);
+  }
+
+  async function handleAsk() {
+    if (!contractId || !question) return;
+    setLoading(true);
+    setAnswer(null);
+    const res = await fetch(`/api/contract/${contractId}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+    setAnswer(data.answer);
+    setLoading(false);
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6 p-8">
+      <h1 className="text-2xl font-semibold">Contract Q&amp;A</h1>
+
+      {!contractId && (
+        <label className="block cursor-pointer rounded-lg border-2 border-dashed p-8 text-center">
+          <input type="file" accept="application/pdf" className="hidden" onChange={handleUpload} />
+          {loading ? 'Parsing…' : 'Click to upload a PDF'}
+        </label>
+      )}
+
+      {contractId && (
+        <div className="space-y-3">
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="What is the termination clause?"
+            className="w-full rounded-lg border p-3"
+            rows={2}
+          />
+          <button onClick={handleAsk} disabled={loading} className="rounded-lg bg-neutral-900 px-4 py-2 text-white">
+            {loading ? 'Thinking…' : 'Ask'}
+          </button>
+
+          {answer && (
+            <div className="rounded-lg border bg-neutral-50 p-4 whitespace-pre-wrap dark:bg-neutral-900">
+              {answer}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+Ship this to your app and you have a working contract Q&A tool. All the AI-magic parts are two SDK calls; everything else is basic Next.js.
+
+## Step 4 — Production notes
+
+**Cache the text.** Every question shouldn't re-parse the PDF. Store the extracted text in Redis or your database keyed by contract ID.
+
+**Rate-limit per contract.** One user asking 500 questions in a minute burns money. Rate-limit at the contract ID level, not per user, so a group demo doesn't get throttled.
+
+**Log costs per question.** The response includes `cost.cencoriChargeUsd` — persist it so you can see your per-conversation margin.
+
+**Validate the schema.** For structured extraction (dates, dollar amounts, party names), use `cencori.ai.generateObject()` with a Zod schema instead of freeform query — you'll get typed data back and Cencori will fail loudly if the model returns invalid JSON.
+
+**Handle the scanned-PDF error.** If `extract` returns `error: 'scanned_pdf_not_yet_supported'`, show the user a helpful message: "This PDF looks like a scan — try uploading each page as an image." Or rasterize on the client with pdf.js and send the pages to `/api/ai/vision` with the multi-image field.
+
+**Redact before you ship.** Contracts contain PII. If you're logging the extracted text anywhere your team can see, run it through Cencori's built-in PII redaction first (`cencori.ai.chat` does this automatically on request).
+
+## Try other document types
+
+The same pattern works for:
+
+- **Invoices** — replace the system prompt with an extraction schema
+- **Resumes** — "How many years of Python experience does this candidate have?"
+- **Reports** — "Summarize the key findings. What are the three main risks called out?"
+- **Policy documents** — "Does this SOC 2 report mention SSO?"
+
+## Where to go next
+
+- [Documents API reference](/docs/ai/endpoints/documents) — all three endpoints, error codes, formats
+- [Build a Receipt Scanner](/docs/guides/build-a-receipt-scanner) — the same pattern using Vision instead of Documents
+- [Embed the VisionUploader Component](/docs/guides/vision-uploader) — the React component reference

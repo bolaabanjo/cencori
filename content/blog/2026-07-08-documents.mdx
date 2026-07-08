@@ -1,0 +1,113 @@
+---
+title: "Documents on Cencori"
+slug: "documents"
+date: "2026-07-08"
+coverImage: "/blog/images/covers/documents.png"
+excerpt: "Extract text from PDFs, summarize contracts, and answer questions about any document — all through one API. Text-based PDFs are extracted natively, no LLM tokens, no cost. Ships in all five SDKs from day one."
+tags: ["Product", "Documents", "AI", "PDF", "Release"]
+category: "changelog"
+published: true
+---
+
+**Documents is live on Cencori.**
+
+Three endpoints. Point at a PDF or image and get back:
+
+- `/api/ai/documents/extract` — the full text
+- `/api/ai/documents/summarize` — a concise summary
+- `/api/ai/documents/query` — an answer to your question
+
+Same gateway, same key, same billing, same logs as everything else.
+
+## The part that isn't obvious
+
+Most "AI document processing" pipelines burn tokens on things that don't need an LLM. Contracts, invoices, reports, resumes — anything exported from Word, Google Docs, or a generator — already have text embedded in the PDF. You don't need Vision OCR to see it. You just need `pdf-parse`.
+
+Cencori's Documents endpoint checks first, calls the LLM second:
+
+```typescript
+const { text, method } = await cencori.documents.extract({
+  document: { url: 'https://example.com/contract.pdf' },
+});
+
+console.log(method); // 'pdf_text' — no tokens billed
+```
+
+Only images (and image-based scanned PDFs, once we ship that path) route through Vision OCR. Everything else is native extraction — instant, deterministic, and **free**.
+
+This matters at scale. A firm processing 10,000 contracts a month on the "PDF → Vision → tokens" pattern pays every time. On Cencori, if the contracts are text-based (they almost always are), the extract calls cost nothing beyond the base gateway request.
+
+`method: "pdf_text"` in the response tells you the free path ran. `method: "vision_ocr"` means Vision was invoked and tokens were counted.
+
+## Summarize and Query
+
+Extract is one call. `/summarize` and `/query` compose extract with a chat model — do the parse for free, then spend a few cents on the actual reasoning:
+
+```typescript
+const { summary } = await cencori.documents.summarize({
+  document: { url: 'https://example.com/quarterly-report.pdf' },
+});
+
+const { answer } = await cencori.documents.query({
+  document: { url: 'https://example.com/contract.pdf' },
+  question: 'What is the termination clause?',
+});
+```
+
+`/query` uses a strict system prompt: if the answer isn't in the document, the model returns "Not found in the document." — no hallucinated legal advice, no invented dates. That's a hard requirement for compliance and legal workflows and it's how the endpoint ships by default.
+
+## Where you'd use it
+
+- **Contract Q&A** — "What's the termination window? What's the auto-renewal clause? What are the payment terms?"
+- **Invoice extraction** — vendor, PO number, line items, total. Ship a receipt/invoice scanner in an afternoon.
+- **Resume screening** — years of experience, tech stack match, education. Cheap enough to run on every applicant.
+- **Policy compliance** — "Does this vendor contract mention GDPR? SOC 2?"
+- **Report summarization** — feed a 50-page board deck, get a 300-word summary with the numbers preserved.
+
+## Five SDKs, one shape
+
+```typescript
+// TypeScript
+await cencori.documents.extract({ document: { url } });
+
+// Python
+cencori.documents.extract(document_url=url)
+
+// Go
+client.Documents.Extract(ctx, &cencori.DocumentParams{DocumentURL: url})
+
+// PHP
+$cencori->documents->extract(['document_url' => $url]);
+
+// Rust
+cencori.documents.extract(&DocumentParams::from_url(url))
+```
+
+Same methods, same response shape, same error codes across all five languages. Each SDK ships with a runnable `examples/documents.*` file.
+
+## What's not shipped yet
+
+- **Scanned PDFs.** Image-only PDFs (no embedded text) return a clear error pointing you at `/api/ai/vision` with the multi-image field. Server-side page rasterization is the obvious v2 — it's coming, it's just a bigger infrastructure decision.
+- **Structured extraction schemas.** You can currently ask "return JSON" via the extract prompt, but a first-class `schema` field (like `documents.extract({ schema: z.object({...}) })`) is coming.
+- **Batch processing.** Send a folder of documents at once. Same story as scanned PDFs — v2.
+
+## Getting started
+
+```bash
+npm install cencori
+```
+
+```typescript
+import { Cencori } from 'cencori';
+const cencori = new Cencori(); // reads CENCORI_API_KEY
+
+const { text, method, pageCount } = await cencori.documents.extract({
+  document: { url: 'https://example.com/contract.pdf' },
+});
+```
+
+That's it.
+
+- [Documents API reference](/docs/ai/endpoints/documents)
+- [Build a Contract Analyzer](/docs/guides/build-a-contract-analyzer) — end-to-end tutorial
+- [Vision endpoint](/docs/ai/endpoints/vision) — for standalone image analysis

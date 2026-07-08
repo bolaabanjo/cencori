@@ -1,0 +1,243 @@
+---
+title: "Documents Endpoint"
+description: "Extract text from PDFs and images, summarize documents, and answer questions about them. Native PDF text extraction is free — no LLM cost."
+section: "Endpoints"
+order: 7
+---
+
+Point at a PDF or image and get back clean text, a summary, or an answer to your question. Text-based PDFs use native extraction — no LLM call, no token cost. Image inputs and image-based (scanned) PDF pages route through Vision OCR.
+
+## Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `POST /api/ai/documents/extract` | Return the full text of the document |
+| `POST /api/ai/documents/summarize` | Extract then generate a concise summary |
+| `POST /api/ai/documents/query` | Extract then answer a specific question |
+
+## Basic Request
+
+```typescript
+// From a URL — text-based PDF, native extraction, no LLM cost
+const { text, pageCount, method } = await cencori.documents.extract({
+  document: { url: 'https://example.com/contract.pdf' },
+});
+
+console.log(method); // 'pdf_text' — free
+console.log(pageCount, text.length);
+```
+
+### From a local file (Node.js)
+
+```typescript
+import fs from 'node:fs';
+const buf = fs.readFileSync('quarterly-report.pdf');
+
+const { summary } = await cencori.documents.summarize({
+  document: { base64: buf.toString('base64'), mimeType: 'application/pdf' },
+});
+```
+
+### Answer a question
+
+```typescript
+const { answer } = await cencori.documents.query({
+  document: { url: 'https://example.com/contract.pdf' },
+  question: 'What is the termination clause?',
+});
+// If the answer isn't in the document, the response is
+// "Not found in the document." — no invented text.
+```
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `document_url` | string | one of these | https:// URL to a PDF or image |
+| `document_base64` | string | one of these | Raw base64 (no `data:` prefix) |
+| `mime_type` | string | with `document_base64` | `application/pdf`, `image/png`, etc. |
+| `filename` | string | No | Helps mime detection when the type is generic |
+| `prompt` | string | No | Custom OCR prompt (image inputs only) |
+| `question` | string | Yes (query only) | The question to answer |
+| `model` | string | No | Override the summary/query chat model |
+| `max_tokens` | number | No | Response length cap |
+| `temperature` | number | No | Sampling temperature |
+
+## Response Shapes
+
+### `/extract`
+
+```typescript
+{
+  text: "The full text of the document...",
+  pageCount: 12,
+  kind: "pdf",              // or "image"
+  method: "pdf_text",       // or "vision_ocr"
+  metadata: { info: {...}, pagesWithText: 12 },
+  // usage + cost are only present when Vision OCR ran
+}
+```
+
+### `/summarize`
+
+```typescript
+{
+  summary: "The document outlines a licensing agreement...",
+  text: "…full extracted text…",
+  pageCount: 12,
+  model: "gpt-4o-mini",
+  provider: "openai",
+  extractMethod: "pdf_text",
+  usage: { promptTokens, completionTokens, totalTokens },
+  cost:  { providerCostUsd, cencoriChargeUsd, markupPercentage }
+}
+```
+
+### `/query`
+
+```typescript
+{
+  answer: "The termination clause is in Section 8...",
+  question: "What is the termination clause?",
+  pageCount: 12,
+  model: "gpt-4o-mini",
+  provider: "openai",
+  extractMethod: "pdf_text",
+  usage: {...},
+  cost:  {...}
+}
+```
+
+## Supported Inputs
+
+| Format | Extraction path |
+|--------|-----------------|
+| `application/pdf` (text-based) | Native pdf-parse — **free, no LLM call** |
+| `image/jpeg`, `image/png`, `image/webp`, `image/gif` | Vision OCR |
+| `image/heic`, `image/heif` | Vision OCR (Google models only) |
+| `application/pdf` (scanned, no embedded text) | Not yet supported — see [Scanned PDFs](#scanned-pdfs) |
+
+**Max size: 25MB per document.** Requests over the limit return `document_too_large` with the exact bytes.
+
+## The Free Path
+
+If your PDF has embedded text (most contracts, exports from Word/Google Docs, generated reports), `/extract` uses `pdf-parse` and returns the text without ever calling an LLM. `cost` is omitted from the response and no tokens are billed.
+
+`method: "pdf_text"` in the response tells you extraction was free. `method: "vision_ocr"` means Vision was invoked and tokens were counted.
+
+## Scanned PDFs
+
+Scanned PDFs (image-only, no embedded text) return a `400`:
+
+```json
+{
+  "error": "scanned_pdf_not_yet_supported",
+  "message": "This PDF appears to be scanned. Rasterize the pages to images and use /api/ai/vision, or split into per-page PNGs and POST via /api/ai/documents/extract as an image.",
+  "pageCount": 8
+}
+```
+
+Rasterize the pages to PNGs client-side and either:
+- POST each page image to `/api/ai/documents/extract` and concatenate the text, or
+- POST all pages together to `/api/ai/vision` with the `images: [...]` multi-image field for a single unified analysis.
+
+## Multipart file upload
+
+Both endpoints accept `multipart/form-data`:
+
+```bash
+curl -X POST https://cencori.com/api/ai/documents/query \
+  -H "CENCORI_API_KEY: csk_..." \
+  -F "file=@contract.pdf" \
+  -F "question=What is the total contract value?"
+```
+
+## In other SDKs
+
+### Python
+
+```python
+from cencori import Cencori
+cencori = Cencori()
+
+result = cencori.documents.extract(
+    document_url="https://example.com/contract.pdf",
+)
+print(result["text"])
+
+answer = cencori.documents.query(
+    document_url="https://example.com/contract.pdf",
+    question="What is the termination clause?",
+)
+print(answer["answer"])
+```
+
+Async variants: `a_extract()`, `a_summarize()`, `a_query()`.
+
+### Go
+
+```go
+result, _ := client.Documents.Extract(context.Background(), &cencori.DocumentParams{
+    DocumentURL: "https://example.com/contract.pdf",
+})
+fmt.Println(result.Text)
+
+answer, _ := client.Documents.Query(context.Background(), &cencori.DocumentParams{
+    DocumentURL: "https://example.com/contract.pdf",
+    Question:    "What is the total contract value?",
+})
+fmt.Println(answer.Answer)
+```
+
+### PHP
+
+```php
+$result = $cencori->documents->extract([
+    'document_url' => 'https://example.com/contract.pdf',
+]);
+echo $result['text'];
+
+$answer = $cencori->documents->query([
+    'document_url' => 'https://example.com/contract.pdf',
+    'question' => 'What is the total contract value?',
+]);
+echo $answer['answer'];
+```
+
+### Rust
+
+```rust,no_run
+use cencori::documents::DocumentParams;
+use cencori::Cencori;
+
+let cencori = Cencori::new(None, None, None)?;
+
+let result = cencori
+    .documents
+    .extract(&DocumentParams::from_url("https://example.com/contract.pdf"))?;
+println!("{}", result.text);
+
+let answer = cencori
+    .documents
+    .query(
+        &DocumentParams::from_url("https://example.com/contract.pdf")
+            .with_question("What is the termination clause?"),
+    )?;
+println!("{}", answer.answer);
+```
+
+## Errors
+
+| `error` | Meaning |
+|---------|---------|
+| `unsupported_format` | Not a PDF or supported image type |
+| `document_too_large` | Exceeds 25MB |
+| `scanned_pdf_not_yet_supported` | PDF has no extractable text — rasterize to images and retry |
+| `pdf_parse_failed` | PDF is corrupted or otherwise unreadable |
+| `provider_not_configured` | Summarize / query needs an OpenAI key (for the chat step) |
+| `bad_request` | Missing `document_url`/`document_base64`, or missing `question` on `/query` |
+
+## Where to go next
+
+- [Build a Contract Analyzer](/docs/guides/build-a-contract-analyzer) — end-to-end tutorial
+- [Vision endpoint](/docs/ai/endpoints/vision) — for standalone image analysis or multi-image workflows

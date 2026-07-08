@@ -83,6 +83,43 @@ console.log(result.text);
 
 `/describe` returns `description` instead of `analysis`. `/ocr` returns `text`. `/classify` returns `classification` (parsed JSON when the model returns valid JSON) plus the raw string in `raw`.
 
+## Multiple images
+
+Pass an `images` array instead of a single `image` to analyze several images together. All three providers support multi-image input.
+
+```typescript
+// Compare two product photos
+const result = await cencori.vision.analyze({
+  images: [
+    { url: 'https://cdn.example.com/product-a.jpg' },
+    { url: 'https://cdn.example.com/product-b.jpg' },
+  ],
+  prompt: 'Compare these two products. Which looks better lit and why?',
+});
+```
+
+```typescript
+// Multi-page image-based document
+const pages = await rasterizePdf(pdfBuffer); // your own helper
+const { text } = await cencori.vision.ocr({
+  images: pages.map(buf => ({ base64: buf.toString('base64'), mimeType: 'image/png' })),
+});
+```
+
+Multipart uploads also support multi-image: send multiple `file` fields (or a single `files[]` field with several files):
+
+```bash
+curl -X POST https://cencori.com/api/ai/vision \
+  -H "CENCORI_API_KEY: csk_..." \
+  -F "file=@before.jpg" \
+  -F "file=@after.jpg" \
+  -F "prompt=What changed between these two photos?"
+```
+
+Per-image validation runs before the provider call, so oversize/wrong-format errors name the specific offender.
+
+**Use cases:** before/after comparison, multi-angle product tagging, multi-page image-based documents, chart-plus-reference-doc analysis, signature verification against a reference.
+
 ## Streaming
 
 Set `stream: true` to receive a Server-Sent Events stream of text deltas. The final `data:` line before `[DONE]` contains the usage + cost summary.

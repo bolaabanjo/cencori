@@ -170,6 +170,31 @@ import { VisionUploader } from 'cencori/react';
 
 Full API in [docs](https://cencori.com/docs/ai/endpoints/vision).
 
+### Documents (PDF & Image Extraction)
+
+Extract text from PDFs and images, summarize documents, and answer questions about them. Text-based PDFs use native parsing — no LLM tokens, free.
+
+```typescript
+// Extract text — native PDF parsing, free
+const { text, method } = await cencori.documents.extract({
+  document: { url: 'https://example.com/contract.pdf' },
+});
+console.log(method); // 'pdf_text' means free
+
+// Summarize
+const { summary } = await cencori.documents.summarize({
+  document: { url: 'https://example.com/report.pdf' },
+});
+
+// Q&A — strict "Not found" if the answer isn't in the doc
+const { answer } = await cencori.documents.query({
+  document: { url: 'https://example.com/contract.pdf' },
+  question: 'What is the termination clause?',
+});
+```
+
+Full API in [docs](https://cencori.com/docs/ai/endpoints/documents). See the [Contract Analyzer tutorial](https://cencori.com/docs/guides/build-a-contract-analyzer) for an end-to-end example.
+
 ### Image Generation
 
 Generate images from text prompts using multiple providers:
