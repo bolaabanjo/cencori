@@ -6,6 +6,8 @@ export default defineConfig({
         'vercel/index': 'src/vercel/index.ts',
         'tanstack/index': 'src/tanstack/index.ts',
         'ai/index': 'src/ai/index.ts',
+        'vision/index': 'src/vision/index.ts',
+        'react/index': 'src/react/index.ts',
         'compute/index': 'src/compute/index.ts',
         'workflow/index': 'src/workflow/index.ts',
         'storage/index': 'src/storage/index.ts',
@@ -17,4 +19,5 @@ export default defineConfig({
     splitting: false,
     sourcemap: true,
     clean: true,
+    external: ['react', 'react-dom', 'lucide-react'],
 });

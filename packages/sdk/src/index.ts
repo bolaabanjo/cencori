@@ -80,6 +80,20 @@ export { fetchWithRetry } from './utils';
 
 // Namespace exports for advanced usage
 export { AINamespace, type StreamChunk } from './ai';
+export {
+    VisionNamespace,
+    type VisionProvider,
+    type VisionTask,
+    type VisionImage,
+    type VisionRequest,
+    type VisionResult,
+    type VisionDescribeResult,
+    type VisionOcrResult,
+    type VisionClassifyResult,
+    type VisionClassification,
+    type VisionUsage,
+    type VisionCost,
+} from './vision';
 export { AgentsNamespace, type Agent, type AgentConfig, type AgentListItem, type CreateAgentParams, type UpdateAgentParams, type AgentKey, type CreateAgentKeyParams } from './agents';
 export { ComputeNamespace } from './compute';
 export { WorkflowNamespace } from './workflow';

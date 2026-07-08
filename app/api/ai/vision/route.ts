@@ -1,0 +1,114 @@
+/**
+ * Vision Analysis API Route
+ *
+ * POST /api/ai/vision
+ *
+ * Analyzes an uploaded or referenced image with a vision-capable model.
+ * Accepts either multipart/form-data (with `file`) or JSON body
+ * (with `image_url` or `image_base64`). Routes across OpenAI / Anthropic / Google.
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import {
+    validateGatewayRequest,
+    addGatewayHeaders,
+    handleCorsPreFlight,
+    logGatewayRequest,
+    incrementUsage,
+} from '@/lib/gateway-middleware';
+import {
+    analyzeVision,
+    listVisionModels,
+    parseVisionRequest,
+    MAX_VISION_IMAGE_BYTES,
+    VISION_PROVIDER_LIMITS,
+    UNIVERSAL_VISION_FORMATS,
+    VisionValidationError,
+} from '@/lib/vision/analyze';
+
+export async function OPTIONS() {
+    return handleCorsPreFlight();
+}
+
+export async function POST(req: NextRequest) {
+    const validation = await validateGatewayRequest(req);
+    if (!validation.success) return validation.response;
+    const ctx = validation.context;
+
+    try {
+        const request = await parseVisionRequest(req);
+        const result = await analyzeVision(ctx, request);
+
+        await logGatewayRequest(ctx, {
+            endpoint: 'vision',
+            model: result.model,
+            provider: result.provider,
+            status: 'success',
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
+            totalTokens: result.usage.totalTokens,
+            costUsd: result.cost.cencoriChargeUsd,
+            providerCostUsd: result.cost.providerCostUsd,
+            cencoriChargeUsd: result.cost.cencoriChargeUsd,
+            markupPercentage: result.cost.markupPercentage,
+        });
+        await incrementUsage(ctx);
+
+        return addGatewayHeaders(NextResponse.json(result), { requestId: ctx.requestId });
+    } catch (error) {
+        if (error instanceof VisionValidationError) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'vision',
+                model: 'unknown',
+                provider: 'unknown',
+                status: 'error',
+                errorMessage: error.message,
+                metadata: { code: error.code, ...error.details },
+            });
+            return addGatewayHeaders(
+                NextResponse.json({ error: error.code, message: error.message, ...error.details }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        const status = /required|invalid|unsupported|exceeds|No .* API key/i.test(message) ? 400 : 500;
+        console.error('[Vision] Error:', error);
+
+        await logGatewayRequest(ctx, {
+            endpoint: 'vision',
+            model: 'unknown',
+            provider: 'unknown',
+            status: 'error',
+            errorMessage: message,
+        });
+
+        return addGatewayHeaders(
+            NextResponse.json({ error: status === 400 ? 'bad_request' : 'internal_error', message }, { status }),
+            { requestId: ctx.requestId }
+        );
+    }
+}
+
+export async function GET() {
+    return NextResponse.json({
+        endpoint: '/api/ai/vision',
+        description: 'Analyze an image with a vision-capable model.',
+        accepts: ['multipart/form-data', 'application/json'],
+        providers: ['openai', 'anthropic', 'google'],
+        models: listVisionModels(),
+        tasks: [
+            { path: '/api/ai/vision', description: 'General image analysis with your own prompt' },
+            { path: '/api/ai/vision/describe', description: 'Describe the image in detail' },
+            { path: '/api/ai/vision/ocr', description: 'Extract all text visible in the image' },
+            { path: '/api/ai/vision/classify', description: 'Return tags, categories, and a JSON classification' },
+        ],
+        limits: {
+            maxImageBytes: MAX_VISION_IMAGE_BYTES,
+            maxImageMB: MAX_VISION_IMAGE_BYTES / (1024 * 1024),
+            perProvider: VISION_PROVIDER_LIMITS,
+            universalFormats: UNIVERSAL_VISION_FORMATS,
+            recommendation: 'Use JPEG, PNG, WEBP, or GIF for max compatibility across all providers.',
+        },
+    });
+}

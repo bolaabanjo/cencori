@@ -28,6 +28,7 @@
 import type { CencoriConfig, RequestOptions } from './types';
 import { AINamespace } from './ai';
 import { AgentsNamespace } from './agents';
+import { VisionNamespace } from './vision';
 import { SessionsNamespace } from './sessions';
 import { ComputeNamespace } from './compute';
 import { WorkflowNamespace } from './workflow';
@@ -59,6 +60,22 @@ export class Cencori {
      * await cencori.ai.chat({ model: 'gpt-4o', messages: [...] });
      */
     readonly ai: AINamespace;
+
+    /**
+     * Vision - Analyze, describe, OCR, and classify images
+     *
+     * @example
+     * const result = await cencori.vision.analyze({
+     *   image: { url: 'https://example.com/photo.jpg' },
+     *   prompt: 'What breed is this dog?'
+     * });
+     *
+     * @example
+     * const { text } = await cencori.vision.ocr({
+     *   image: { base64, mimeType: 'image/png' }
+     * });
+     */
+    readonly vision: VisionNamespace;
 
     /**
      * Agents - Create and manage AI agents programmatically.
@@ -167,6 +184,7 @@ export class Cencori {
 
         // Initialize namespaces
         this.ai = new AINamespace(this.config);
+        this.vision = new VisionNamespace(this.config);
         this.agents = new AgentsNamespace(this.config);
         this.compute = new ComputeNamespace();
         this.workflow = new WorkflowNamespace();
