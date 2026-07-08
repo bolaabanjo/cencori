@@ -1,0 +1,198 @@
+---
+title: "Build a Receipt Scanner"
+description: "Ship a working receipt-to-JSON extractor in ten minutes. Upload an image, get back structured line items — merchant, total, tax, and each row."
+section: "Guides"
+order: 8
+---
+
+By the end of this guide you'll have an endpoint your users can hit with a photo of a receipt and get back structured JSON: merchant name, total, tax, and a list of line items. About ten minutes of work if you already have a Next.js app.
+
+We'll use the Vision API's `analyze` endpoint with `response_format: "json"` so the model returns strict JSON we can parse and store.
+
+## What you're building
+
+```json
+{
+  "merchant": "Blue Bottle Coffee",
+  "date": "2026-07-08",
+  "total": 14.50,
+  "tax": 1.20,
+  "line_items": [
+    { "description": "Cortado", "price": 5.25 },
+    { "description": "Almond Croissant", "price": 4.75 },
+    { "description": "Cold Brew", "price": 4.50 }
+  ]
+}
+```
+
+## Prerequisites
+
+- A Cencori project + API key (starts with `csk_...`)
+- Any Node.js app — the snippets below use Next.js, but nothing here is Next-specific
+- `npm install cencori`
+
+## Step 1 — Define the shape
+
+Pick a JSON shape that matches what your product needs. This is your prompt contract: the model will do its best to return this exact shape.
+
+```typescript
+// lib/receipt.ts
+export interface Receipt {
+  merchant: string;
+  date: string;         // ISO 8601
+  total: number;
+  tax: number;
+  line_items: Array<{ description: string; price: number }>;
+}
+```
+
+## Step 2 — Call the Vision API
+
+Create a server route that accepts an image, calls Cencori Vision with a JSON prompt, and returns the parsed receipt.
+
+```typescript
+// app/api/receipts/scan/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { Cencori } from 'cencori';
+import type { Receipt } from '@/lib/receipt';
+
+const cencori = new Cencori();
+
+const SCAN_PROMPT = `You are an OCR extractor. Read this receipt and return
+strict JSON matching this schema:
+
+{
+  "merchant": string,
+  "date": string (ISO 8601),
+  "total": number,
+  "tax": number,
+  "line_items": [{ "description": string, "price": number }]
+}
+
+Rules:
+- Numbers are numbers, not strings.
+- If a field is missing, use null.
+- Return only the JSON object. No prose, no code fences.`;
+
+export async function POST(req: NextRequest) {
+  const form = await req.formData();
+  const file = form.get('file');
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: 'file required' }, { status: 400 });
+  }
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const b64 = buf.toString('base64');
+
+  const result = await cencori.vision.analyze({
+    image: { base64: b64, mimeType: file.type || 'image/jpeg' },
+    prompt: SCAN_PROMPT,
+    responseFormat: 'json',
+    model: 'gpt-4o',       // higher accuracy pays off on OCR — swap to gpt-4o-mini to save money
+    temperature: 0,        // deterministic
+    maxTokens: 512,
+  });
+
+  // The model returns valid JSON because we asked for it — but always guard.
+  let receipt: Receipt;
+  try {
+    receipt = JSON.parse(result.analysis);
+  } catch {
+    return NextResponse.json(
+      { error: 'model_returned_non_json', raw: result.analysis },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({
+    receipt,
+    cost: result.cost.cencoriChargeUsd,
+    model: result.model,
+  });
+}
+```
+
+## Step 3 — Drop in the uploader
+
+Use the `<VisionUploader />` component from `cencori/react` so you don't have to write drag-drop, validation, or auto-compression yourself.
+
+```tsx
+// app/scan/page.tsx
+'use client';
+
+import { useState } from 'react';
+import { VisionUploader } from 'cencori/react';
+import type { Receipt } from '@/lib/receipt';
+
+export default function ScanPage() {
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
+
+  return (
+    <div className="mx-auto max-w-xl space-y-6 p-8">
+      <h1 className="text-2xl font-semibold">Upload a receipt</h1>
+
+      <VisionUploader
+        endpoint="/api/receipts/scan"
+        onResult={(r: any) => setReceipt(r.receipt)}
+        hideBanner
+      />
+
+      {receipt && (
+        <div className="rounded-lg border p-4">
+          <h2 className="font-medium">{receipt.merchant}</h2>
+          <p className="text-sm text-neutral-500">{receipt.date}</p>
+          <ul className="mt-3 space-y-1 text-sm">
+            {receipt.line_items.map((item, i) => (
+              <li key={i} className="flex justify-between">
+                <span>{item.description}</span>
+                <span>${item.price.toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex justify-between border-t pt-2 font-medium">
+            <span>Total</span>
+            <span>${receipt.total.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+That's it — you can now upload receipts and get parsed JSON back.
+
+## Step 4 — Handle real-world messiness
+
+Receipts are noisy. Here's what to add before shipping to production:
+
+**Retry with a stricter prompt if parsing fails.** Occasionally the model will slip in a code fence or a leading sentence. Wrap the parse in a fallback that pulls the first `{...}` block:
+
+```typescript
+function parseReceipt(text: string): Receipt {
+  try { return JSON.parse(text); } catch {}
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+  throw new Error('No JSON found in model output');
+}
+```
+
+**Validate the shape.** The model can return valid JSON that doesn't match your schema. Use Zod or a small hand-rolled validator to check that `total` is a number and `line_items` is an array.
+
+**Log costs.** The response includes `cost.cencoriChargeUsd` — persist it alongside the parsed receipt so you know your per-scan margin.
+
+**Downscale huge photos client-side.** `<VisionUploader />` does this automatically for JPEG/PNG/WEBP, but if you're building your own uploader, note that GPT-4o accepts up to 20MB and Claude only up to 5MB — the Vision API returns a clear `image_too_large` error you can catch and retry with a smaller version.
+
+## Try other tasks
+
+The exact same pattern works for:
+
+- **Invoices** — swap the schema for one with vendor, PO number, and terms
+- **Business cards** — extract name, email, phone, title
+- **Screenshots** — extract text with `cencori.vision.ocr()` then run a follow-up chat call to summarize
+- **Product photos** — use `cencori.vision.classify()` to auto-tag your catalog
+
+## Where to go next
+
+- [`/docs/ai/endpoints/vision`](/docs/ai/endpoints/vision) — full reference for all four Vision endpoints
+- [`/docs/guides/vision-uploader`](/docs/guides/vision-uploader) — deep dive on the React component

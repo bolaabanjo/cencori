@@ -1,0 +1,208 @@
+---
+title: "Embed the VisionUploader Component"
+description: "Drop the Cencori Vision UI into your own React app in five minutes. Drag-drop, format validation, auto-compression, and clear error messages included."
+section: "Guides"
+order: 9
+---
+
+The `cencori/react` subpath ships a `<VisionUploader />` component you can embed directly in your product. Users drag or click to upload an image, the component validates format and size client-side, auto-compresses oversize photos, POSTs to the Vision API, and hands you the result. Zero UI you have to build yourself.
+
+This guide walks you through installing it, wiring it up, and customizing it for common patterns.
+
+## What you get
+
+- **Drag-and-drop uploader** with a preview thumbnail and remove button
+- **Client-side validation** — rejects wrong formats before the request goes out, so users see the error instantly instead of after a round trip
+- **Auto-compression** — oversize JPEG/PNG/WEBP images are downscaled on the client to fit provider limits, with a small "compressed from X to Y" notice
+- **Clear error banner** — network errors, provider errors, and validation errors all render in the same predictable spot
+- **Format-support banner** — shows users which formats and sizes are accepted before they even try
+
+## Prerequisites
+
+- A React app (Next.js, Vite, Remix — anything)
+- Tailwind CSS in your project (the component uses standard Tailwind classes; no custom design tokens)
+- `lucide-react` installed (peer dependency for the icons)
+- `npm install cencori`
+
+## Basic usage
+
+Import from the `cencori/react` subpath and drop the component into any client component:
+
+```tsx
+'use client';
+
+import { VisionUploader } from 'cencori/react';
+
+export default function UploadPage() {
+  return (
+    <VisionUploader
+      endpoint="https://cencori.com/api/ai/vision"
+      apiKey={process.env.NEXT_PUBLIC_CENCORI_KEY}
+      task="describe"
+      onResult={(result) => console.log(result)}
+    />
+  );
+}
+```
+
+That's it. The component handles the rest.
+
+## Recommended pattern: proxy through your backend
+
+Never ship your Cencori API key to the browser in production. Instead, point the component at your own API route and have it forward the request server-side:
+
+```tsx
+// app/gallery/page.tsx
+'use client';
+
+import { VisionUploader } from 'cencori/react';
+
+export default function GalleryPage() {
+  return (
+    <VisionUploader
+      endpoint="/api/vision/describe"   // your own route, same origin
+      task="describe"
+      onResult={(r) => savePhoto(r)}
+    />
+  );
+}
+```
+
+```typescript
+// app/api/vision/describe/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const form = await req.formData();
+  const res = await fetch('https://cencori.com/api/ai/vision/describe', {
+    method: 'POST',
+    headers: { CENCORI_API_KEY: process.env.CENCORI_API_KEY! },
+    body: form,
+  });
+  const data = await res.json();
+  return NextResponse.json(data, { status: res.status });
+}
+```
+
+Now your Cencori key never leaves the server.
+
+## Props reference
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `endpoint` | `string` | `/api/ai/vision` | Where the component POSTs the image |
+| `apiKey` | `string` | — | Optional Bearer token — omit when proxying through your own backend |
+| `task` | `"analyze" \| "describe" \| "ocr" \| "classify"` | `"analyze"` | Selects the sub-route: `describe`, `ocr`, or `classify` |
+| `provider` | `"openai" \| "anthropic" \| "google"` | — | Restricts client-side validation to one provider's format+size rules |
+| `model` | `string` | (server default) | Force a specific model |
+| `prompt` | `string` | — | Custom instruction (`task="analyze"` only) |
+| `onResult` | `(result) => void` | — | Called with the JSON response on success |
+| `onError` | `(err) => void` | — | Called on any client or server error |
+| `hideBanner` | `boolean` | `false` | Hide the supported-formats banner |
+| `autoCompress` | `boolean` | `true` | Auto-downscale JPEG/PNG/WEBP that exceed the provider's limit |
+| `headers` | `Record<string, string>` | — | Extra headers to send with the upload request |
+| `className` | `string` | — | Extra classes for the outer container |
+
+## Common patterns
+
+### Force a specific provider
+
+If you know you always want to run on Gemini for cost, set `provider="google"` — the client-side validator will then allow HEIC/HEIF and the 20MB limit, matching what the server will accept:
+
+```tsx
+<VisionUploader
+  endpoint="/api/vision/describe"
+  task="describe"
+  provider="google"
+  model="gemini-2.5-flash"
+  onResult={handleResult}
+/>
+```
+
+### OCR mode with a receipt scanner
+
+Use the OCR preset for text extraction:
+
+```tsx
+<VisionUploader
+  endpoint="/api/vision/ocr"
+  task="ocr"
+  provider="anthropic"    // Claude has strong OCR
+  onResult={(r) => setExtractedText(r.text)}
+/>
+```
+
+See the full end-to-end tutorial in [Build a Receipt Scanner](/docs/guides/build-a-receipt-scanner).
+
+### Hide the banner and use your own
+
+The default banner is opinionated. If your design system needs something different, hide it and use `<VisionFormatBanner />` separately (or write your own):
+
+```tsx
+import { VisionUploader, VisionFormatBanner } from 'cencori/react';
+
+<div>
+  <VisionFormatBanner provider="anthropic" className="my-custom-banner" />
+  <VisionUploader endpoint="/api/vision/ocr" task="ocr" hideBanner />
+</div>
+```
+
+### Custom loading state
+
+The component renders its own "Analyzing…" indicator, but if you want to control the loading state at a higher level in your UI, use `onResult` and `onError` as the signal:
+
+```tsx
+const [loading, setLoading] = useState(false);
+
+<VisionUploader
+  endpoint="/api/vision/analyze"
+  onResult={(r) => { setLoading(false); handleResult(r); }}
+  onError={(e) => { setLoading(false); toast.error(e.message); }}
+  headers={{ 'X-Request-Id': generateId() }}
+/>
+```
+
+## Error handling
+
+The component renders a red banner for any of these:
+
+- `unsupported_format` — user uploaded TIFF, BMP, SVG, etc.
+- `image_too_large` — file exceeds the provider's max size and auto-compression failed (or is disabled)
+- `network_error` — the fetch call itself failed
+- Anything the server returns as a `4xx` or `5xx`
+
+If you want to render errors yourself instead of the built-in banner, pass an `onError` handler:
+
+```tsx
+<VisionUploader
+  endpoint="/api/vision/analyze"
+  onError={(err) => {
+    if (err.code === 'unsupported_format') {
+      alert('Please upload a JPEG or PNG.');
+    } else {
+      Sentry.captureException(err);
+    }
+  }}
+/>
+```
+
+The built-in banner still renders — the callback fires alongside it. To fully replace the built-in error UI, wrap the component and use CSS to hide the `role="alert"` block.
+
+## Styling
+
+The component uses vanilla Tailwind classes only — no custom design tokens, no CSS-in-JS. All the interactive elements have sensible defaults for both light and dark mode. If you need to override the button style or the drop-zone border, use the `className` prop for the outer container and target children with descendant selectors.
+
+## Bundle size
+
+The component ships as an ES module. Vite/Next.js/Webpack should tree-shake `VisionFormatBanner` out if you don't use it. Peer dependencies (`react`, `lucide-react`) are not bundled — you provide them.
+
+## What it doesn't do (yet)
+
+- **Streaming** — the component makes a single POST and waits for the full response. Streaming SSE support is on the server; the component doesn't yet consume it.
+- **Multiple file upload** — one image at a time. If you need batch processing, wrap it in your own list state.
+- **Camera capture** — the `<input>` uses the standard `accept="image/*"` — mobile browsers will offer camera as an option, but there's no in-app camera UI.
+
+## Where to go next
+
+- [`/docs/ai/endpoints/vision`](/docs/ai/endpoints/vision) — full Vision API reference
+- [`/docs/guides/build-a-receipt-scanner`](/docs/guides/build-a-receipt-scanner) — end-to-end tutorial using this component
