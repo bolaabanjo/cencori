@@ -3,7 +3,7 @@ title: "Vision on Cencori"
 slug: "vision"
 date: "2026-07-08"
 coverImage: "/blog/images/covers/vision.png"
-excerpt: "Vision is live on Cencori. Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint. Ships with a drop-in React uploader — the first of a set of importable UI components that turn your API into a product surface."
+excerpt: "Vision is live on Cencori. Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint — and if you send an image through /chat with a non-vision model, Cencori auto-routes it for you. Ships with a drop-in React uploader — the first of a set of importable UI components that turn your API into a product surface."
 tags: ["Product", "Vision", "AI", "React", "Release"]
 category: "changelog"
 published: true
@@ -44,6 +44,30 @@ Accepts URL, base64, or multipart file. Supports JPEG, PNG, WEBP, GIF everywhere
 Streaming works too. Set `stream: true` and you get an SSE stream of text deltas ending with a final chunk carrying the token totals and cost.
 
 Full reference at [`/docs/ai/endpoints/vision`](/docs/ai/endpoints/vision).
+
+## It works with any model, not just the vision ones
+
+The other quiet-but-important piece: you don't have to know which models support vision. If you send an image through the regular `/chat` endpoint on Cencori — no matter which model you picked — it just works.
+
+```typescript
+// You picked claude-3-5-haiku. No vision support natively.
+// Cencori sees the image, upgrades to claude-3-5-sonnet-latest, routes through Vision.
+// The response is a normal chat completion. You get X-Model-Upgraded: true in the headers.
+const response = await cencori.ai.chat({
+  model: 'claude-3-5-haiku-latest',
+  messages: [{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this image?' },
+      { type: 'image_url', image_url: { url: 'https://…' } }
+    ]
+  }]
+});
+```
+
+Every AI platform makes you pick a vision-capable model up front. If you pick the wrong one, you get a 400. On Cencori you don't have to think about it — vision-capable equivalents in the same model family are auto-selected, and the response tells you when a swap happened.
+
+This is the "unified gateway" pitch actually being true. One request shape. Any model. If it can't natively see, we upgrade it. If it can, we pass through.
 
 ## The component
 

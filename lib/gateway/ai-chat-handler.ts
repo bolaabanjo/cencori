@@ -9,6 +9,7 @@ import {
     type GatewayContext,
 } from '@/lib/gateway-middleware';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { hasImageInMessages, runVisionChat } from '@/lib/gateway/chat-vision-router';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
@@ -145,6 +146,31 @@ export async function POST(req: NextRequest) {
         }
 
         let messages = rawMessages as Array<{ role: string; content: string }>;
+
+        // ── Vision auto-route ──────────────────────────────
+        // Standard chat pipeline stringifies content, so multi-part messages
+        // with images can't reach the provider intact. When we detect image
+        // content, route through the Vision analyzer instead — this also
+        // auto-upgrades non-vision-capable models (e.g. claude-3-5-haiku →
+        // claude-3-5-sonnet-latest) so callers don't have to think about it.
+        if (hasImageInMessages(rawMessages as Array<{ role: string; content: unknown }>)) {
+            try {
+                return await runVisionChat({
+                    ctx,
+                    rawMessages: rawMessages as Array<{ role: string; content: unknown }>,
+                    requestedModel: model,
+                    maxTokens: typeof maxTokens === 'number' ? maxTokens : (typeof max_tokens === 'number' ? max_tokens : undefined),
+                    temperature: typeof temperature === 'number' ? temperature : undefined,
+                    stream: stream === true,
+                });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'vision_route_failed';
+                return wrap(
+                    NextResponse.json({ error: message }, { status: 400 }),
+                    ctx
+                );
+            }
+        }
 
         const { data: orgRow } = await supabase
             .from('organizations')

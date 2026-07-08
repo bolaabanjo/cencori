@@ -275,6 +275,20 @@ println!("{}", ocr.text);
 
 Async variants: `cencori.vision.async_analyze(&params).await`. Full example: [`examples/vision.rs`](https://github.com/cencori/cencori-rust-sdk/blob/main/examples/vision.rs).
 
+## Also: automatic vision routing in chat
+
+You don't have to use `/api/ai/vision` directly to get vision. If you send image content through the regular `/api/ai/chat` endpoint, Cencori auto-detects the image, transparently routes through Vision, and even upgrades the model if the one you picked doesn't support vision (`claude-3-5-haiku` → `claude-3-5-sonnet-latest`, `gpt-3.5-turbo` → `gpt-4o-mini`, etc.). See [Vision Auto-Routing in Chat](/docs/ai/endpoints/chat#vision-auto-routing).
+
+Use `/api/ai/vision` directly when:
+- You want OCR / describe / classify presets
+- You want structured JSON classification
+- You want the multipart file upload path
+- You want cleaner cost tracking against a Vision endpoint
+
+Use `/api/ai/chat` with images when:
+- You're extending an existing chat flow
+- You want a model-agnostic path that "just works" no matter which model your users pick
+
 ## Errors
 
 | `error` | Meaning |
