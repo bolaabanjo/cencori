@@ -12,6 +12,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { NextRequest } from 'next/server';
 import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
+import { getPricingFromDB } from '@/lib/providers/pricing';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 
 export const MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -75,6 +76,7 @@ export interface VisionAnalyzeRequest {
     maxTokens?: number;
     temperature?: number;
     responseFormat?: 'text' | 'json';
+    stream?: boolean;
 }
 
 export interface VisionAnalyzeResult {
@@ -94,48 +96,50 @@ export interface VisionAnalyzeResult {
 }
 
 // ── Model registry ─────────────────────────────────────────────
+//
+// This registry only routes model names to a provider + description.
+// Pricing lives in the model_pricing DB table and is resolved via
+// getPricingFromDB() at request time — matches the pattern used by chat
+// completions and prevents this file from drifting from real pricing.
 
 interface ModelInfo {
     provider: VisionProvider;
     apiModel: string;
-    inputPer1M: number;
-    outputPer1M: number;
     description: string;
 }
 
 const VISION_MODELS: Record<string, ModelInfo> = {
     // OpenAI
-    'gpt-4o': { provider: 'openai', apiModel: 'gpt-4o', inputPer1M: 2.50, outputPer1M: 10.00, description: 'GPT-4o multimodal' },
-    'gpt-4o-mini': { provider: 'openai', apiModel: 'gpt-4o-mini', inputPer1M: 0.15, outputPer1M: 0.60, description: 'Fast, cheap vision — good default' },
-    'gpt-4-turbo': { provider: 'openai', apiModel: 'gpt-4-turbo', inputPer1M: 10.00, outputPer1M: 30.00, description: 'GPT-4 Turbo vision' },
+    'gpt-4o': { provider: 'openai', apiModel: 'gpt-4o', description: 'GPT-4o multimodal' },
+    'gpt-4o-mini': { provider: 'openai', apiModel: 'gpt-4o-mini', description: 'Fast, cheap vision — good default' },
+    'gpt-4-turbo': { provider: 'openai', apiModel: 'gpt-4-turbo', description: 'GPT-4 Turbo vision' },
     // Anthropic
-    'claude-sonnet-4-5': { provider: 'anthropic', apiModel: 'claude-sonnet-4-5', inputPer1M: 3.00, outputPer1M: 15.00, description: 'Claude Sonnet 4.5 — strong OCR' },
-    'claude-3-5-sonnet-latest': { provider: 'anthropic', apiModel: 'claude-3-5-sonnet-latest', inputPer1M: 3.00, outputPer1M: 15.00, description: 'Claude 3.5 Sonnet' },
-    'claude-3-5-haiku-latest': { provider: 'anthropic', apiModel: 'claude-3-5-haiku-latest', inputPer1M: 0.80, outputPer1M: 4.00, description: 'Claude 3.5 Haiku' },
+    'claude-sonnet-4-5': { provider: 'anthropic', apiModel: 'claude-sonnet-4-5', description: 'Claude Sonnet 4.5 — strong OCR' },
+    'claude-3-5-sonnet-latest': { provider: 'anthropic', apiModel: 'claude-3-5-sonnet-latest', description: 'Claude 3.5 Sonnet' },
+    'claude-3-5-haiku-latest': { provider: 'anthropic', apiModel: 'claude-3-5-haiku-latest', description: 'Claude 3.5 Haiku' },
     // Google
-    'gemini-2.5-pro': { provider: 'google', apiModel: 'gemini-2.5-pro', inputPer1M: 1.25, outputPer1M: 10.00, description: 'Gemini 2.5 Pro — 1M context' },
-    'gemini-2.5-flash': { provider: 'google', apiModel: 'gemini-2.5-flash', inputPer1M: 0.075, outputPer1M: 0.30, description: 'Cheapest, 1M context' },
-    'gemini-2.5-flash-lite': { provider: 'google', apiModel: 'gemini-2.5-flash-lite', inputPer1M: 0.05, outputPer1M: 0.20, description: 'Fastest Gemini' },
+    'gemini-2.5-pro': { provider: 'google', apiModel: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro — 1M context' },
+    'gemini-2.5-flash': { provider: 'google', apiModel: 'gemini-2.5-flash', description: 'Cheapest, 1M context' },
+    'gemini-2.5-flash-lite': { provider: 'google', apiModel: 'gemini-2.5-flash-lite', description: 'Fastest Gemini' },
 };
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
-const MARKUP_PERCENTAGE = 20;
 
 function resolveModel(requested?: string): ModelInfo & { key: string } {
     const key = requested ?? DEFAULT_MODEL;
     const info = VISION_MODELS[key];
     if (info) return { ...info, key };
 
-    // Fallback: infer provider from name prefix
+    // Fallback: infer provider from name prefix so callers can use models we haven't listed
     const lower = key.toLowerCase();
     if (lower.startsWith('gpt') || lower.startsWith('o1') || lower.startsWith('o3')) {
-        return { key, provider: 'openai', apiModel: key, inputPer1M: 2.5, outputPer1M: 10, description: 'OpenAI model' };
+        return { key, provider: 'openai', apiModel: key, description: 'OpenAI model' };
     }
     if (lower.startsWith('claude')) {
-        return { key, provider: 'anthropic', apiModel: key, inputPer1M: 3, outputPer1M: 15, description: 'Anthropic model' };
+        return { key, provider: 'anthropic', apiModel: key, description: 'Anthropic model' };
     }
     if (lower.startsWith('gemini')) {
-        return { key, provider: 'google', apiModel: key, inputPer1M: 0.075, outputPer1M: 0.30, description: 'Google model' };
+        return { key, provider: 'google', apiModel: key, description: 'Google model' };
     }
     throw new Error(`Unknown vision model: ${key}. See GET /api/ai/vision for supported models.`);
 }
@@ -145,7 +149,6 @@ export function listVisionModels() {
         id,
         provider: info.provider,
         description: info.description,
-        pricing: { inputPer1M: info.inputPer1M, outputPer1M: info.outputPer1M },
     }));
 }
 
@@ -347,6 +350,190 @@ async function analyzeGoogle(
     };
 }
 
+// ── Streaming provider callers ─────────────────────────────────
+//
+// Each yields text deltas and finishes with a `final` event carrying total
+// token counts. The top-level `streamVision()` wraps these and dispatches by
+// provider.
+
+export interface VisionStreamChunk {
+    delta?: string;
+    done?: boolean;
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+    cost?: { providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number };
+    model?: string;
+    provider?: VisionProvider;
+    error?: string;
+}
+
+async function* streamOpenAI(
+    apiKey: string,
+    model: string,
+    prompt: string,
+    img: NormalizedImage,
+    opts: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
+    const client = new OpenAI({ apiKey });
+    const stream = await client.chat.completions.create({
+        model,
+        max_tokens: opts.maxTokens ?? 1024,
+        temperature: opts.temperature,
+        stream: true,
+        stream_options: { include_usage: true },
+        messages: [
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: img.isRemote ? img.dataUrl : `data:${img.mimeType};base64,${img.base64}` } },
+                ],
+            },
+        ],
+    });
+    let promptTokens = 0;
+    let completionTokens = 0;
+    for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) yield { delta };
+        if (chunk.usage) {
+            promptTokens = chunk.usage.prompt_tokens ?? 0;
+            completionTokens = chunk.usage.completion_tokens ?? 0;
+        }
+    }
+    yield { done: true, promptTokens, completionTokens };
+}
+
+async function* streamAnthropic(
+    apiKey: string,
+    model: string,
+    prompt: string,
+    img: NormalizedImage,
+    opts: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
+    const client = new Anthropic({ apiKey });
+    const stream = client.messages.stream({
+        model,
+        max_tokens: opts.maxTokens ?? 1024,
+        temperature: opts.temperature,
+        messages: [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image',
+                        source: {
+                            type: 'base64',
+                            media_type: img.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                            data: img.base64,
+                        },
+                    },
+                    { type: 'text', text: prompt },
+                ],
+            },
+        ],
+    });
+    for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            yield { delta: event.delta.text };
+        }
+    }
+    const final = await stream.finalMessage();
+    yield {
+        done: true,
+        promptTokens: final.usage.input_tokens,
+        completionTokens: final.usage.output_tokens,
+    };
+}
+
+async function* streamGoogle(
+    apiKey: string,
+    model: string,
+    prompt: string,
+    img: NormalizedImage,
+    opts: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const genModel = genAI.getGenerativeModel({
+        model,
+        generationConfig: {
+            maxOutputTokens: opts.maxTokens ?? 1024,
+            temperature: opts.temperature,
+        },
+    });
+    const result = await genModel.generateContentStream([
+        { text: prompt },
+        { inlineData: { mimeType: img.mimeType, data: img.base64 } },
+    ]);
+    for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) yield { delta: text };
+    }
+    const aggregate = await result.response;
+    const meta = aggregate.usageMetadata;
+    yield {
+        done: true,
+        promptTokens: meta?.promptTokenCount ?? 0,
+        completionTokens: meta?.candidatesTokenCount ?? 0,
+    };
+}
+
+// ── Streaming entry point ──────────────────────────────────────
+
+export async function* streamVision(
+    ctx: GatewayContext,
+    request: VisionAnalyzeRequest
+): AsyncGenerator<VisionStreamChunk> {
+    const model = resolveModel(request.model);
+    const apiKey = await getProviderKey(ctx, model.provider);
+    if (!apiKey) {
+        throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
+    }
+
+    const img = await normalizeImage(request.image);
+    validateImageForProvider(img, model.provider);
+    const prompt = request.prompt ?? 'Describe this image in detail.';
+    const opts = { maxTokens: request.maxTokens, temperature: request.temperature };
+
+    const generator =
+        model.provider === 'openai' ? streamOpenAI(apiKey, model.apiModel, prompt, img, opts) :
+        model.provider === 'anthropic' ? streamAnthropic(apiKey, model.apiModel, prompt, img, opts) :
+        streamGoogle(apiKey, model.apiModel, prompt, img, opts);
+
+    let promptTokens = 0;
+    let completionTokens = 0;
+
+    for await (const chunk of generator) {
+        if ('done' in chunk) {
+            promptTokens = chunk.promptTokens;
+            completionTokens = chunk.completionTokens;
+            break;
+        }
+        yield { delta: chunk.delta };
+    }
+
+    const pricing = await getPricingFromDB(model.provider, model.apiModel);
+    const providerCost =
+        (promptTokens / 1000) * pricing.inputPer1KTokens +
+        (completionTokens / 1000) * pricing.outputPer1KTokens;
+    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+
+    yield {
+        done: true,
+        model: model.key,
+        provider: model.provider,
+        usage: {
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+        },
+        cost: {
+            providerCostUsd: providerCost,
+            cencoriChargeUsd: cencoriCharge,
+            markupPercentage: pricing.cencoriMarkupPercentage,
+        },
+    };
+}
+
 // ── Main entry point ────────────────────────────────────────────
 
 export async function analyzeVision(
@@ -377,10 +564,11 @@ export async function analyzeVision(
         result = await analyzeGoogle(apiKey, model.apiModel, prompt, img, opts);
     }
 
+    const pricing = await getPricingFromDB(model.provider, model.apiModel);
     const providerCost =
-        (result.promptTokens / 1_000_000) * model.inputPer1M +
-        (result.completionTokens / 1_000_000) * model.outputPer1M;
-    const cencoriCharge = providerCost * (1 + MARKUP_PERCENTAGE / 100);
+        (result.promptTokens / 1000) * pricing.inputPer1KTokens +
+        (result.completionTokens / 1000) * pricing.outputPer1KTokens;
+    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
 
     return {
         analysis: result.analysis,
@@ -394,7 +582,7 @@ export async function analyzeVision(
         cost: {
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
-            markupPercentage: MARKUP_PERCENTAGE,
+            markupPercentage: pricing.cencoriMarkupPercentage,
         },
     };
 }
@@ -435,5 +623,6 @@ export async function parseVisionRequest(req: NextRequest): Promise<VisionAnalyz
         maxTokens: body.max_tokens,
         temperature: body.temperature,
         responseFormat: body.response_format,
+        stream: body.stream === true,
     };
 }

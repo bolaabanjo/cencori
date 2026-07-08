@@ -130,6 +130,46 @@ const response = await cencori.ai.embeddings({
 console.log(response.embeddings[0]); // [0.1, 0.2, ...]
 ```
 
+### Vision (Image Understanding)
+
+Analyze, describe, OCR, and classify images. Routes across OpenAI, Anthropic, and Google vision-capable models.
+
+```typescript
+// General analysis with a custom prompt
+const result = await cencori.vision.analyze({
+  image: { url: 'https://example.com/photo.jpg' },
+  prompt: 'What breed of dog is this?'
+});
+
+// OCR from a local file
+import fs from 'node:fs';
+const buf = fs.readFileSync('receipt.png');
+const { text } = await cencori.vision.ocr({
+  image: { base64: buf.toString('base64'), mimeType: 'image/png' }
+});
+
+// Structured classification
+const { classification } = await cencori.vision.classify({
+  image: { url: 'https://example.com/product.jpg' }
+});
+// classification: { primary_category, tags, objects, safe_for_work, ... }
+```
+
+Drop-in React uploader for your own product (`cencori/react`):
+
+```tsx
+import { VisionUploader } from 'cencori/react';
+
+<VisionUploader
+  endpoint="https://cencori.com/api/ai/vision"
+  apiKey={process.env.NEXT_PUBLIC_CENCORI_KEY}
+  task="describe"
+  onResult={(r) => console.log(r)}
+/>
+```
+
+Full API in [docs](https://cencori.com/docs/ai/endpoints/vision).
+
 ### Image Generation
 
 Generate images from text prompts using multiple providers:

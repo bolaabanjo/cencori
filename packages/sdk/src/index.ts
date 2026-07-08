@@ -91,6 +91,7 @@ export {
     type VisionOcrResult,
     type VisionClassifyResult,
     type VisionClassification,
+    type VisionStreamChunk,
     type VisionUsage,
     type VisionCost,
 } from './vision';

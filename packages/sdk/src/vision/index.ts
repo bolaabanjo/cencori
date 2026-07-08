@@ -35,6 +35,16 @@ export interface VisionRequest {
     responseFormat?: 'text' | 'json';
 }
 
+export interface VisionStreamChunk {
+    delta?: string;
+    done?: boolean;
+    model?: string;
+    provider?: VisionProvider;
+    usage?: VisionUsage;
+    cost?: VisionCost;
+    error?: string;
+}
+
 export interface VisionUsage {
     promptTokens: number;
     completionTokens: number;
@@ -148,6 +158,63 @@ export class VisionNamespace {
     /** Return structured tags, objects, and category classification. */
     async classify(request: VisionRequest): Promise<VisionClassifyResult> {
         return this.post<VisionClassifyResult>('/api/ai/vision/classify', request);
+    }
+
+    /**
+     * Stream a vision analysis. Yields `{ delta }` chunks as text arrives, then
+     * a final `{ done: true, model, provider, usage, cost }` chunk with totals.
+     *
+     * @example
+     * for await (const chunk of cencori.vision.analyzeStream({ image: { url } })) {
+     *   if (chunk.delta) process.stdout.write(chunk.delta);
+     *   if (chunk.done) console.log(chunk.cost);
+     * }
+     */
+    async *analyzeStream(request: VisionRequest): AsyncGenerator<VisionStreamChunk, void, unknown> {
+        const body = { ...toBody(request), stream: true };
+        const response = await fetch(`${this.config.baseUrl}/api/ai/vision`, {
+            method: 'POST',
+            headers: {
+                'CENCORI_API_KEY': this.config.apiKey,
+                'Content-Type': 'application/json',
+                ...this.config.headers,
+            },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            const message =
+                (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string')
+                    ? data.message
+                    : `Vision stream request failed with status ${response.status}`;
+            throw new Error(message);
+        }
+        if (!response.body) throw new Error('Response body is null');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() ?? '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const data = line.slice(6);
+                    if (data === '[DONE]') return;
+                    try {
+                        yield JSON.parse(data) as VisionStreamChunk;
+                    } catch {
+                        // skip malformed frame
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
     }
 
     private async post<T>(path: string, request: VisionRequest): Promise<T> {

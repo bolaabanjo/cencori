@@ -18,6 +18,7 @@ import {
 } from '@/lib/gateway-middleware';
 import {
     analyzeVision,
+    streamVision,
     listVisionModels,
     parseVisionRequest,
     MAX_VISION_IMAGE_BYTES,
@@ -37,6 +38,64 @@ export async function POST(req: NextRequest) {
 
     try {
         const request = await parseVisionRequest(req);
+
+        // ── Streaming path ─────────────────────────────────────
+        if (request.stream) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                async start(controller) {
+                    let final: { model: string; provider: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; cost: { providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number } } | null = null;
+                    try {
+                        for await (const chunk of streamVision(ctx, request)) {
+                            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                            if (chunk.done && chunk.usage && chunk.cost && chunk.model && chunk.provider) {
+                                final = { model: chunk.model, provider: chunk.provider, usage: chunk.usage, cost: chunk.cost };
+                            }
+                        }
+                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                        if (final) {
+                            await logGatewayRequest(ctx, {
+                                endpoint: 'vision',
+                                model: final.model,
+                                provider: final.provider,
+                                status: 'success',
+                                promptTokens: final.usage.promptTokens,
+                                completionTokens: final.usage.completionTokens,
+                                totalTokens: final.usage.totalTokens,
+                                costUsd: final.cost.cencoriChargeUsd,
+                                providerCostUsd: final.cost.providerCostUsd,
+                                cencoriChargeUsd: final.cost.cencoriChargeUsd,
+                                markupPercentage: final.cost.markupPercentage,
+                                metadata: { streamed: true },
+                            });
+                            await incrementUsage(ctx);
+                        }
+                    } catch (err) {
+                        const message = err instanceof Error ? err.message : 'stream_error';
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
+                        await logGatewayRequest(ctx, {
+                            endpoint: 'vision',
+                            model: 'unknown',
+                            provider: 'unknown',
+                            status: 'error',
+                            errorMessage: message,
+                            metadata: { streamed: true },
+                        });
+                    } finally {
+                        controller.close();
+                    }
+                },
+            });
+            return new Response(stream, {
+                headers: {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache, no-transform',
+                    'Connection': 'keep-alive',
+                    'X-Request-Id': ctx.requestId,
+                },
+            });
+        }
+
         const result = await analyzeVision(ctx, request);
 
         await logGatewayRequest(ctx, {

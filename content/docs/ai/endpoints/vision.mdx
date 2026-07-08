@@ -1,0 +1,285 @@
+---
+title: "Vision Endpoint"
+description: "Analyze, describe, OCR, and classify images with GPT-4o, Claude, and Gemini."
+section: "Endpoints"
+order: 6
+---
+
+Send an image (URL, base64, or file upload) and get back rich analysis — description, OCR, classification, or an answer to your own prompt. Routes across OpenAI, Anthropic, and Google vision-capable models.
+
+## Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `POST /api/ai/vision` | General analyze — provide your own prompt |
+| `POST /api/ai/vision/describe` | Describe the image in rich detail |
+| `POST /api/ai/vision/ocr` | Extract all visible text |
+| `POST /api/ai/vision/classify` | Structured JSON: tags, categories, objects |
+
+## Basic Request
+
+```typescript
+const result = await cencori.vision.analyze({
+  image: { url: 'https://example.com/photo.jpg' },
+  prompt: 'What breed of dog is this?'
+});
+
+console.log(result.analysis);
+```
+
+### From a local file (browser)
+
+```typescript
+const b64 = await fileToBase64(file);
+const result = await cencori.vision.analyze({
+  image: { base64: b64, mimeType: file.type }
+});
+```
+
+### From a local file (Node.js)
+
+```typescript
+import fs from 'node:fs';
+const buf = fs.readFileSync('receipt.png');
+const result = await cencori.vision.ocr({
+  image: { base64: buf.toString('base64'), mimeType: 'image/png' }
+});
+console.log(result.text);
+```
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `image_url` | string | one of these | https:// or data: URL |
+| `image_base64` | string | one of these | Raw base64 (no `data:` prefix) |
+| `mime_type` | string | with `image_base64` | e.g. `image/png` |
+| `prompt` | string | No | Custom instruction. Ignored on `/describe`, `/ocr`, `/classify` presets |
+| `model` | string | No | Defaults to `gpt-4o-mini` |
+| `max_tokens` | number | No | Response length cap |
+| `temperature` | number | No | Sampling temperature |
+| `response_format` | `"text"` \| `"json"` | No | Force JSON mode |
+| `stream` | boolean | No | Return SSE stream instead of a single response |
+
+## Response
+
+```typescript
+{
+  analysis: "The image shows a golden retriever puppy...",
+  model: "gpt-4o-mini",
+  provider: "openai",
+  usage: {
+    promptTokens: 1103,
+    completionTokens: 87,
+    totalTokens: 1190
+  },
+  cost: {
+    providerCostUsd: 0.000217,
+    cencoriChargeUsd: 0.000326,
+    markupPercentage: 50
+  }
+}
+```
+
+`/describe` returns `description` instead of `analysis`. `/ocr` returns `text`. `/classify` returns `classification` (parsed JSON when the model returns valid JSON) plus the raw string in `raw`.
+
+## Streaming
+
+Set `stream: true` to receive a Server-Sent Events stream of text deltas. The final `data:` line before `[DONE]` contains the usage + cost summary.
+
+```typescript
+const res = await fetch('https://cencori.com/api/ai/vision', {
+  method: 'POST',
+  headers: {
+    'CENCORI_API_KEY': 'csk_...',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    image_url: 'https://example.com/photo.jpg',
+    prompt: 'Describe this scene',
+    stream: true,
+  }),
+});
+
+const reader = res.body!.getReader();
+const decoder = new TextDecoder();
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  const text = decoder.decode(value);
+  // Parse SSE frames: `data: {...}\n\n`
+  for (const line of text.split('\n')) {
+    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+      const chunk = JSON.parse(line.slice(6));
+      if (chunk.delta) process.stdout.write(chunk.delta);
+    }
+  }
+}
+```
+
+## Supported Models
+
+| Provider | Models | Default |
+|----------|--------|---------|
+| OpenAI | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo` | `gpt-4o-mini` |
+| Anthropic | `claude-sonnet-4-5`, `claude-3-5-sonnet-latest`, `claude-3-5-haiku-latest` | |
+| Google | `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` | |
+
+## Image Format Limits
+
+| Provider | Formats | Max size per image |
+|----------|---------|---------------------|
+| OpenAI | JPEG, PNG, WEBP, GIF | 20MB |
+| Anthropic | JPEG, PNG, WEBP, GIF | 5MB |
+| Google | JPEG, PNG, WEBP, GIF, HEIC, HEIF | 20MB |
+
+Universal safe set: **JPEG, PNG, WEBP, GIF**. Requests that violate the provider's limit return a structured `400` with `error: "unsupported_format"` or `"image_too_large"`.
+
+## Multipart file upload
+
+The endpoints also accept `multipart/form-data` for direct file upload:
+
+```bash
+curl -X POST https://cencori.com/api/ai/vision \
+  -H "CENCORI_API_KEY: csk_..." \
+  -F "file=@photo.jpg" \
+  -F "prompt=What's in this image?" \
+  -F "model=gpt-4o"
+```
+
+## Drop-in React component
+
+The `cencori/react` subpath ships a `<VisionUploader />` component you can embed in your own product — drag-drop, client-side format validation, auto-downscale for oversize JPEG/PNG/WEBP, clear error banner:
+
+```tsx
+import { VisionUploader } from 'cencori/react';
+
+<VisionUploader
+  endpoint="https://cencori.com/api/ai/vision"
+  apiKey={process.env.NEXT_PUBLIC_CENCORI_KEY}
+  task="describe"
+  onResult={(result) => console.log(result)}
+/>
+```
+
+## HTTP API
+
+```bash
+curl -X POST https://cencori.com/api/ai/vision \
+  -H "CENCORI_API_KEY: csk_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_url": "https://example.com/receipt.png",
+    "prompt": "Extract the total amount as JSON",
+    "response_format": "json"
+  }'
+```
+
+## In other SDKs
+
+### Python
+
+```python
+from cencori import Cencori
+
+cencori = Cencori()
+
+# Analyze
+result = cencori.vision.analyze(
+    image_url="https://example.com/photo.jpg",
+    prompt="What breed of dog is this?",
+)
+print(result["analysis"])
+
+# OCR from a local file
+import base64
+with open("receipt.png", "rb") as f:
+    b64 = base64.b64encode(f.read()).decode()
+ocr = cencori.vision.ocr(image_base64=b64, mime_type="image/png")
+print(ocr["text"])
+```
+
+Async variants: `a_analyze()`, `a_describe()`, `a_ocr()`, `a_classify()`. Full example: [`examples/vision.py`](https://github.com/cencori/cencori-python/blob/main/examples/vision.py).
+
+### Go
+
+```go
+import (
+    "context"
+    "encoding/base64"
+    "os"
+
+    "github.com/cencori/cencori-go"
+)
+
+client, _ := cencori.NewClient(cencori.WithAPIKey(os.Getenv("CENCORI_API_KEY")))
+
+// Analyze
+result, _ := client.Vision.Analyze(context.Background(), &cencori.VisionParams{
+    ImageURL: "https://example.com/photo.jpg",
+    Prompt:   "What breed of dog is this?",
+})
+fmt.Println(result.Analysis)
+
+// OCR from a local file
+data, _ := os.ReadFile("receipt.png")
+ocr, _ := client.Vision.OCR(context.Background(), &cencori.VisionParams{
+    ImageBase64: base64.StdEncoding.EncodeToString(data),
+    MimeType:    "image/png",
+})
+fmt.Println(ocr.Text)
+```
+
+Full example: [`examples/12-vision`](https://github.com/cencori/cencori-go/tree/main/examples/12-vision).
+
+### PHP
+
+```php
+use Cencori\Cencori;
+
+$cencori = new Cencori();
+
+// Analyze
+$result = $cencori->vision->analyze([
+    'image_url' => 'https://example.com/photo.jpg',
+    'prompt' => 'What breed of dog is this?',
+]);
+echo $result['analysis'];
+
+// OCR from a local file
+$b64 = base64_encode(file_get_contents('receipt.png'));
+$ocr = $cencori->vision->ocr(['image_base64' => $b64, 'mime_type' => 'image/png']);
+echo $ocr['text'];
+```
+
+Full example: [`examples/vision.php`](https://github.com/cencori/cencori-php-sdk/blob/main/examples/vision.php).
+
+### Rust
+
+```rust,no_run
+use cencori::vision::VisionParams;
+use cencori::Cencori;
+
+let cencori = Cencori::new(None, None, None)?;
+
+// Analyze
+let params = VisionParams::from_url("https://example.com/photo.jpg")
+    .with_prompt("What breed of dog is this?");
+let result = cencori.vision.analyze(&params)?;
+println!("{}", result.analysis);
+
+// OCR: build with VisionParams::from_base64(base64_string, "image/png")
+let ocr = cencori.vision.ocr(&VisionParams::from_base64(b64, "image/png"))?;
+println!("{}", ocr.text);
+```
+
+Async variants: `cencori.vision.async_analyze(&params).await`. Full example: [`examples/vision.rs`](https://github.com/cencori/cencori-rust-sdk/blob/main/examples/vision.rs).
+
+## Errors
+
+| `error` | Meaning |
+|---------|---------|
+| `unsupported_format` | Image mime type isn't supported by the selected provider |
+| `image_too_large` | Image exceeds the provider's max size |
+| `provider_not_configured` | No API key set for the selected provider |
+| `bad_request` | Missing `image_url` / `image_base64`, or malformed body |
