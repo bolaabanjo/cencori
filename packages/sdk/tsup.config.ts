@@ -7,6 +7,7 @@ export default defineConfig({
         'tanstack/index': 'src/tanstack/index.ts',
         'ai/index': 'src/ai/index.ts',
         'vision/index': 'src/vision/index.ts',
+        'documents/index': 'src/documents/index.ts',
         'react/index': 'src/react/index.ts',
         'compute/index': 'src/compute/index.ts',
         'workflow/index': 'src/workflow/index.ts',

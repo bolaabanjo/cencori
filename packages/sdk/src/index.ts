@@ -81,6 +81,20 @@ export { fetchWithRetry } from './utils';
 // Namespace exports for advanced usage
 export { AINamespace, type StreamChunk } from './ai';
 export {
+    DocumentsNamespace,
+    type DocumentInput,
+    type DocumentRequest,
+    type DocumentQueryRequest,
+    type DocumentExtractResult,
+    type DocumentSummarizeResult,
+    type DocumentQueryResult,
+    type DocumentExtractMethod,
+    type DocumentKind,
+    type DocumentUsage,
+    type DocumentCost,
+} from './documents';
+
+export {
     VisionNamespace,
     type VisionProvider,
     type VisionTask,

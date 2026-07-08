@@ -27,7 +27,10 @@ export interface VisionImage {
 }
 
 export interface VisionRequest {
-    image: VisionImage;
+    /** Single image. Use this OR `images`. */
+    image?: VisionImage;
+    /** Multiple images to analyze together. */
+    images?: VisionImage[];
     prompt?: string;
     model?: string;
     maxTokens?: number;
@@ -104,6 +107,7 @@ interface JsonBody {
     image_url?: string;
     image_base64?: string;
     mime_type?: string;
+    images?: Array<{ url?: string; base64?: string; mime_type?: string }>;
     prompt?: string;
     model?: string;
     max_tokens?: number;
@@ -119,6 +123,18 @@ function toBody(request: VisionRequest): JsonBody {
         temperature: request.temperature,
         response_format: request.responseFormat,
     };
+
+    if (request.images && request.images.length > 0) {
+        body.images = request.images.map(img => {
+            if (img.url) return { url: img.url };
+            if (img.base64) return { base64: img.base64, mime_type: img.mimeType };
+            throw new Error('Each entry in images requires url or base64');
+        });
+        return body;
+    }
+    if (!request.image) {
+        throw new Error('vision request requires `image` or `images[]`');
+    }
     if (request.image.url) {
         body.image_url = request.image.url;
     } else if (request.image.base64) {

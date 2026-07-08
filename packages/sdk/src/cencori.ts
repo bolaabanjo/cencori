@@ -29,6 +29,7 @@ import type { CencoriConfig, RequestOptions } from './types';
 import { AINamespace } from './ai';
 import { AgentsNamespace } from './agents';
 import { VisionNamespace } from './vision';
+import { DocumentsNamespace } from './documents';
 import { SessionsNamespace } from './sessions';
 import { ComputeNamespace } from './compute';
 import { WorkflowNamespace } from './workflow';
@@ -76,6 +77,27 @@ export class Cencori {
      * });
      */
     readonly vision: VisionNamespace;
+
+    /**
+     * Documents - Extract text from PDFs and images, summarize, and query
+     *
+     * @example
+     * const { text } = await cencori.documents.extract({
+     *   document: { url: 'https://example.com/contract.pdf' }
+     * });
+     *
+     * @example
+     * const { summary } = await cencori.documents.summarize({
+     *   document: { url: 'https://example.com/report.pdf' }
+     * });
+     *
+     * @example
+     * const { answer } = await cencori.documents.query({
+     *   document: { url },
+     *   question: 'What is the total revenue for Q3?',
+     * });
+     */
+    readonly documents: DocumentsNamespace;
 
     /**
      * Agents - Create and manage AI agents programmatically.
@@ -185,6 +207,7 @@ export class Cencori {
         // Initialize namespaces
         this.ai = new AINamespace(this.config);
         this.vision = new VisionNamespace(this.config);
+        this.documents = new DocumentsNamespace(this.config);
         this.agents = new AgentsNamespace(this.config);
         this.compute = new ComputeNamespace();
         this.workflow = new WorkflowNamespace();

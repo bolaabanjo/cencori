@@ -70,7 +70,10 @@ export interface VisionImage {
 }
 
 export interface VisionAnalyzeRequest {
-    image: VisionImage;
+    /** Single image. Use this OR `images`. Sent as the first (and only) image when both are omitted-except-this. */
+    image?: VisionImage;
+    /** Multiple images to analyze together. Prefer this when you have more than one. */
+    images?: VisionImage[];
     prompt?: string;
     model?: string;
     maxTokens?: number;
@@ -208,6 +211,22 @@ async function normalizeImage(image: VisionImage): Promise<NormalizedImage> {
     throw new Error('image.url or image.base64 is required');
 }
 
+// ── Image list resolution ──────────────────────────────────────
+
+function resolveImageList(request: VisionAnalyzeRequest): VisionImage[] {
+    if (request.images && request.images.length > 0) {
+        return request.images;
+    }
+    if (request.image) {
+        return [request.image];
+    }
+    throw new Error('vision request requires `image` or `images[]`');
+}
+
+async function normalizeImages(images: VisionImage[]): Promise<NormalizedImage[]> {
+    return Promise.all(images.map(normalizeImage));
+}
+
 // ── Validation ─────────────────────────────────────────────────
 
 function imageSizeBytes(img: NormalizedImage): number {
@@ -251,11 +270,18 @@ export function validateImageForProvider(img: NormalizedImage, provider: VisionP
 
 // ── Provider callers ────────────────────────────────────────────
 
+function openaiImageContent(imgs: NormalizedImage[]) {
+    return imgs.map(img => ({
+        type: 'image_url' as const,
+        image_url: { url: img.isRemote ? img.dataUrl : `data:${img.mimeType};base64,${img.base64}` },
+    }));
+}
+
 async function analyzeOpenAI(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number; jsonMode?: boolean }
 ): Promise<{ analysis: string; promptTokens: number; completionTokens: number }> {
     const client = new OpenAI({ apiKey });
@@ -269,7 +295,7 @@ async function analyzeOpenAI(
                 role: 'user',
                 content: [
                     { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: img.isRemote ? img.dataUrl : `data:${img.mimeType};base64,${img.base64}` } },
+                    ...openaiImageContent(imgs),
                 ],
             },
         ],
@@ -281,11 +307,22 @@ async function analyzeOpenAI(
     };
 }
 
+function anthropicImageContent(imgs: NormalizedImage[]) {
+    return imgs.map(img => ({
+        type: 'image' as const,
+        source: {
+            type: 'base64' as const,
+            media_type: img.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: img.base64,
+        },
+    }));
+}
+
 async function analyzeAnthropic(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): Promise<{ analysis: string; promptTokens: number; completionTokens: number }> {
     const client = new Anthropic({ apiKey });
@@ -297,14 +334,7 @@ async function analyzeAnthropic(
             {
                 role: 'user',
                 content: [
-                    {
-                        type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: img.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                            data: img.base64,
-                        },
-                    },
+                    ...anthropicImageContent(imgs),
                     { type: 'text', text: prompt },
                 ],
             },
@@ -321,11 +351,17 @@ async function analyzeAnthropic(
     };
 }
 
+function googleImageContent(imgs: NormalizedImage[]) {
+    return imgs.map(img => ({
+        inlineData: { mimeType: img.mimeType, data: img.base64 },
+    }));
+}
+
 async function analyzeGoogle(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): Promise<{ analysis: string; promptTokens: number; completionTokens: number }> {
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -338,7 +374,7 @@ async function analyzeGoogle(
     });
     const result = await genModel.generateContent([
         { text: prompt },
-        { inlineData: { mimeType: img.mimeType, data: img.base64 } },
+        ...googleImageContent(imgs),
     ]);
     const response = result.response;
     const text = response.text();
@@ -370,7 +406,7 @@ async function* streamOpenAI(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
     const client = new OpenAI({ apiKey });
@@ -385,7 +421,7 @@ async function* streamOpenAI(
                 role: 'user',
                 content: [
                     { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: img.isRemote ? img.dataUrl : `data:${img.mimeType};base64,${img.base64}` } },
+                    ...openaiImageContent(imgs),
                 ],
             },
         ],
@@ -407,7 +443,7 @@ async function* streamAnthropic(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
     const client = new Anthropic({ apiKey });
@@ -419,14 +455,7 @@ async function* streamAnthropic(
             {
                 role: 'user',
                 content: [
-                    {
-                        type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: img.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                            data: img.base64,
-                        },
-                    },
+                    ...anthropicImageContent(imgs),
                     { type: 'text', text: prompt },
                 ],
             },
@@ -449,7 +478,7 @@ async function* streamGoogle(
     apiKey: string,
     model: string,
     prompt: string,
-    img: NormalizedImage,
+    imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -462,7 +491,7 @@ async function* streamGoogle(
     });
     const result = await genModel.generateContentStream([
         { text: prompt },
-        { inlineData: { mimeType: img.mimeType, data: img.base64 } },
+        ...googleImageContent(imgs),
     ]);
     for await (const chunk of result.stream) {
         const text = chunk.text();
@@ -489,15 +518,15 @@ export async function* streamVision(
         throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
     }
 
-    const img = await normalizeImage(request.image);
-    validateImageForProvider(img, model.provider);
-    const prompt = request.prompt ?? 'Describe this image in detail.';
+    const imgs = await normalizeImages(resolveImageList(request));
+    for (const img of imgs) validateImageForProvider(img, model.provider);
+    const prompt = request.prompt ?? (imgs.length > 1 ? 'Analyze these images together.' : 'Describe this image in detail.');
     const opts = { maxTokens: request.maxTokens, temperature: request.temperature };
 
     const generator =
-        model.provider === 'openai' ? streamOpenAI(apiKey, model.apiModel, prompt, img, opts) :
-        model.provider === 'anthropic' ? streamAnthropic(apiKey, model.apiModel, prompt, img, opts) :
-        streamGoogle(apiKey, model.apiModel, prompt, img, opts);
+        model.provider === 'openai' ? streamOpenAI(apiKey, model.apiModel, prompt, imgs, opts) :
+        model.provider === 'anthropic' ? streamAnthropic(apiKey, model.apiModel, prompt, imgs, opts) :
+        streamGoogle(apiKey, model.apiModel, prompt, imgs, opts);
 
     let promptTokens = 0;
     let completionTokens = 0;
@@ -546,9 +575,9 @@ export async function analyzeVision(
         throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
     }
 
-    const img = await normalizeImage(request.image);
-    validateImageForProvider(img, model.provider);
-    const prompt = request.prompt ?? 'Describe this image in detail.';
+    const imgs = await normalizeImages(resolveImageList(request));
+    for (const img of imgs) validateImageForProvider(img, model.provider);
+    const prompt = request.prompt ?? (imgs.length > 1 ? 'Analyze these images together.' : 'Describe this image in detail.');
     const opts = {
         maxTokens: request.maxTokens,
         temperature: request.temperature,
@@ -557,11 +586,11 @@ export async function analyzeVision(
 
     let result: { analysis: string; promptTokens: number; completionTokens: number };
     if (model.provider === 'openai') {
-        result = await analyzeOpenAI(apiKey, model.apiModel, prompt, img, opts);
+        result = await analyzeOpenAI(apiKey, model.apiModel, prompt, imgs, opts);
     } else if (model.provider === 'anthropic') {
-        result = await analyzeAnthropic(apiKey, model.apiModel, prompt, img, opts);
+        result = await analyzeAnthropic(apiKey, model.apiModel, prompt, imgs, opts);
     } else {
-        result = await analyzeGoogle(apiKey, model.apiModel, prompt, img, opts);
+        result = await analyzeGoogle(apiKey, model.apiModel, prompt, imgs, opts);
     }
 
     const pricing = await getPricingFromDB(model.provider, model.apiModel);
@@ -594,14 +623,20 @@ export async function parseVisionRequest(req: NextRequest): Promise<VisionAnalyz
 
     if (contentType.includes('multipart/form-data')) {
         const form = await req.formData();
-        const file = form.get('file');
-        if (!(file instanceof File)) throw new Error('Multipart request requires a `file` field with the image');
-        if (file.size > MAX_VISION_IMAGE_BYTES) {
-            throw new Error(`Image exceeds maximum size of ${MAX_VISION_IMAGE_BYTES / (1024 * 1024)}MB`);
+        // Accept single `file` or multiple `files[]` (and repeated `file` fields).
+        const rawFiles = form.getAll('files').concat(form.getAll('file'));
+        const files = rawFiles.filter((v): v is File => v instanceof File);
+        if (files.length === 0) throw new Error('Multipart request requires a `file` (or `files[]`) field with the image(s)');
+        const images: VisionImage[] = [];
+        for (const file of files) {
+            if (file.size > MAX_VISION_IMAGE_BYTES) {
+                throw new Error(`Image "${file.name}" exceeds maximum size of ${MAX_VISION_IMAGE_BYTES / (1024 * 1024)}MB`);
+            }
+            const buf = Buffer.from(await file.arrayBuffer());
+            images.push({ base64: buf.toString('base64'), mimeType: file.type || 'image/jpeg' });
         }
-        const buf = Buffer.from(await file.arrayBuffer());
         return {
-            image: { base64: buf.toString('base64'), mimeType: file.type || 'image/jpeg' },
+            images,
             prompt: (form.get('prompt') as string) || undefined,
             model: (form.get('model') as string) || undefined,
             maxTokens: form.get('max_tokens') ? Number(form.get('max_tokens')) : undefined,
@@ -611,8 +646,28 @@ export async function parseVisionRequest(req: NextRequest): Promise<VisionAnalyz
     }
 
     const body = await req.json();
+
+    // Multi-image body: `images: [{ url|base64, mime_type? }, ...]`
+    if (Array.isArray(body.images) && body.images.length > 0) {
+        const images: VisionImage[] = body.images.map((img: { url?: string; base64?: string; mime_type?: string; mimeType?: string }) => {
+            if (!img.url && !img.base64) throw new Error('Each entry in `images` requires `url` or `base64`');
+            return img.url
+                ? { url: img.url }
+                : { base64: img.base64, mimeType: img.mime_type ?? img.mimeType };
+        });
+        return {
+            images,
+            prompt: body.prompt,
+            model: body.model,
+            maxTokens: body.max_tokens,
+            temperature: body.temperature,
+            responseFormat: body.response_format,
+            stream: body.stream === true,
+        };
+    }
+
     if (!body.image_url && !body.image_base64) {
-        throw new Error('Request requires `image_url` or `image_base64`');
+        throw new Error('Request requires `image_url`, `image_base64`, or `images[]`');
     }
     return {
         image: body.image_url
