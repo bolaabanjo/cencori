@@ -1,40 +1,38 @@
 """Pytest configuration and fixtures for Cencori SDK tests."""
 
-import json
-from typing import Any, Dict, Iterator, List
-from unittest.mock import MagicMock
+from typing import Any, Dict, List
 
-import pytest
 import httpx
+import pytest
 
 
 class MockTransport(httpx.BaseTransport):
     """Mock transport for httpx that returns predefined responses."""
-    
+
     def __init__(self, responses: Dict[str, Any]) -> None:
         self.responses = responses
         self.requests: List[httpx.Request] = []
-    
+
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        
+
         # Find matching response based on path
         path = request.url.path
-        
+
         if path in self.responses:
             response_data = self.responses[path]
-            
+
             if isinstance(response_data, dict) and "status_code" in response_data:
                 return httpx.Response(
                     status_code=response_data["status_code"],
                     json=response_data.get("json", {}),
                 )
-            
+
             return httpx.Response(
                 status_code=200,
                 json=response_data,
             )
-        
+
         return httpx.Response(status_code=404, json={"error": "Not found"})
 
 

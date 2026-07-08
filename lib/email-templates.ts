@@ -216,3 +216,149 @@ export function renderTemplate(
   }
   return minimalTemplate(options);
 }
+
+// ── Launch / announcement template ──────────────────────────────
+//
+// The canonical "banner + prose + links + CTA + footer" layout used by the
+// welcome email. Reuse it for any launch announcement (Vision, Documents,
+// Sessions, etc.) so every "big drop" email has the same visual grammar.
+//
+// @example
+//   const html = launchTemplate({
+//     bannerUrl: 'https://raw.githubusercontent.com/cencori/cencori/master/public/blog/images/covers/vision.png',
+//     bannerAlt: 'Cencori Vision',
+//     greeting: 'Hi bola,',
+//     paragraphs: [
+//       'Vision is live on Cencori.',
+//       'Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint.',
+//     ],
+//     linksHeader: 'To get started:',
+//     links: [
+//       { label: 'Read the Vision API reference', url: 'https://cencori.com/docs/ai/endpoints/vision' },
+//       { label: 'Build a receipt scanner in ten minutes', url: 'https://cencori.com/docs/guides/build-a-receipt-scanner' },
+//     ],
+//     ctaText: 'Read the launch post',
+//     ctaUrl: 'https://cencori.com/blog/vision',
+//     signOff: 'Build different.',
+//     unsubscribeUrl,
+//     preferencesUrl,
+//     footerContext: 'You received this because you signed up for Cencori.',
+//   });
+
+export interface LaunchTemplateOptions {
+  /** Full-width banner image URL. Sits at the top of the message. */
+  bannerUrl: string;
+  /** Alt text for the banner. */
+  bannerAlt?: string;
+  /** Optional preheader (inbox preview text). */
+  preheader?: string;
+  /** Line above the body, e.g. `Hi bola,`. Rendered as its own paragraph. */
+  greeting?: string;
+  /** One paragraph per array entry, rendered in order. */
+  paragraphs: string[];
+  /** Optional heading above the links list (e.g. `To get started:`). */
+  linksHeader?: string;
+  /** Zero or more link rows. Each renders as `Label →`. */
+  links?: Array<{ label: string; url: string }>;
+  /** Text for the dark CTA button. Omit both to hide the button. */
+  ctaText?: string;
+  ctaUrl?: string;
+  /** One final paragraph after the CTA (e.g. `Build different.`). */
+  signOff?: string;
+  /** Where "Manage preferences" points. */
+  preferencesUrl: string;
+  /** Where "Unsubscribe" points. */
+  unsubscribeUrl: string;
+  /** One-line footer explaining why the recipient got the email. */
+  footerContext?: string;
+}
+
+const LAUNCH_SOCIAL_ICONS_URL = 'https://cencori.com/social';
+const LAUNCH_SOCIAL_ICONS = [
+  { name: 'GitHub', file: 'github-icon.png', url: 'https://github.com/cencori' },
+  { name: 'X', file: 'x-icon.png', url: 'https://x.com/cencori' },
+  { name: 'LinkedIn', file: 'linkedin-icon.png', url: 'https://linkedin.com/company/cencori' },
+  { name: 'Discord', file: 'discord-icon.png', url: 'https://discord.gg/cencori' },
+  { name: 'YouTube', file: 'youtube-icon.png', url: 'https://youtube.com/@cencori' },
+];
+
+function launchIconRow(): string {
+  const img = (i: typeof LAUNCH_SOCIAL_ICONS[number]) =>
+    `<a href="${i.url}" style="color:#888;text-decoration:none;display:inline-block;vertical-align:middle;"><img src="${LAUNCH_SOCIAL_ICONS_URL}/${i.file}" width="20" height="20" alt="${i.name}" style="display:inline-block;vertical-align:middle;border:0;"></a>`;
+  return LAUNCH_SOCIAL_ICONS
+    .map((i, idx) => img(i) + (idx < LAUNCH_SOCIAL_ICONS.length - 1 ? '<span style="color:#ccc;margin:0 6px;vertical-align:middle;">·</span>' : ''))
+    .join('');
+}
+
+function launchLink(text: string, href: string): string {
+  return `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
+}
+
+export function launchTemplate(options: LaunchTemplateOptions): string {
+  const {
+    bannerUrl,
+    bannerAlt = 'Cencori',
+    preheader,
+    greeting,
+    paragraphs,
+    linksHeader,
+    links,
+    ctaText,
+    ctaUrl,
+    signOff,
+    preferencesUrl,
+    unsubscribeUrl,
+    footerContext = 'You received this because you signed up for Cencori.',
+  } = options;
+
+  const paragraph = (text: string) =>
+    `<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">${text}</p>`;
+
+  const greetingBlock = greeting ? paragraph(greeting) : '';
+  const paragraphsBlock = paragraphs.map(paragraph).join('');
+
+  const linksBlock = links && links.length > 0
+    ? (linksHeader ? `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#555;">${linksHeader}</p>` : '') +
+      links.map(l => `<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${launchLink(l.label, l.url)}</p>`).join('') +
+      '<p style="margin:0 0 24px;"></p>'
+    : '';
+
+  const ctaBlock = ctaText && ctaUrl
+    ? `<a href="${ctaUrl}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">${ctaText}</a>`
+    : '';
+
+  const signOffBlock = signOff
+    ? `<p style="margin:24px 0 0;font-size:14px;line-height:1.6;color:#555;">${signOff}</p>`
+    : '';
+
+  const preheaderBlock = preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#111;">
+${preheaderBlock}
+<div style="max-width:560px;margin:0 auto;padding:32px 24px;">
+<img src="${bannerUrl}" alt="${bannerAlt}" style="display:block;width:100%;height:auto;margin-bottom:32px;">
+${greetingBlock}
+${paragraphsBlock}
+${linksBlock}
+${ctaBlock}
+${signOffBlock}
+<div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
+<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;"><a href="https://cencori.com/docs" style="color:#888;text-decoration:underline;">Docs</a> &nbsp;&middot;&nbsp; <a href="https://cencori.com/blog" style="color:#888;text-decoration:underline;">Blog</a></p>
+<p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${launchIconRow()}</p>
+<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;line-height:1.5;">Making AI infrastructure accessible &mdash; so builders can build and scale with confidence.</p>
+<p style="margin:0 0 12px;font-size:11px;color:#aaa;text-align:center;line-height:1.5;">${footerContext}</p>
+<p style="margin:0 0 4px;font-size:11px;color:#aaa;text-align:center;"><a href="${preferencesUrl}" style="color:#888;text-decoration:underline;">Manage preferences</a> &nbsp;&middot;&nbsp; <a href="${unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
+<p style="margin:0;font-size:11px;color:#aaa;text-align:center;">Cencori, Inc. &middot; San Francisco, CA</p>
+</div>
+</div>
+</body>
+</html>`;
+}

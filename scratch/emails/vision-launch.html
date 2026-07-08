@@ -1,0 +1,63 @@
+<p style="font-size:16px;color:#111;margin:0 0 20px;"><strong>Vision is live on Cencori.</strong></p>
+
+<p>Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint. Ships with a drop-in React uploader and works with any model — even the ones that don't natively support vision.</p>
+
+<h3 style="font-size:15px;color:#111;margin:28px 0 12px;">One API. Any model.</h3>
+
+<p>Send an image through the regular chat endpoint with any model — Cencori auto-routes it through Vision and upgrades to a vision-capable equivalent when needed. No more "which model supports vision?" checklist.</p>
+
+<pre style="background:#f5f5f5;border:1px solid #eee;border-radius:6px;padding:14px;font-size:12px;color:#333;font-family:ui-monospace,Menlo,Monaco,monospace;line-height:1.5;overflow-x:auto;margin:0 0 20px;">// You picked claude-3-5-haiku. No vision support natively.
+// Cencori sees the image, upgrades to claude-3-5-sonnet, routes through Vision.
+const response = await cencori.ai.chat({
+  model: 'claude-3-5-haiku-latest',
+  messages: [{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this image?' },
+      { type: 'image_url', image_url: { url: 'https://...' } }
+    ]
+  }]
+});</pre>
+
+<h3 style="font-size:15px;color:#111;margin:28px 0 12px;">Four endpoints, one shape</h3>
+
+<ul style="margin:0 0 20px;padding-left:20px;">
+  <li style="margin-bottom:6px;"><code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:12px;">POST /api/ai/vision</code> — general analysis with your own prompt</li>
+  <li style="margin-bottom:6px;"><code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:12px;">/vision/describe</code> — rich description</li>
+  <li style="margin-bottom:6px;"><code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:12px;">/vision/ocr</code> — extract text (temp=0)</li>
+  <li style="margin-bottom:6px;"><code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:12px;">/vision/classify</code> — structured JSON tags/categories</li>
+</ul>
+
+<h3 style="font-size:15px;color:#111;margin:28px 0 12px;">The UI is in the SDK too</h3>
+
+<p>Every AI platform ships an API. Cencori ships you the UI:</p>
+
+<pre style="background:#f5f5f5;border:1px solid #eee;border-radius:6px;padding:14px;font-size:12px;color:#333;font-family:ui-monospace,Menlo,Monaco,monospace;line-height:1.5;overflow-x:auto;margin:0 0 20px;">import { VisionUploader } from 'cencori/react';
+
+&lt;VisionUploader
+  endpoint="/api/vision/describe"
+  task="describe"
+  onResult={(r) =&gt; console.log(r)}
+/&gt;</pre>
+
+<p>Drag-drop, client-side format validation, auto-compression for oversize JPEG/PNG/WEBP, and clean error banners. Drop it into your app and skip building the upload UX yourself.</p>
+
+<h3 style="font-size:15px;color:#111;margin:28px 0 12px;">Five SDKs, one shape</h3>
+
+<p>Vision is available today in <strong>TypeScript, Python, Go, PHP, and Rust</strong> — same four methods, same response shape, same error codes. Each ships with a runnable <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;font-size:12px;">examples/vision.*</code> file.</p>
+
+<h3 style="font-size:15px;color:#111;margin:28px 0 12px;">Where it works well</h3>
+
+<ul style="margin:0 0 20px;padding-left:20px;">
+  <li style="margin-bottom:6px;"><strong>Receipt scanners</strong> — photo → JSON in ten minutes</li>
+  <li style="margin-bottom:6px;"><strong>Content moderation</strong> — classify user uploads at the edge</li>
+  <li style="margin-bottom:6px;"><strong>Product cataloging</strong> — auto-tag inventory with categories, colors, materials</li>
+  <li style="margin-bottom:6px;"><strong>Accessibility</strong> — auto-generate alt text on upload</li>
+  <li style="margin-bottom:6px;"><strong>Document workflows</strong> — OCR invoices and forms into structured data</li>
+</ul>
+
+<p>Every request is billed through your usual spend caps, logged with full metadata, and shows up in your usage dashboard next to your chat calls.</p>
+
+<p style="margin:28px 0 0;font-size:13px;color:#555;">Ship the receipt scanner tutorial in an afternoon → <a href="https://cencori.com/docs/guides/build-a-receipt-scanner" style="color:#1a73e8;">Build a Receipt Scanner</a>.</p>
+
+<p style="margin:12px 0 0;font-size:13px;color:#555;">Or read the full API reference → <a href="https://cencori.com/docs/ai/endpoints/vision" style="color:#1a73e8;">Vision endpoint docs</a>.</p>

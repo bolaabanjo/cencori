@@ -27,7 +27,69 @@ embedding = cencori.ai.embeddings(
     model="text-embedding-3-small"
 )
 print(len(embedding.embeddings[0]))
+
+# Vision — analyze, describe, OCR, classify
+result = cencori.vision.analyze(
+    image_url="https://example.com/photo.jpg",
+    prompt="What breed of dog is this?",
+)
+print(result["analysis"])
 ```
+
+## Vision
+
+Analyze, describe, OCR, and classify images. Routes across OpenAI, Anthropic, and Google vision-capable models.
+
+```python
+# From a URL
+result = cencori.vision.analyze(
+    image_url="https://example.com/photo.jpg",
+    prompt="Describe the mood of this photo",
+)
+
+# OCR from a local file
+import base64
+with open("receipt.png", "rb") as f:
+    b64 = base64.b64encode(f.read()).decode()
+
+ocr = cencori.vision.ocr(image_base64=b64, mime_type="image/png")
+print(ocr["text"])
+
+# Structured classification
+classification = cencori.vision.classify(image_url="https://example.com/product.jpg")
+# classification["classification"] is a dict when the model returns valid JSON
+```
+
+Async variants: `cencori.vision.a_analyze()`, `a_describe()`, `a_ocr()`, `a_classify()`.
+
+Full API in [docs](https://cencori.com/docs/ai/endpoints/vision).
+
+## Documents
+
+Extract text from PDFs and images, summarize, and answer questions. Text-based PDFs use native parsing — no LLM tokens.
+
+```python
+# Extract text (native PDF parse — free)
+result = cencori.documents.extract(
+    document_url="https://example.com/contract.pdf",
+)
+print(result["method"])  # 'pdf_text' — no LLM cost
+
+# Summarize
+summary = cencori.documents.summarize(document_url="https://example.com/report.pdf")
+print(summary["summary"])
+
+# Q&A — strict "Not found" if answer isn't present
+answer = cencori.documents.query(
+    document_url="https://example.com/contract.pdf",
+    question="What is the termination clause?",
+)
+print(answer["answer"])
+```
+
+Async variants: `a_extract()`, `a_summarize()`, `a_query()`.
+
+Full API in [docs](https://cencori.com/docs/ai/endpoints/documents).
 
 ## Async Support
 
@@ -60,11 +122,36 @@ for chunk in cencori.ai.chat_stream(
 ```
 
 
-## Project and API Key Setup
+## Project Management
 
-Create projects, generate API keys, and configure provider access in the Cencori dashboard. Public Python SDK usage starts after you have a project secret key (`csk_...`) stored as `CENCORI_API_KEY`.
+```python
+from cencori.types import CreateProjectParams
 
-The `projects` and `api_keys` modules are not part of the public runtime setup path. They target dashboard-management surfaces and should not be used from product integrations.
+# List projects
+projects = cencori.projects.list(org_slug="my-org")
+
+# Create project
+project = cencori.projects.create(
+    org_slug="my-org",
+    params=CreateProjectParams(name="New Project")
+)
+```
+
+## API Key Management
+
+```python
+from cencori.types import CreateAPIKeyParams
+
+# Create API key
+key = cencori.api_keys.create(
+    project_id="proj_123",
+    params=CreateAPIKeyParams(name="Dev Key", environment="dev")
+)
+print(f"Secret Key: {key.key}") # Only shown once!
+
+# Get key stats
+stats = cencori.api_keys.get_stats(project_id="proj_123", key_id=key.id)
+```
 
 ## Metrics & Analytics
 
@@ -104,13 +191,9 @@ except SafetyError as e:
 | Anthropic | `claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku` |
 | Google | `gemini-2.5-flash`, `gemini-2.0-flash` |
 
-## Related Tools
+## Contributing
 
-**[@cencori/scan](https://www.npmjs.com/package/@cencori/scan)** — Security scanner for AI apps. Detects hardcoded secrets, PII, and vulnerabilities with AI-powered auto-fix.
-
-```bash
-npx @cencori/scan
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, workflow, and guidelines.
 
 ## License
 

@@ -40,5 +40,9 @@ htmlcov/
 .tox/
 .nox/
 
+# uv lock file (commit this for reproducible installs)
+!uv.lock
+
 # Type checking
 .mypy_cache/
+.ruff_cache/

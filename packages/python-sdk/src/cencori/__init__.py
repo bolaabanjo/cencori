@@ -5,70 +5,162 @@ Official Python SDK for Cencori - AI Infrastructure for Production.
 
 One SDK for AI Gateway, Compute, Workflow, and Storage.
 Every operation is secured, logged, and tracked.
-
-Example:
-    >>> from cencori import Cencori
-    >>> cencori = Cencori(api_key="csk_...")
-    >>> 
-    >>> # Chat completion
-    >>> response = cencori.ai.chat(
-    ...     messages=[{"role": "user", "content": "Hello!"}]
-    ... )
-    >>> print(response.content)
-    >>> 
-    >>> # Streaming
-    >>> for chunk in cencori.ai.chat_stream(messages=[...]):
-    ...     print(chunk.delta, end="")
-    >>> 
-    >>> # Embeddings
-    >>> embeddings = cencori.ai.embeddings(input="Hello world")
-    >>> print(len(embeddings.embeddings[0]))
 """
 
 from .client import Cencori
+from .vision import VisionModule
+from .documents import DocumentsModule
 from .errors import (
-    CencoriError,
     AuthenticationError,
+    CencoriError,
+    InsufficientCreditsError,
+    ProviderError,
     RateLimitError,
     SafetyError,
 )
 from .types import (
-    Message,
+    Agent,
+    AgentConfig,
+    AgentKey,
+    AgentListItem,
+    APIKey,
+    Breakdown,
     ChatParams,
     ChatResponse,
-    StreamChunk,
-    Usage,
     CompletionRequest,
+    CostMetrics,
+    CreateAgentKeyParams,
+    CreateAgentParams,
+    CreateAPIKeyParams,
+    CreateNamespaceOptions,
+    CreateProjectParams,
+    DailyStat,
     EmbeddingRequest,
     EmbeddingResponse,
     EmbeddingUsage,
+    GenerateObjectRequest,
+    GenerateObjectResponse,
+    GeneratedImage,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    KeyUsageStats,
+    LatencyMetrics,
+    Memory,
+    MemoryNamespace,
+    Message,
+    MetricsResponse,
+    Project,
+    RagRequest,
+    RagResponse,
+    RagSource,
+    RagStreamChunk,
+    RequestMetrics,
+    ResponseContentPart,
+    ResponseInputItem,
+    ResponsesOutputItem,
+    ResponsesRequest,
+    ResponsesResponse,
+    ResponsesTool,
+    ResponsesUsage,
+    SearchMemoryOptions,
+    SearchResult,
+    Session,
+    SessionEvent,
+    Stats,
+    StoreMemoryOptions,
+    StreamChunk,
+    TokenMetrics,
+    ToolCall,
+    ToolCallFunction,
+    ToolChoice,
+    ToolDefinition,
+    ToolFunction,
+    UpdateAgentParams,
+    Usage,
+    WebTelemetryPayload,
 )
 
-__version__ = "0.2.0"
+__version__ = "1.4.0"
 __all__ = [
-    # Client
     "Cencori",
+    "VisionModule",
+    "DocumentsModule",
     # Errors
     "CencoriError",
     "AuthenticationError",
     "RateLimitError",
     "SafetyError",
-    # Chat types
+    "InsufficientCreditsError",
+    "ProviderError",
+    # Chat / AI types
     "Message",
     "ChatParams",
     "ChatResponse",
     "StreamChunk",
     "Usage",
-    # Completion types
+    "ToolDefinition",
+    "ToolCall",
+    "ToolCallFunction",
+    "ToolChoice",
+    "ToolFunction",
+    # Completion
     "CompletionRequest",
-    # Embedding types
+    # Embedding
     "EmbeddingRequest",
     "EmbeddingResponse",
     "EmbeddingUsage",
-    # New types from instruction
+    # Generate Object
+    "GenerateObjectRequest",
+    "GenerateObjectResponse",
+    # Image Generation
+    "ImageGenerationRequest",
+    "ImageGenerationResponse",
+    "GeneratedImage",
+    # RAG
+    "RagRequest",
+    "RagResponse",
+    "RagSource",
+    "RagStreamChunk",
+    # Responses API
+    "ResponsesRequest",
+    "ResponsesResponse",
+    "ResponsesTool",
+    "ResponsesUsage",
+    "ResponsesOutputItem",
+    "ResponseInputItem",
+    "ResponseContentPart",
+    # Agents
+    "Agent",
+    "AgentConfig",
+    "AgentListItem",
+    "AgentKey",
+    "CreateAgentParams",
+    "UpdateAgentParams",
+    "CreateAgentKeyParams",
+    # Memory
+    "Memory",
+    "MemoryNamespace",
+    "CreateNamespaceOptions",
+    "StoreMemoryOptions",
+    "SearchMemoryOptions",
+    "SearchResult",
+    # Sessions
+    "Session",
+    "SessionEvent",
+    # Telemetry
+    "WebTelemetryPayload",
+    # Projects / API Keys / Metrics
     "Project",
     "CreateProjectParams",
+    "Stats",
     "APIKey",
     "CreateAPIKeyParams",
+    "DailyStat",
+    "KeyUsageStats",
     "MetricsResponse",
+    "RequestMetrics",
+    "CostMetrics",
+    "TokenMetrics",
+    "LatencyMetrics",
+    "Breakdown",
 ]

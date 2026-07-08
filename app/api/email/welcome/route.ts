@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { generateUserUnsubscribeToken, buildUserUnsubscribeUrl } from '@/lib/user-unsubscribe';
 import { getBaseUrl } from '@/lib/newsletter';
+import { launchTemplate } from '@/lib/email-templates';
 
 const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const WELCOME_FROM_EMAIL = process.env.RESEND_WELCOME_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
@@ -77,18 +78,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const SOCIAL_ICONS_URL = 'https://cencori.com/social';
-    const socialIcons = [
-      { name: 'GitHub', file: 'github-icon.png', url: 'https://github.com/cencori' },
-      { name: 'X', file: 'x-icon.png', url: 'https://x.com/cencori' },
-      { name: 'LinkedIn', file: 'linkedin-icon.png', url: 'https://linkedin.com/company/cencori' },
-      { name: 'Discord', file: 'discord-icon.png', url: 'https://discord.gg/cencori' },
-      { name: 'YouTube', file: 'youtube-icon.png', url: 'https://youtube.com/@cencori' },
-    ];
-    const imgTag = (i: typeof socialIcons[number]) =>
-      `<a href="${i.url}" style="color:#888;text-decoration:none;display:inline-block;vertical-align:middle;"><img src="${SOCIAL_ICONS_URL}/${i.file}" width="20" height="20" alt="${i.name}" style="display:inline-block;vertical-align:middle;border:0;"></a>`;
-    const iconRow = socialIcons.map((i, idx) => imgTag(i) + (idx < socialIcons.length - 1 ? '<span style="color:#ccc;margin:0 6px;vertical-align:middle;">·</span>' : '')).join('');
-
     const firstName = (currentUserMetadata.full_name as string | undefined)?.split(/\s+/)[0] || normalizedEmail.split('@')[0];
 
     const baseUrl = getBaseUrl();
@@ -96,8 +85,27 @@ export async function POST(request: NextRequest) {
     const unsubscribeUrl = buildUserUnsubscribeUrl(baseUrl, user.id, token);
     const preferencesUrl = `${baseUrl}/dashboard/organizations`;
 
-    const link = (text: string, href: string) =>
-      `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
+    const html = launchTemplate({
+      bannerUrl: 'https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png',
+      bannerAlt: 'Cencori',
+      greeting: `Hi ${firstName},`,
+      paragraphs: [
+        'Welcome to Cencori.',
+        'Cencori helps organizations build and run AI applications by making access to frontier AI models simple, secure, and reliable.',
+      ],
+      linksHeader: 'To get started:',
+      links: [
+        { label: 'Create your first project', url: 'https://cencori.com/dashboard/organizations' },
+        { label: 'Generate an API key', url: 'https://cencori.com/dashboard/organizations' },
+        { label: 'Connect your application', url: 'https://cencori.com/docs/installation' },
+      ],
+      ctaText: 'Upgrade to Pro',
+      ctaUrl: 'https://cencori.com/pricing',
+      signOff: 'Build different.',
+      preferencesUrl,
+      unsubscribeUrl,
+      footerContext: 'You received this because you signed up for Cencori.',
+    });
 
     const sendbyte = new SendByte(SENDBYTE_API_KEY);
     let emailId: string | undefined;
@@ -107,38 +115,7 @@ export async function POST(request: NextRequest) {
         to: normalizedEmail,
         reply_to: parseReplyTo(WELCOME_REPLY_TO_EMAIL),
         subject: 'Welcome to Cencori!',
-        html: `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#111;">
-<div style="max-width:560px;margin:0 auto;padding:32px 24px;">
-<img src="https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png" alt="Cencori" style="display:block;width:100%;height:auto;margin-bottom:32px;">
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Hi ${firstName},</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Welcome to Cencori.</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Cencori helps organizations build and run AI applications by making access to frontier AI models simple, secure, and reliable.</p>
-<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#555;">To get started:</p>
-<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Create your first project', 'https://cencori.com/dashboard/organizations')}</p>
-<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Generate an API key', 'https://cencori.com/dashboard/organizations')}</p>
-<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">${link('Connect your application', 'https://cencori.com/docs/installation')}</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Start building with models from OpenAI, Anthropic, Google, Meta, DeepSeek, Mistral, and more\u2014all through a single API.</p>
-<a href="https://cencori.com/pricing" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:13px;font-weight:500;">Upgrade to Pro</a>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;margin-top:24px;">This is the first step in what we\u2019re building.</p>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">Our mission is to make AI infrastructure more accessible so builders, startups, enterprises, researchers, and governments can build and scale with confidence.</p>
-<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#555;">Build different.</p>
-<div style="margin-top:32px;padding-top:24px;border-top:1px solid #eee;">
-<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;"><a href="https://cencori.com/docs" style="color:#888;text-decoration:underline;">Docs</a> &nbsp;&middot;&nbsp; <a href="https://cencori.com/blog" style="color:#888;text-decoration:underline;">Blog</a></p>
-<p style="margin:0 0 8px;font-size:12px;color:#999;text-align:center;">${iconRow}</p>
-<p style="margin:0 0 12px;font-size:12px;color:#999;text-align:center;line-height:1.5;">Making AI infrastructure accessible &mdash; so builders can build and scale with confidence.</p>
-<p style="margin:0 0 12px;font-size:11px;color:#aaa;text-align:center;line-height:1.5;">You received this because you signed up for Cencori.</p>
-<p style="margin:0 0 4px;font-size:11px;color:#aaa;text-align:center;"><a href="${preferencesUrl}" style="color:#888;text-decoration:underline;">Manage preferences</a> &nbsp;&middot;&nbsp; <a href="${unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a></p>
-<p style="margin:0;font-size:11px;color:#aaa;text-align:center;">Cencori, Inc. &middot; San Francisco, CA</p>
-</div>
-</div>
-</body>
-</html>`,
+        html,
         list_unsubscribe: { url: unsubscribeUrl },
       });
       emailId = email.id;
