@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
-import { getPostBySlug, getPostsByCategory, getPostUrl } from "@/lib/blog";
-import { parseMDX } from "@/lib/blog";
-import { format } from "date-fns";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
-import { AuthNavbar } from "@/components/landing/AuthNavbar";
-import { Footer } from "@/components/landing/Footer";
-import { ShareButtons } from "@/components/blog/ShareButtons";
+
+import {
+    getPostBySlug,
+    getPostsByCategory,
+    parseMDX,
+    extractToc,
+} from "@/lib/blog";
+import { PostView } from "@/components/blog/PostView";
 import { buildOgImageUrl } from "@/lib/og";
 
 interface ChangelogPostPageProps {
@@ -19,30 +19,28 @@ interface ChangelogPostPageProps {
 
 export function generateStaticParams() {
     const posts = getPostsByCategory("changelog");
-    return posts.map((post) => ({
-        slug: post.slug,
-    }));
+    return posts.map((post) => ({ slug: post.slug }));
 }
 
 export async function generateMetadata({ params }: ChangelogPostPageProps): Promise<Metadata> {
     const { slug } = await params;
     const post = getPostBySlug(slug);
 
-    if (!post) {
-        return { title: "Post Not Found" };
-    }
+    if (!post) return { title: "Post Not Found" };
 
     const authorName = post.authorDetails[0]?.name || "";
-    const formattedDate = post.date ? new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+    const formattedDate = post.date
+        ? new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "";
 
     const ogImage = post.coverImage
         ? post.coverImage
         : buildOgImageUrl({
-            title: post.title,
-            type: "blog",
-            author: authorName,
-            date: formattedDate,
-        });
+              title: post.title,
+              type: "blog",
+              author: authorName,
+              date: formattedDate,
+          });
 
     return {
         title: post.title,
@@ -73,129 +71,32 @@ export default async function ChangelogPostPage({ params }: ChangelogPostPagePro
     }
 
     const content = await parseMDX(post.content);
+    const toc = extractToc(post.content);
 
-    const changelogPosts = getPostsByCategory("changelog").filter(p => p.published);
-    const currentIndex = changelogPosts.findIndex(p => p.slug === slug);
+    // Prev / next across changelog posts only
+    const changelogPosts = getPostsByCategory("changelog").filter((p) => p.published);
+    const currentIndex = changelogPosts.findIndex((p) => p.slug === slug);
     const prevPost = currentIndex < changelogPosts.length - 1 ? changelogPosts[currentIndex + 1] : null;
     const nextPost = currentIndex > 0 ? changelogPosts[currentIndex - 1] : null;
 
     return (
-        <div className="min-h-screen bg-background flex flex-col" style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }}>
-            <AuthNavbar />
-
-            <main className="flex-1 pt-20">
-                <div className="container mx-auto px-4 max-w-4xl py-12">
-                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_200px] gap-12">
-                        <article className="min-w-0">
-                            {/* Breadcrumb */}
-                            <div className="mb-6 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <Link href="/blog" className="text-primary hover:underline transition-colors">
-                                    Blog
-                                </Link>
-                                <span>/</span>
-                                <Link href="/changelog" className="text-primary hover:underline transition-colors">
-                                    Changelog
-                                </Link>
-                            </div>
-
-                            {/* Header */}
-                            <header className="mb-8">
-                                <h1 className="text-3xl font-bold mb-4 tracking-tight leading-tight">
-                                    {post.title}
-                                </h1>
-
-                                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-8">
-                                    <span>{format(new Date(post.date), "dd MMMM yyyy")}</span>
-                                    <span className="text-muted-foreground/40">&bull;</span>
-                                    <span>{post.readTime}</span>
-                                </div>
-
-                                {post.authorDetails.map((author) => (
-                                    <div key={author.slug} className="flex items-center gap-3">
-                                        {author.avatar && (
-                                            <div className="relative w-10 h-10 rounded-full overflow-hidden border border-border/50">
-                                                <Image
-                                                    src={author.avatar}
-                                                    alt={author.name}
-                                                    fill
-                                                    className="object-cover"
-                                                />
-                                            </div>
-                                        )}
-                                        <div>
-                                            <span className="font-medium text-foreground block">{author.name}</span>
-                                            {author.role && (
-                                                <span className="text-xs text-muted-foreground">{author.role}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </header>
-
-                            {post.coverImage && (
-                                <div className="relative w-full aspect-[2/1] rounded-lg overflow-hidden border border-border/50 mb-10 bg-muted/30">
-                                    <Image
-                                        src={post.coverImage}
-                                        alt={post.title}
-                                        fill
-                                        className="object-cover"
-                                        priority
-                                        unoptimized
-                                    />
-                                </div>
-                            )}
-
-                            <div className="prose prose-zinc dark:prose-invert max-w-none">
-                                {content}
-                            </div>
-
-                            {/* Navigation within changelog */}
-                            {(prevPost || nextPost) && (
-                                <div className="mt-16 pt-8">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {prevPost && (
-                                            <Link
-                                                href={getPostUrl(prevPost)}
-                                                className="group flex flex-col p-4 rounded-lg border border-border/50 hover:border-border transition-colors"
-                                            >
-                                                <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                                                    <ArrowLeft className="w-3 h-3" />
-                                                    Previous
-                                                </span>
-                                                <span className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">
-                                                    {prevPost.title}
-                                                </span>
-                                            </Link>
-                                        )}
-                                        {nextPost && (
-                                            <Link
-                                                href={getPostUrl(nextPost)}
-                                                className="group flex flex-col p-4 rounded-lg border border-border/50 hover:border-border transition-colors sm:text-right sm:ml-auto"
-                                            >
-                                                <span className="text-xs text-muted-foreground mb-1 flex items-center gap-1 sm:justify-end">
-                                                    Next
-                                                    <ArrowRight className="w-3 h-3" />
-                                                </span>
-                                                <span className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-1">
-                                                    {nextPost.title}
-                                                </span>
-                                            </Link>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </article>
-
-                        <aside className="hidden lg:block">
-                            <div className="sticky top-28">
-                                <ShareButtons title={post.title} slug={slug} />
-                            </div>
-                        </aside>
-                    </div>
-                </div>
-            </main>
-
-            <Footer />
-        </div>
+        <PostView
+            post={post}
+            content={content}
+            toc={toc}
+            breadcrumb={
+                <>
+                    <Link href="/blog" className="text-primary hover:underline transition-colors">
+                        Blog
+                    </Link>
+                    <span>/</span>
+                    <Link href="/changelog" className="text-primary hover:underline transition-colors">
+                        Changelog
+                    </Link>
+                </>
+            }
+            prevPost={prevPost}
+            nextPost={nextPost}
+        />
     );
 }

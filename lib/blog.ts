@@ -172,14 +172,75 @@ export function getAllTags(): string[] {
   return Array.from(tags).sort();
 }
 
-import { MDXComponents } from '@/components/blog/MDXComponents';
+import { blogMdxComponents } from '@/components/blog/mdx-components';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
+import GithubSlugger from 'github-slugger';
 
 /**
- * Parse and render MDX content
- * Code blocks are handled by the MDXComponents pre override
- * which extracts raw code and passes it to our custom CodeBlock
+ * A single TOC entry — matches the shape DocsTableOfContents expects.
+ */
+export interface BlogTocEntry {
+  title: string;
+  url: string; // `#${slug}` — matches rehype-slug output
+  depth: number;
+}
+
+/**
+ * Extract a table of contents from MDX source. Uses github-slugger so the
+ * slugs line up with what rehype-slug produces during rendering.
+ *
+ * Skips headings inside fenced code blocks (```) and inline HTML-only
+ * heading markup. Includes h2-h4 by default — h1 is the post title,
+ * shown separately.
+ */
+export function extractToc(content: string, opts: { minDepth?: number; maxDepth?: number } = {}): BlogTocEntry[] {
+  const min = opts.minDepth ?? 2;
+  const max = opts.maxDepth ?? 4;
+  const slugger = new GithubSlugger();
+  const entries: BlogTocEntry[] = [];
+  let inCodeFence = false;
+
+  for (const line of content.split('\n')) {
+    // Track fenced code blocks so we don't pick up "# " inside them
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (!match) continue;
+    const depth = match[1].length;
+    if (depth < min || depth > max) continue;
+
+    // Strip inline markdown emphasis / code for the visible title
+    const rawTitle = match[2]
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .trim();
+
+    entries.push({
+      title: rawTitle,
+      url: `#${slugger.slug(rawTitle)}`,
+      depth,
+    });
+  }
+
+  return entries;
+}
+
+/**
+ * Parse and render MDX content for the blog.
+ *
+ * Uses the same MDX component set and Shiki syntax highlighter as the
+ * docs so blog posts get the same rendering quality — tables, code blocks,
+ * headings, links, callouts all match the docs. Blog content typically
+ * uses the "prose" subset (headings, tables, code, links, lists,
+ * blockquote); docs-specific structural components like Steps or ApiTable
+ * are available as escape hatches but shouldn't be common.
  */
 export async function parseMDX(content: string) {
   const { content: mdxContent } = await compileMDX({
@@ -191,7 +252,7 @@ export async function parseMDX(content: string) {
         rehypePlugins: [rehypeSlug],
       },
     },
-    components: MDXComponents,
+    components: blogMdxComponents,
   });
 
   return mdxContent;

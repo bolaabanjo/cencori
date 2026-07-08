@@ -1,12 +1,11 @@
 /**
- * Sends the Vision launch test email to a single recipient via SendByte.
+ * Sends the Documents launch test email to a single recipient via SendByte.
  *
  * Uses the shared `launchTemplate()` from lib/email-templates — same design
- * as the welcome email so future launches (Documents, Sessions, etc.) can
- * follow this exact pattern by copying this script and swapping the copy.
+ * as the welcome email.
  *
  * Usage:
- *   npx tsx scripts/send-vision-test.ts [recipient@example.com]
+ *   npx tsx scripts/send-documents-test.ts [recipient@example.com]
  */
 
 import fs from 'node:fs';
@@ -28,15 +27,13 @@ for (const filename of ['.env', '.env.local']) {
 }
 
 async function main() {
-    const recipient = process.argv[2] || 'omogbolahanng@gmail.com';
+    const recipient = process.argv[2] || 'bolaabanjo@gmail.com';
 
     const apiKey = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
     if (!apiKey) throw new Error('SENDBYTE_API_KEY or RESEND_API_KEY must be set');
 
-    // Prefer a dedicated "updates" sender for product-life-cycle emails
-    // (Vision launch, Documents launch, feature announcements). Falls back
-    // to the generic no-reply. Never uses welcome@ — that's reserved for
-    // new-user onboarding.
+    // Prefer a dedicated "updates" sender for product-life-cycle emails.
+    // Never uses welcome@ — that's reserved for new-user onboarding.
     const from = process.env.RESEND_UPDATES_FROM_EMAIL || process.env.RESEND_FROM_EMAIL;
     if (!from) throw new Error('RESEND_UPDATES_FROM_EMAIL or RESEND_FROM_EMAIL must be set');
 
@@ -59,23 +56,24 @@ async function main() {
     const { SendByte } = await import('@sendbyte/node');
 
     const html = launchTemplate({
-        bannerUrl: 'https://raw.githubusercontent.com/cencori/cencori/master/public/blog/images/covers/vision.png',
-        bannerAlt: 'Cencori Vision',
-        preheader: 'Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini.',
+        bannerUrl: 'https://raw.githubusercontent.com/cencori/cencori/master/public/blog/images/covers/docs.png',
+        bannerAlt: 'Cencori Documents',
+        preheader: 'Extract, summarize, and query PDFs — text-based PDFs are free.',
         greeting: `Hi ${firstName},`,
         paragraphs: [
-            'Vision is live on Cencori.',
-            'Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint. Send an image through the regular chat endpoint with any model and Cencori auto-routes it — even models that don’t natively support vision.',
-            'Ships with a drop-in React uploader and works in all five SDKs: TypeScript, Python, Go, PHP, and Rust.',
+            'Documents is live on Cencori.',
+            'Extract text from PDFs, summarize contracts, and answer questions about any document — all through one API. Text-based PDFs use native parsing, so there are no LLM tokens billed for the extract step.',
+            'Under the hood, extract checks first and calls the LLM second. If your contracts, invoices, or reports have embedded text (they almost always do), you pay nothing to read them.',
+            'Available today in all five SDKs: TypeScript, Python, Go, PHP, and Rust.',
         ],
         linksHeader: 'To get started:',
         links: [
-            { label: 'Read the Vision API reference', url: 'https://cencori.com/docs/ai/endpoints/vision' },
-            { label: 'Build a receipt scanner in ten minutes', url: 'https://cencori.com/docs/guides/build-a-receipt-scanner' },
-            { label: 'Embed the VisionUploader React component', url: 'https://cencori.com/docs/guides/vision-uploader' },
+            { label: 'Read the Documents API reference', url: 'https://cencori.com/docs/ai/endpoints/documents' },
+            { label: 'Build a contract analyzer in twenty minutes', url: 'https://cencori.com/docs/guides/build-a-contract-analyzer' },
+            { label: 'See the launch post', url: 'https://cencori.com/blog/documents' },
         ],
         ctaText: 'Read the launch post',
-        ctaUrl: 'https://cencori.com/blog/vision',
+        ctaUrl: 'https://cencori.com/blog/documents',
         signOff: 'Build different.',
         preferencesUrl,
         unsubscribeUrl,
@@ -84,7 +82,7 @@ async function main() {
 
     const sendbyte = new SendByte(apiKey);
 
-    console.log(`Sending Vision launch test to ${recipient}...`);
+    console.log(`Sending Documents launch test to ${recipient}...`);
     console.log(`From:    ${from}`);
     if (replyTo) console.log(`Reply-To: ${replyTo.join(', ')}`);
     console.log(`Greeting: Hi ${firstName},${resolved ? '' : '  (fell back to email prefix)'}`);
@@ -93,7 +91,7 @@ async function main() {
         from,
         to: recipient,
         reply_to: replyTo?.length === 1 ? replyTo[0] : replyTo,
-        subject: 'Vision is live on Cencori',
+        subject: 'Documents is live on Cencori',
         html,
     });
 
