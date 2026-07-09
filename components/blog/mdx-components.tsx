@@ -306,4 +306,5 @@ export const blogMdxComponents: MDXComponents = {
     code: InlineCode,
     pre: Pre,
     Callout,
+    CircuitBreakerDiagram,
 };
