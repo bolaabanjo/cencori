@@ -13,6 +13,8 @@ export interface UnifiedMessage {
     content: string;
     /** Tool call ID (for tool role messages) */
     toolCallId?: string;
+    /** Tool calls made by the model (for assistant role messages) */
+    tool_calls?: ToolCall[];
 }
 
 /**

@@ -4,7 +4,7 @@
  * Helper functions for message normalization and common provider operations
  */
 
-import { UnifiedMessage } from './base';
+import { UnifiedMessage, ToolCall } from './base';
 
 /**
  * OpenAI message format
@@ -13,6 +13,7 @@ export interface OpenAIMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
     tool_call_id?: string;
+    tool_calls?: ToolCall[];
 }
 
 /**
@@ -39,6 +40,7 @@ export function toOpenAIMessages(messages: UnifiedMessage[]): OpenAIMessage[] {
         role: msg.role,
         content: msg.content,
         ...(msg.toolCallId ? { tool_call_id: msg.toolCallId } : {}),
+        ...(msg.tool_calls && msg.tool_calls.length > 0 ? { tool_calls: msg.tool_calls } : {}),
     }));
 }
 

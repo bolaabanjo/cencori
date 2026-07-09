@@ -437,9 +437,9 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                 const result = toolResults.find(r => r.action_id === tc.id);
                 messages.push({
                     role: 'tool' as const,
-                    tool_call_id: tc.id,
+                    toolCallId: tc.id,
                     content: result?.output || JSON.stringify({ approved: true, action_id: tc.id, executed: true }),
-                } as UnifiedMessage as never);
+                } as UnifiedMessage);
             }
         } else {
             // No tool calls — just the assistant text
