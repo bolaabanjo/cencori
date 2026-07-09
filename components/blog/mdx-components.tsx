@@ -16,7 +16,39 @@ import GithubSlugger from "github-slugger";
 import { LinkIcon } from "lucide-react";
 
 import { BlogCodeBlock } from "./BlogCodeBlock";
+import { Callout } from "./Callout";
+import { Card, Cards } from "./Cards";
+import { CircuitBreakerDiagram } from "./CircuitBreakerDiagram";
+import { SecurityArchitectureDiagram } from "./SecurityArchitectureDiagram";
+import { TokenizationFlowDiagram } from "./TokenizationFlowDiagram";
+import { VisionUploader } from "@/components/vision/vision-uploader";
+import {
+    GhostArrow,
+    GhostBox,
+    GhostBoxContent,
+    GhostBoxTitle,
+    GhostCaption,
+    GhostContainer,
+    GhostDashedLine,
+    GhostGrid,
+    GhostLabel,
+    GhostPlaceholder,
+} from "@/components/ui/ghost-diagram";
+import { Check, X, AlertTriangle } from "lucide-react";
+import { mdxComponents as docsComponents } from "@/components/docs/mdx";
 import { cn } from "@/lib/utils";
+
+// Styled inline icons — some blog posts use <Check />, <X />,
+// <AlertTriangle /> inside prose as decorative markers.
+const InlineCheck = ({ className, ...props }: ComponentProps<typeof Check>) => (
+    <Check className={cn("inline-block h-4 w-4 align-middle text-green-500", className)} {...props} />
+);
+const InlineX = ({ className, ...props }: ComponentProps<typeof X>) => (
+    <X className={cn("inline-block h-4 w-4 align-middle text-red-500", className)} {...props} />
+);
+const InlineAlertTriangle = ({ className, ...props }: ComponentProps<typeof AlertTriangle>) => (
+    <AlertTriangle className={cn("inline-block h-4 w-4 align-middle text-amber-500", className)} {...props} />
+);
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -248,7 +280,15 @@ const Pre = ({ children }: ComponentProps<"pre">) => {
 
 // ── Export ────────────────────────────────────────────────────
 
+// Spread docs' MDX components first as fallbacks so blog posts can use
+// docs-only components like <Steps>, <Alert>, <Kbd>, <Accordion>, etc.
+// without importing them. Our own overrides come after and win for the
+// prose surface (headings, paragraphs, code blocks, lists, tables).
+//
+// <Callout> is a blog-specific component and isn't in docsComponents,
+// so we register it explicitly.
 export const blogMdxComponents: MDXComponents = {
+    ...docsComponents,
     h1: H1,
     h2: H2,
     h3: H3,
@@ -265,4 +305,5 @@ export const blogMdxComponents: MDXComponents = {
     td: Td,
     code: InlineCode,
     pre: Pre,
+    Callout,
 };
