@@ -54,7 +54,8 @@ export interface LogRequestParams {
     endpoint: string;
     model: string;
     provider: string;
-    status: 'success' | 'error' | 'filtered' | 'blocked' | 'success_fallback';
+    status: 'success' | 'error' | 'filtered' | 'blocked' | 'success_fallback' | 'blocked_output' | 'rate_limited';
+    requestPayload?: Record<string, unknown>;
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
@@ -727,6 +728,9 @@ export async function logGatewayRequest(context: GatewayContext, params: LogRequ
             end_user_id: params.endUserId,
             error_message: params.errorMessage,
             metadata: params.metadata || {},
+            // request_payload is NOT NULL in the live schema — omitting it makes
+            // the whole insert fail silently (see catch below), losing the log.
+            request_payload: params.requestPayload || {},
             request_id: context.requestId,
             fallback_provider: params.fallbackProvider,
             fallback_model: params.fallbackModel,
