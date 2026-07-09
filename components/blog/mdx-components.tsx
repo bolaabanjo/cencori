@@ -307,4 +307,6 @@ export const blogMdxComponents: MDXComponents = {
     pre: Pre,
     Callout,
     CircuitBreakerDiagram,
+    SecurityArchitectureDiagram,
+    TokenizationFlowDiagram,
 };
