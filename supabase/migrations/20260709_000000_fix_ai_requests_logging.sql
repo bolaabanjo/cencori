@@ -12,6 +12,7 @@
 -- 1. Widen the status constraint to every status the app writes
 ALTER TABLE public.ai_requests
     DROP CONSTRAINT IF EXISTS ai_requests_status_check;
+    
 
 ALTER TABLE public.ai_requests
     ADD CONSTRAINT ai_requests_status_check

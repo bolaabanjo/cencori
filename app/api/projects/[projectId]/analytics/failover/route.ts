@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
-import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
+import { clampTimeRange, hasFeature } from '@/lib/entitlements';
 
 interface RouteParams {
     params: Promise<{ projectId: string }>;
@@ -10,7 +11,6 @@ export async function GET(request: Request, { params }: RouteParams) {
     const { projectId } = await params;
     const { searchParams } = new URL(request.url);
     const environment = searchParams.get('environment') || 'production';
-    const timeRange = searchParams.get('time_range') || '7d';
 
     const supabase = createAdminClient();
 
@@ -24,8 +24,13 @@ export async function GET(request: Request, { params }: RouteParams) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
-    if (gate) return gate;
+    const tier = (await getProjectTier(projectId)) || 'free';
+    if (!hasFeature(tier, 'failoverAnalytics')) {
+        return featureGateResponse('failoverAnalytics');
+    }
+
+    // History depth is tier-gated: free 7d, pro 30d, team 90d, enterprise all
+    const timeRange = clampTimeRange(tier, searchParams.get('time_range') || '7d');
 
     const now = new Date();
     const startDate = new Date();

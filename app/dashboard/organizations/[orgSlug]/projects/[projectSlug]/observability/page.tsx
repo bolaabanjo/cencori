@@ -26,6 +26,8 @@ import { queryKeys } from '@/lib/hooks/useQueries';
 import { ExportDialog } from '@/components/dashboard/ExportDialog';
 import { IntelligencePanel } from '@/components/analytics/intelligence/IntelligencePanel';
 import { cn } from '@/lib/utils';
+import { fetchJsonWithFeatureGate, isFeatureGateError } from '@/lib/feature-gate-client';
+import { FeatureUpgradeWall } from '@/components/billing/FeatureUpgradeWall';
 
 interface TrendData {
     timestamp: string;
@@ -236,26 +238,24 @@ export default function ObservabilityPage({ params }: PageProps) {
 
     const { data: projectId, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug);
 
-    const { data: overview, isLoading: overviewLoading } = useQuery<OverviewData>({
+    const { data: overview, isLoading: overviewLoading, error: overviewError } = useQuery<OverviewData>({
         queryKey: queryKeys.analytics(projectId || '', timeRange),
-        queryFn: async () => {
-            const res = await fetch(`/api/projects/${projectId}/analytics/overview?time_range=${timeRange}&environment=${environment}`);
-            if (!res.ok) throw new Error('Failed to fetch observability data');
-            return res.json();
-        },
+        queryFn: () => fetchJsonWithFeatureGate<OverviewData>(
+            `/api/projects/${projectId}/analytics/overview?time_range=${timeRange}&environment=${environment}`
+        ),
         enabled: !!projectId,
         staleTime: 30 * 1000,
+        retry: (failureCount, error) => !isFeatureGateError(error) && failureCount < 1,
     });
 
     const { data: trendsData } = useQuery<{ trends: TrendData[]; group_by: 'hour' | 'day' }>({
         queryKey: ['trends', projectId, timeRange, environment],
-        queryFn: async () => {
-            const res = await fetch(`/api/projects/${projectId}/analytics/trends?time_range=${timeRange}&environment=${environment}`);
-            if (!res.ok) throw new Error('Failed to fetch trends');
-            return res.json();
-        },
+        queryFn: () => fetchJsonWithFeatureGate<{ trends: TrendData[]; group_by: 'hour' | 'day' }>(
+            `/api/projects/${projectId}/analytics/trends?time_range=${timeRange}&environment=${environment}`
+        ),
         enabled: !!projectId,
         staleTime: 30 * 1000,
+        retry: (failureCount, error) => !isFeatureGateError(error) && failureCount < 1,
     });
 
     const { data: httpTrendsData } = useQuery<{ trends: HttpTrendData[] }>({
@@ -318,6 +318,18 @@ export default function ObservabilityPage({ params }: PageProps) {
                     </div>
                     <p className="text-sm font-medium">Project not found</p>
                 </div>
+            </div>
+        );
+    }
+
+    if (isFeatureGateError(overviewError)) {
+        return (
+            <div className="w-full max-w-6xl mx-auto px-6 py-8">
+                <FeatureUpgradeWall
+                    orgSlug={orgSlug}
+                    feature="Analytics dashboard"
+                    message={overviewError.message}
+                />
             </div>
         );
     }

@@ -12,6 +12,7 @@ export interface TierFeatures {
   semanticCache: boolean;
   requestLogs: boolean;
   analyticsDashboard: boolean;
+  advancedAnalytics: boolean;
   costTracking: boolean;
   geoAnalytics: boolean;
   failoverAnalytics: boolean;
@@ -31,9 +32,13 @@ export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     failover: false,
     customProviders: false,
     semanticCache: false,
-    requestLogs: false,
-    analyticsDashboard: false,
-    costTracking: false,
+    // Logs, basic analytics, and cost visibility are free: they're how a
+    // free user sees the product working (and how they debug). Monetization
+    // comes from retention (see LOG_RETENTION_RANGE) and advanced analytics.
+    requestLogs: true,
+    analyticsDashboard: true,
+    advancedAnalytics: false,
+    costTracking: true,
     geoAnalytics: false,
     failoverAnalytics: false,
     promptRegistry: false,
@@ -52,6 +57,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     semanticCache: true,
     requestLogs: true,
     analyticsDashboard: true,
+    advancedAnalytics: true,
     costTracking: true,
     geoAnalytics: false,
     failoverAnalytics: true,
@@ -71,6 +77,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     semanticCache: true,
     requestLogs: true,
     analyticsDashboard: true,
+    advancedAnalytics: true,
     costTracking: true,
     geoAnalytics: true,
     failoverAnalytics: true,
@@ -90,6 +97,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
     semanticCache: true,
     requestLogs: true,
     analyticsDashboard: true,
+    advancedAnalytics: true,
     costTracking: true,
     geoAnalytics: true,
     failoverAnalytics: true,
@@ -101,6 +109,33 @@ export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
 
 export function getFeaturesForTier(tier: SubscriptionTier): TierFeatures {
   return TIER_FEATURES[tier] || TIER_FEATURES.free;
+}
+
+// ── Log/analytics retention ──
+// Free users get logs and basic analytics; history depth is the upsell.
+export type TimeRange = '1h' | '24h' | '7d' | '30d' | '90d' | 'all';
+
+const TIME_RANGE_ORDER: TimeRange[] = ['1h', '24h', '7d', '30d', '90d', 'all'];
+
+export const LOG_RETENTION_RANGE: Record<SubscriptionTier, TimeRange> = {
+  free: '7d',
+  pro: '30d',
+  team: '90d',
+  enterprise: 'all',
+};
+
+/**
+ * Clamp a requested time range to the tier's retention window.
+ * Unknown values fall back to the tier's maximum.
+ */
+export function clampTimeRange(tier: SubscriptionTier, requested: string): TimeRange {
+  const max = LOG_RETENTION_RANGE[tier] || LOG_RETENTION_RANGE.free;
+  const requestedIdx = TIME_RANGE_ORDER.indexOf(requested as TimeRange);
+  const maxIdx = TIME_RANGE_ORDER.indexOf(max);
+  if (requestedIdx === -1 || requestedIdx > maxIdx) {
+    return max;
+  }
+  return TIME_RANGE_ORDER[requestedIdx];
 }
 
 export function hasFeature(tier: SubscriptionTier, feature: keyof TierFeatures): boolean {
@@ -125,6 +160,7 @@ export function requireFeature(
       semanticCache: 'Semantic cache',
       requestLogs: 'Request logs',
       analyticsDashboard: 'Analytics dashboard',
+      advancedAnalytics: 'Advanced analytics',
       costTracking: 'Cost tracking',
       geoAnalytics: 'Geo analytics',
       failoverAnalytics: 'Failover analytics',

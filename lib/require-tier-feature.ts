@@ -14,6 +14,7 @@ const FEATURE_NAMES: Record<keyof TierFeatures, string> = {
   semanticCache: 'Semantic cache',
   requestLogs: 'Request logs',
   analyticsDashboard: 'Analytics dashboard',
+  advancedAnalytics: 'Advanced analytics',
   costTracking: 'Cost tracking',
   geoAnalytics: 'Geo analytics',
   failoverAnalytics: 'Failover analytics',
@@ -22,10 +23,23 @@ const FEATURE_NAMES: Record<keyof TierFeatures, string> = {
   sso: 'SSO',
 };
 
-export async function requireTierFeatureForProject(
-  projectId: string,
-  feature: keyof TierFeatures
-): Promise<NextResponse | null> {
+/** The standard 403 body returned when a plan doesn't include a feature. */
+export function featureGateResponse(feature: keyof TierFeatures): NextResponse {
+  return NextResponse.json(
+    {
+      error: `${FEATURE_NAMES[feature]} requires a paid plan`,
+      code: 'FEATURE_NOT_INCLUDED',
+      upgrade_url: '/billing',
+    },
+    { status: 403 }
+  );
+}
+
+/**
+ * Look up the subscription tier for a project's organization.
+ * Returns null when the project or organization doesn't exist.
+ */
+export async function getProjectTier(projectId: string): Promise<SubscriptionTier | null> {
   const supabase = createAdminClient();
 
   const { data: project, error: projectError } = await supabase
@@ -35,7 +49,7 @@ export async function requireTierFeatureForProject(
     .single();
 
   if (projectError || !project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    return null;
   }
 
   const { data: org, error: orgError } = await supabase
@@ -45,19 +59,24 @@ export async function requireTierFeatureForProject(
     .single();
 
   if (orgError || !org) {
-    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    return null;
   }
 
-  const tier = (org.subscription_tier || 'free') as SubscriptionTier;
+  return (org.subscription_tier || 'free') as SubscriptionTier;
+}
+
+export async function requireTierFeatureForProject(
+  projectId: string,
+  feature: keyof TierFeatures
+): Promise<NextResponse | null> {
+  const tier = await getProjectTier(projectId);
+
+  if (!tier) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
+
   if (!hasFeature(tier, feature)) {
-    return NextResponse.json(
-      {
-        error: `${FEATURE_NAMES[feature]} requires a paid plan`,
-        code: 'FEATURE_NOT_INCLUDED',
-        upgrade_url: '/billing',
-      },
-      { status: 403 }
-    );
+    return featureGateResponse(feature);
   }
 
   return null;

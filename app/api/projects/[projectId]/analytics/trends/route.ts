@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
-import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
+import { clampTimeRange, hasFeature } from '@/lib/entitlements';
 
 export async function GET(
     req: NextRequest,
@@ -20,11 +21,14 @@ export async function GET(
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
 
-        const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
-        if (gate) return gate;
+        const tier = (await getProjectTier(projectId)) || 'free';
+        if (!hasFeature(tier, 'analyticsDashboard')) {
+            return featureGateResponse('analyticsDashboard');
+        }
 
         const searchParams = req.nextUrl.searchParams;
-        const timeRange = searchParams.get('time_range') || '7d';
+        // History depth is tier-gated: free 7d, pro 30d, team 90d, enterprise all
+        const timeRange = clampTimeRange(tier, searchParams.get('time_range') || '7d');
         const environment = searchParams.get('environment') || 'production';
 
         const now = new Date();

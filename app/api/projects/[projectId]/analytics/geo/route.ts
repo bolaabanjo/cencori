@@ -66,7 +66,7 @@ export async function GET(
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
 
-        const gate = await requireTierFeatureForProject(projectId, 'analyticsDashboard');
+        const gate = await requireTierFeatureForProject(projectId, 'geoAnalytics');
         if (gate) return gate;
 
         const { searchParams } = new URL(request.url);
