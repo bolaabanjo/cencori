@@ -270,6 +270,51 @@ function makeStream(params: {
     });
 }
 
+const SESSION_HISTORY_MAX_MESSAGES = 40;
+
+/**
+ * Rebuild prior conversation turns for a session so the model sees
+ * history. Reads turn.started (user input) and turn.completed
+ * (assistant output) events; the current turn's events are not yet
+ * persisted when this runs, so everything returned is prior context.
+ */
+async function loadSessionHistory(supabase: SupabaseAdmin, sessionId: string): Promise<UnifiedMessage[]> {
+    const { data: events } = await supabase
+        .from('session_events')
+        .select('event_type, payload, turn_number, sequence')
+        .eq('session_id', sessionId)
+        .in('event_type', ['turn.started', 'turn.completed'])
+        .order('turn_number', { ascending: true })
+        .order('sequence', { ascending: true });
+
+    const history: UnifiedMessage[] = [];
+    for (const ev of events ?? []) {
+        const p = ev.payload as Record<string, unknown>;
+        if (ev.event_type === 'turn.started') {
+            const text = p.input_text;
+            if (typeof text === 'string' && text.length > 0) {
+                history.push({ role: 'user', content: text });
+            }
+            continue;
+        }
+        const out = p.output as Record<string, unknown> | null | undefined;
+        let text = '';
+        if (typeof out?.text === 'string') {
+            // Resumed turns store output as { text, tool_outputs }
+            text = out.text;
+        } else if (Array.isArray(out?.output)) {
+            for (const item of out.output as Array<Record<string, unknown>>) {
+                if (item.type !== 'message' || !Array.isArray(item.content)) continue;
+                for (const c of item.content as Array<Record<string, unknown>>) {
+                    if (c.type === 'output_text' && typeof c.text === 'string') text = c.text;
+                }
+            }
+        }
+        if (text) history.push({ role: 'assistant', content: text });
+    }
+    return history.slice(-SESSION_HISTORY_MAX_MESSAGES);
+}
+
 export async function executeSessionTurn(params: TurnExecuteParams): Promise<TurnExecuteResult> {
     const {
         supabase, gatewayCtx, sessionId, turnNumber, model,
@@ -292,7 +337,8 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
                 }
             }
         }
-        const messages: UnifiedMessage[] = [...inputMessages];
+        const history = await loadSessionHistory(supabase, sessionId);
+        const messages: UnifiedMessage[] = [...history, ...inputMessages];
 
         const pre = builtInTools.length > 0
             ? await preProcessBuiltInTools(inputText, builtInTools, gatewayCtx.projectId)
