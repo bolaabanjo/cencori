@@ -3,6 +3,7 @@
 import {
     AiBookIcon,
     AiBrain01Icon,
+    AiBrain02Icon,
     AiMail01Icon,
     ApiIcon,
     BookOpen01Icon,
@@ -131,7 +132,7 @@ const solutionsMenuColumns: NavLink[][] = [
     [
         { title: "Startups", href: "/solutions/startups", description: "Move fast without security debt.", icon: renderMenuIcon(RocketIcon) },
         { title: "Agencies", href: "/solutions/agencies", description: "Deliver client AI with guardrails.", icon: renderMenuIcon(Briefcase01Icon) },
-        { title: "Enterprise", href: "/solutions/enterprise", description: "Governed AI rollouts at scale.", icon: renderMenuIcon(Building06Icon) },
+        { title: "Enterprise", href: "/enterprise", description: "The AI cloud for critical systems.", icon: renderMenuIcon(Building06Icon) },
         { title: "Fintech", href: "/solutions/fintech", description: "Controls for regulated finance apps.", icon: renderMenuIcon(ChartIcon) },
         { title: "Healthcare", href: "/solutions/healthcare", description: "Protect PHI in clinical workflows.", icon: renderMenuIcon(StethoscopeIcon) },
         { title: "Hackathons", href: "/solutions/hackathons", description: "Safe defaults for fast launches.", icon: renderMenuIcon(BulbIcon) },
@@ -146,6 +147,7 @@ const productMenuColumns: NavLink[][] = [
     [
         { title: "AI Gateway", href: siteConfig.links.products.aiGateway, description: "One API, 100+ models.", icon: renderMenuIcon(MoleculesIcon) },
         { title: "Models", href: siteConfig.links.products.models, description: "Hosted and mapped model catalog.", icon: renderMenuIcon(AiBrain01Icon) },
+        { title: "Memory", href: "/memory", description: "Stateful chat in one line.", icon: renderMenuIcon(AiBrain02Icon) },
         { title: "Audit Logs", href: siteConfig.links.products.audit, description: "Immutable logs and compliance trails.", icon: renderMenuIcon(BookOpen01Icon) },
     ],
     [
@@ -238,6 +240,8 @@ export default function Navbar({
     name = "",
     homeUrl = siteConfig.url,
     mobileNavItems = [
+        { title: "For Developers", href: "/developers" },
+        { title: "For Enterprise", href: "/enterprise" },
         {
             title: "Products", sublinks: mobileProductLinks
         },
@@ -335,6 +339,8 @@ export default function Navbar({
     };
 
     const navItems: NavItem[] = [
+        { title: "For Developers", href: "/developers" },
+        { title: "For Enterprise", href: "/enterprise" },
         productsDropdown,
         solutionsDropdown,
         resourcesDropdown,
