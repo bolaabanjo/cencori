@@ -242,7 +242,9 @@ function makeStream(params: {
 
                         const output = buildOutput(fullText, callValues, collectedBuiltinToolOutputs);
                         await el('turn.completed', { turn_number: turnNumber, output, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } });
-                        void updateSessionStatus(supabase, sessionId, 'completed', turnNumber);
+                        // Completing a TURN keeps the SESSION open for the next
+                        // turn — sessions only end via close/reject/TTL expiry.
+                        void updateSessionStatus(supabase, sessionId, 'active', turnNumber);
 
                         const pn = resolved.customProviderTag || chunk.actualProvider;
                         logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
@@ -258,7 +260,9 @@ function makeStream(params: {
             } catch (error) {
                 const msg = error instanceof Error ? error.message : 'Turn execution failed';
                 await el('turn.failed', { turn_number: turnNumber, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } });
-                void updateSessionStatus(supabase, sessionId, 'failed', turnNumber);
+                // A failed turn shouldn't brick the session — stay active so
+                // the client can retry in the same conversation.
+                void updateSessionStatus(supabase, sessionId, 'active', turnNumber);
                 logSuccess({ provider: '', model: '', status: 'error', promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostUsd: 0, cencoriChargeUsd: 0, markupPercentage: 0, errorMessage: msg });
                 controller.close();
             }
@@ -551,7 +555,8 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                             const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100);
 
                             es('turn.completed', { turn_number: turnNumber + 1, output: { text: fullText, tool_outputs: toolResults }, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } });
-                            void updateSessionStatus(supabase, sessionId, 'completed', turnNumber + 1);
+                            // Keep the session open for the next turn.
+                            void updateSessionStatus(supabase, sessionId, 'active', turnNumber + 1);
 
                             const pn = resolved.customProviderTag || chunk.actualProvider;
                             logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
@@ -567,7 +572,8 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                 } catch (error) {
                     const msg = error instanceof Error ? error.message : 'Resume execution failed';
                     es('turn.failed', { turn_number: turnNumber + 1, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } });
-                    void updateSessionStatus(supabase, sessionId, 'failed', turnNumber + 1);
+                    // A failed resume shouldn't brick the session either.
+                    void updateSessionStatus(supabase, sessionId, 'active', turnNumber + 1);
                     logSuccess({ provider: '', model: '', status: 'error', promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostUsd: 0, cencoriChargeUsd: 0, markupPercentage: 0, errorMessage: msg });
                     controller.close();
                 }
