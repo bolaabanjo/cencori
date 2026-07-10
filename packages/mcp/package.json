@@ -1,0 +1,61 @@
+{
+    "name": "@cencori/mcp",
+    "version": "0.1.0",
+    "description": "Read-only MCP server for Cencori docs, gateway, and agents.",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "bin": {
+        "cencori-mcp": "dist/index.js"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "keywords": [
+        "mcp",
+        "model-context-protocol",
+        "cencori",
+        "docs",
+        "documentation",
+        "cursor",
+        "claude"
+    ],
+    "author": "Cencori",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cencori/cencori.git",
+        "directory": "packages/mcp"
+    },
+    "homepage": "https://cencori.com/docs",
+    "bugs": {
+        "url": "https://github.com/cencori/cencori/issues"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "test": "npm run build && node --test test/integration.test.mjs",
+        "start": "node dist/index.js",
+        "prepublishOnly": "npm run build"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "zod": "^3.25.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "tsup": "^8.0.0",
+        "typescript": "^5.3.0"
+    }
+}
