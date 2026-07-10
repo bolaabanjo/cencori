@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cencori": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp"],
+      "env": {
+        "CENCORI_API_KEY": "csk_...",
+        "CENCORI_MCP_FEATURES": "docs,gateway,agents"
+      }
+    }
+  }
+}
