@@ -33,8 +33,10 @@ export async function generateMetadata({ params }: ChangelogPostPageProps): Prom
         ? new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
         : "";
 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cencori.com';
+
     const ogImage = post.coverImage
-        ? post.coverImage
+        ? `${baseUrl}${post.coverImage.startsWith('/') ? '' : '/'}${post.coverImage}`
         : buildOgImageUrl({
               title: post.title,
               type: "blog",
