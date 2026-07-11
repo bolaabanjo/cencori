@@ -2,7 +2,7 @@
     "rewrites": [
         {
             "source": "/v1/chat/completions",
-            "destination": "/api/ai/chat"
+            "destination": "/api/v1/chat/completions"
         },
         {
             "source": "/v1/completions",

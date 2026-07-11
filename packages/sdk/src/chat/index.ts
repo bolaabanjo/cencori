@@ -86,8 +86,8 @@ export interface ChatCompletionStream extends AsyncIterable<ChatCompletionChunk>
 class Completions {
     constructor(private config: Required<CencoriConfig>) {}
 
-    // The modern chat handler lives at /api/v1/chat/completions (the public
-    // /v1/chat/completions rewrite still points at the legacy handler).
+    // The OpenAI-compat chat handler. Public /v1/chat/completions rewrites
+    // here too; the SDK targets the app path directly (rewrite-independent).
     private endpoint(): string {
         return `${this.config.baseUrl}/api/v1/chat/completions`;
     }
