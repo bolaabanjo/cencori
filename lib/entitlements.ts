@@ -142,6 +142,20 @@ export function hasFeature(tier: SubscriptionTier, feature: keyof TierFeatures):
   return getFeaturesForTier(tier)[feature];
 }
 
+// ── Memory quotas ──
+// Memory is available on every tier (API opt-in); the quota is the gate.
+// Metered by count of memories per project, 10KB content cap per memory.
+export const MEMORY_QUOTA: Record<SubscriptionTier, number> = {
+  free: 1_000,
+  pro: 100_000,
+  team: 500_000,
+  enterprise: Number.POSITIVE_INFINITY,
+};
+
+export function getMemoryQuota(tier: SubscriptionTier): number {
+  return MEMORY_QUOTA[tier] ?? MEMORY_QUOTA.free;
+}
+
 export function requireFeature(
   tier: SubscriptionTier,
   feature: keyof TierFeatures,

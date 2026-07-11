@@ -18,6 +18,7 @@ const TTL = {
     CACHE_CONFIG: 300,     // 5 minutes for cache config
     SECURITY_CONFIG: 60,   // 1 minute for security config
     CREDITS: 300,          // 5 minutes for balance (invalidated on spend)
+    MEMORY_CONFIG: 300,    // 5 minutes for project memory settings
 };
 
 /**
@@ -121,6 +122,44 @@ export async function setCachedCacheConfig(projectId: string, data: any): Promis
 
 export async function invalidateCacheConfig(projectId: string): Promise<void> {
     const cacheKey = `${CONFIG_PREFIX}cache:${projectId}`;
+    try {
+        await redis.del(cacheKey);
+    } catch {
+        // Silently fail
+    }
+}
+
+/**
+ * Cache project memory settings
+ */
+export async function getCachedMemoryConfig(projectId: string): Promise<{
+    data: any;
+    fromCache: boolean;
+} | null> {
+    const cacheKey = `${CONFIG_PREFIX}memory:${projectId}`;
+
+    try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+            return { data: cached, fromCache: true };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+export async function setCachedMemoryConfig(projectId: string, data: any): Promise<void> {
+    const cacheKey = `${CONFIG_PREFIX}memory:${projectId}`;
+    try {
+        await redis.set(cacheKey, data, { ex: TTL.MEMORY_CONFIG });
+    } catch {
+        // Silently fail
+    }
+}
+
+export async function invalidateMemoryConfig(projectId: string): Promise<void> {
+    const cacheKey = `${CONFIG_PREFIX}memory:${projectId}`;
     try {
         await redis.del(cacheKey);
     } catch {

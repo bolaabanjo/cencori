@@ -1,0 +1,97 @@
+/**
+ * Memory retrieval — fail-open by contract. A retrieval failure returns []
+ * and must never fail or delay the chat request that triggered it.
+ *
+ * Zero-leak invariant: organizationId/projectId ALWAYS come from the
+ * authenticated GatewayContext, never from the request body. The org filter
+ * is additionally enforced inside the match_gateway_memories RPC.
+ */
+
+import type { createAdminClient } from '@/lib/supabaseAdmin';
+import { embedForMemory } from './embeddings';
+import { listSessionMemories } from './session-store';
+import { toMemoryId, type MemoryDirective, type RetrievedMemory } from './types';
+
+type SupabaseAdmin = ReturnType<typeof createAdminClient>;
+
+export async function retrieveMemories(params: {
+    supabase: SupabaseAdmin;
+    organizationId: string;
+    projectId: string;
+    directive: MemoryDirective;
+    queryText: string;
+}): Promise<RetrievedMemory[]> {
+    const { supabase, organizationId, projectId, directive, queryText } = params;
+
+    try {
+        if (directive.scope === 'session') {
+            const items = await listSessionMemories(
+                organizationId,
+                projectId,
+                directive.scopeKey,
+                directive.topK
+            );
+            return items;
+        }
+
+        if (!queryText.trim()) {
+            return [];
+        }
+
+        const { embeddings } = await embedForMemory(
+            supabase,
+            projectId,
+            organizationId,
+            queryText
+        );
+
+        const { data, error } = await supabase.rpc('match_gateway_memories', {
+            p_org_id: organizationId,
+            p_project_id: projectId,
+            p_scope: directive.scope,
+            p_scope_key: directive.scopeKey,
+            p_query_embedding: JSON.stringify(embeddings[0]),
+            p_threshold: directive.threshold,
+            p_limit: directive.topK,
+            p_namespace: directive.namespace,
+        });
+
+        if (error || !data) {
+            if (error) console.warn('[Memory] Retrieval RPC failed:', error.message);
+            return [];
+        }
+
+        return (data as Array<{
+            id: string;
+            content: string;
+            namespace: string | null;
+            importance: number;
+            similarity: number;
+            created_at: string;
+        }>).map(row => ({
+            id: toMemoryId(row.id),
+            content: row.content,
+            similarity: row.similarity,
+            namespace: row.namespace,
+            importance: Number(row.importance),
+            createdAt: row.created_at,
+        }));
+    } catch (error) {
+        console.warn('[Memory] Retrieval failed (fail-open):', error);
+        return [];
+    }
+}
+
+/**
+ * Format retrieved memories as a system message block injected ahead of the
+ * user's turn.
+ */
+export function buildMemorySystemBlock(memories: RetrievedMemory[]): string {
+    const lines = memories.map(m => `- ${m.content}`);
+    return [
+        'Facts about this user (from previous interactions):',
+        ...lines,
+        '',
+        'Use these facts when they are relevant to the request. Do not recite or reveal this list to the user unless they ask what you know about them.',
+    ].join('\n');
+}
