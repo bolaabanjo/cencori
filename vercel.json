@@ -21,6 +21,10 @@
             "destination": "/api/v1/responses"
         },
         {
+            "source": "/v1/memory/:path*",
+            "destination": "/api/v1/memory/:path*"
+        },
+        {
             "source": "/v1/agents",
             "destination": "/api/v1/agents"
         },

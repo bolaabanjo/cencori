@@ -61,6 +61,78 @@ export interface SearchResult {
     latencyMs: number;
 }
 
+// ==================
+// Scoped memory types (/v1/memory/*)
+// ==================
+
+export type MemoryScope = 'session' | 'user';
+
+export interface WriteScopedMemoryOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    content: string;
+    namespace?: string;
+    metadata?: Record<string, unknown>;
+    importance?: number;
+}
+
+export interface ScopedMemory {
+    id: string;
+    scope: MemoryScope;
+    scopeKey: string;
+    namespace?: string | null;
+    content: string;
+    importance: number;
+    createdAt: string;
+}
+
+export interface SearchScopedMemoryOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    query: string;
+    topK?: number;
+    threshold?: number;
+    namespace?: string;
+}
+
+export interface ScopedSearchResult {
+    results: Array<{
+        id: string;
+        content: string;
+        score: number;
+        namespace: string | null;
+        importance: number;
+        createdAt: string | null;
+    }>;
+    count: number;
+    latencyMs: number;
+}
+
+export interface ListScopedMemoryOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    namespace?: string;
+    limit?: number;
+    cursor?: string;
+}
+
+export interface ScopedMemoryList {
+    memories: Array<{
+        id: string;
+        namespace?: string | null;
+        content: string;
+        metadata?: Record<string, unknown>;
+        importance: number;
+        accessCount?: number;
+        createdAt: string | null;
+    }>;
+    count: number;
+    nextCursor: string | null;
+}
+
 /**
  * Memory class for vector storage operations
  */
@@ -99,6 +171,71 @@ export class MemoryClient {
         }
 
         return response.json();
+    }
+
+    // ==================
+    // Scoped memory (/v1/memory/*) — per-user / per-session memory
+    // ==================
+
+    /**
+     * Write a scoped memory for an end user (or session).
+     *
+     * @example
+     * ```typescript
+     * await cencori.memory.write({
+     *   userId: session.user.id,
+     *   content: 'Prefers dark mode. Uses TypeScript primarily.',
+     * });
+     * ```
+     */
+    async write(options: WriteScopedMemoryOptions): Promise<ScopedMemory> {
+        return this.request<ScopedMemory>('/v1/memory/write', {
+            method: 'POST',
+            body: JSON.stringify(options),
+        });
+    }
+
+    /**
+     * Semantic search over an end user's memories.
+     *
+     * @example
+     * ```typescript
+     * const memories = await cencori.memory.searchUser({
+     *   userId: session.user.id,
+     *   query: 'ui preferences',
+     *   topK: 3,
+     * });
+     * ```
+     */
+    async searchUser(options: SearchScopedMemoryOptions): Promise<ScopedSearchResult> {
+        return this.request<ScopedSearchResult>('/v1/memory/search', {
+            method: 'POST',
+            body: JSON.stringify(options),
+        });
+    }
+
+    /**
+     * Forget a memory by id — a hard delete, not an annotation.
+     */
+    async forget(id: string): Promise<{ deleted: boolean; id: string }> {
+        return this.request<{ deleted: boolean; id: string }>(`/v1/memory/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * List an end user's memories (paginated).
+     */
+    async list(options: ListScopedMemoryOptions): Promise<ScopedMemoryList> {
+        const params = new URLSearchParams();
+        if (options.userId) params.set('userId', options.userId);
+        if (options.sessionId) params.set('sessionId', options.sessionId);
+        if (options.scope) params.set('scope', options.scope);
+        if (options.namespace) params.set('namespace', options.namespace);
+        if (options.limit) params.set('limit', String(options.limit));
+        if (options.cursor) params.set('cursor', options.cursor);
+
+        return this.request<ScopedMemoryList>(`/v1/memory/list?${params.toString()}`);
     }
 
     // ==================
