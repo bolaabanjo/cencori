@@ -1,9 +1,13 @@
-import { ArcieDocsPrevNext } from "@/components/arcie/docs/prev-next";
-import { arcieMdxComponents } from "@/components/arcie/docs/mdx";
-import { ArcieDocsToc } from "@/components/arcie/docs/toc";
+import { DocsTableOfContents } from "@/components/docs/mdx/components/table-of-content";
+import { TocAskAIButton } from "@/components/docs/layout/toc-ask-ai-button";
+import { FeedbackButtons } from "@/components/docs/mdx/components/feedback-buttons";
+import { DocsCopyPage } from "@/components/docs/layout/docs-copy-button";
+import { MDXNavigation } from "@/components/docs/mdx/components/navigation";
 import { findNeighbour } from "fumadocs-core/page-tree";
-import { arcieSource } from "@/lib/arcie-source";
+import { arcieMdxComponents } from "@/components/arcie/docs/mdx";
 import { notFound } from "next/navigation";
+import { absoluteUrl } from "@/lib/utils";
+import { arcieSource } from "@/lib/arcie-source";
 import type { Metadata } from "next";
 
 export function generateStaticParams() {
@@ -34,45 +38,76 @@ export default async function Page(props: PageProps<"/arcie/docs/[[...slug]]">) 
     notFound();
   }
 
-  const MDX = page.data.body;
+  const doc = page.data;
+  const MDX = doc.body;
   const neighbours = findNeighbour(arcieSource.pageTree, page.url);
 
+  const raw = await page.data.getText("raw");
+
   return (
-    <div className="flex">
-      <article className="min-w-0 flex-1 px-6 py-10 sm:px-10">
-        <div className="mx-auto max-w-3xl">
-          {/* crop-mark framed title — echoes the /arcie landing motif */}
-          <div className="relative">
-            <span className="pointer-events-none absolute -top-3 -left-3 select-none font-mono text-xs text-muted-foreground/30">
-              +
-            </span>
-            <span className="pointer-events-none absolute -top-3 -right-3 select-none font-mono text-xs text-muted-foreground/30">
-              +
-            </span>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {page.data.title}
+    <div className="relative mt-10 flex sm:mt-0">
+      <div className="docs-container flex min-w-0 flex-col py-12 pb-32">
+        <div className="flex flex-row items-start gap-4">
+          <div className="flex flex-1 flex-col gap-1">
+            <h1 className="scroll-m-20 text-3xl font-semibold tracking-tight xl:text-4xl">
+              {doc.title}
             </h1>
-            {page.data.description && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {page.data.description}
+            {doc.description && (
+              <p className="text-muted-foreground text-[15px]">
+                {doc.description}
               </p>
             )}
           </div>
-
-          <div className="mt-8">
-            <MDX components={arcieMdxComponents} />
-          </div>
-
-          <ArcieDocsPrevNext
-            previous={neighbours.previous}
-            next={neighbours.next}
-          />
+          <div>{raw && <DocsCopyPage mdx={raw} url={absoluteUrl(page.url)} />}</div>
         </div>
-      </article>
-
-      <aside className="sticky top-12 hidden h-[calc(100dvh-3rem)] w-56 shrink-0 overflow-y-auto px-6 py-10 xl:block">
-        <ArcieDocsToc toc={page.data.toc} />
-      </aside>
+        <div className="text-primary/80 mt-8 w-full min-w-0 flex-1 text-[14px] *:data-[slot=alert]:first:mt-0">
+          <MDX components={arcieMdxComponents} />
+        </div>
+        <div className="mt-40 flex flex-col gap-8">
+          <div className="flex flex-row items-center justify-between">
+            <FeedbackButtons />
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:gap-8">
+            <div>
+              {neighbours.previous ? (
+                <MDXNavigation
+                  $id={neighbours.previous.$id}
+                  type="previous"
+                  title={neighbours.previous.name}
+                  url={neighbours.previous.url}
+                  description={neighbours.previous.description}
+                />
+              ) : (
+                <div className="h-full rounded-md border border-dashed" />
+              )}
+            </div>
+            <div>
+              {neighbours.next ? (
+                <MDXNavigation
+                  $id={neighbours.next.$id}
+                  type="next"
+                  title={neighbours.next.name}
+                  url={neighbours.next.url}
+                  description={neighbours.next.description}
+                />
+              ) : (
+                <div className="h-full rounded-md border border-dashed" />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="sticky top-26 hidden h-fit self-start xl:flex">
+        {doc.toc?.length ? (
+          <div className="no-scrollbar w-72 overflow-y-auto px-8">
+            <DocsTableOfContents toc={doc.toc} />
+            <TocAskAIButton
+              pageTitle={doc.title}
+              pageSlug={page.url.replace(/^\/arcie\/docs\/?/, "")}
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

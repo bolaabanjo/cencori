@@ -1,116 +1,57 @@
-"use client";
-
-import type { Node as PageTreeNode, Root as PageTreeRoot } from "fumadocs-core/page-tree";
-import { usePathname } from "next/navigation";
-import { Search } from "lucide-react";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+} from "@/components/docs/ui/sidebar";
+import { ArcieRenderDefaultOptions } from "./render-default-options";
+import { ArcieNavMain } from "./nav-main";
+import type { Root } from "fumadocs-core/page-tree";
 import Link from "next/link";
-import { useArcieDocs } from "./sidebar-context";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
-function nodeLabel(node: { name?: React.ReactNode }) {
-  return typeof node.name === "string" ? node.name : "";
-}
-
-// Whether a node (or any descendant) matches the active filter query.
-function matches(node: PageTreeNode, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  if (node.type === "folder") {
-    return (
-      nodeLabel(node).toLowerCase().includes(needle) ||
-      node.children.some((child) => matches(child, needle))
-    );
-  }
-  if (node.type === "page") {
-    return nodeLabel(node).toLowerCase().includes(needle);
-  }
-  return false;
-}
-
-function Tree({
-  nodes,
-  pathname,
-  query,
-}: {
-  nodes: PageTreeNode[];
-  pathname: string;
-  query: string;
-}) {
-  return (
-    <ul className="flex flex-col gap-0.5">
-      {nodes.map((node, i) => {
-        if (!matches(node, query)) return null;
-
-        if (node.type === "separator") {
-          return (
-            <li
-              key={`sep-${i}`}
-              className="mt-4 mb-1 px-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/50"
-            >
-              {node.name}
-            </li>
-          );
-        }
-
-        if (node.type === "folder") {
-          return (
-            <li key={`folder-${nodeLabel(node) || i}`} className="mt-3">
-              <p className="mb-1 px-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/50">
-                {node.name}
-              </p>
-              <Tree nodes={node.children} pathname={pathname} query={query} />
-            </li>
-          );
-        }
-
-        const active = pathname === node.url;
-        return (
-          <li key={node.url}>
-            <Link
-              href={node.url}
-              className={cn(
-                "block rounded-md px-2 py-1.5 text-[13px] transition-colors",
-                active
-                  ? "bg-[#a855f7]/10 font-medium text-[#a855f7]"
-                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-              )}
-            >
-              {node.name}
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-export function ArcieDocsSidebar({ tree }: { tree: PageTreeRoot }) {
-  const pathname = usePathname();
-  const { query, setQuery, mobileOpen, setMobileOpen } = useArcieDocs();
+export function ArcieDocsSidebar({
+  tree,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & { tree: Root }) {
+  // Root-level docs pages (no folder) become the "Getting Started" group,
+  // since ArcieNavMain only renders folders.
+  const gettingStartedOptions = tree.children
+    .filter((node) => node.type === "page")
+    .map((node) => {
+      const page = node as { name: React.ReactNode; url: string };
+      return {
+        name: typeof page.name === "string" ? page.name : String(page.name),
+        url: page.url,
+        key: page.url.split("/").pop() ?? "",
+      };
+    });
 
   return (
-    <aside
-      className={cn(
-        "shrink-0 border-r border-border/30 lg:sticky lg:top-12 lg:block lg:h-[calc(100dvh-3rem)] lg:w-60",
-        mobileOpen ? "block" : "hidden",
-      )}
-    >
-      <div className="flex h-full flex-col overflow-y-auto p-4">
-        {/* Mobile-only filter (desktop filter lives in the header) */}
-        <div className="relative mb-3 sm:hidden">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter…"
-            aria-label="Filter pages"
-            className="h-8 w-full rounded-md border border-border/30 bg-muted/30 pl-8 pr-2 text-xs outline-none placeholder:text-muted-foreground/50"
-          />
-        </div>
-        <nav onClick={() => setMobileOpen(false)}>
-          <Tree nodes={tree.children} pathname={pathname} query={query} />
-        </nav>
-      </div>
-    </aside>
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader className="p-4 pt-6">
+        <Link
+          href="/arcie"
+          aria-label="Arcie home"
+          className="z-10 flex items-center gap-2"
+        >
+          <span className="font-mono text-base font-semibold tracking-tight">
+            arcie<span className="text-[#a855f7]">.</span>
+          </span>
+          <span className="rounded-full border border-border/40 px-2 py-0.5 text-[9px] uppercase tracking-widest text-muted-foreground/60">
+            Docs
+          </span>
+        </Link>
+      </SidebarHeader>
+      <SidebarContent
+        className={cn("docs-sidebar-top-fade select-none", "pt-2 pb-14")}
+      >
+        <ArcieRenderDefaultOptions
+          options={gettingStartedOptions}
+          label="Getting Started"
+        />
+        <ArcieNavMain tree={tree} />
+      </SidebarContent>
+    </Sidebar>
   );
 }
