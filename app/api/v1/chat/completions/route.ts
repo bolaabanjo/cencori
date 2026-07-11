@@ -28,6 +28,8 @@ import type { ResolvedPrompt } from "@/lib/prompts/types";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import { runV1ProviderExecution } from "@/lib/gateway/v1-execute";
+import { makeChatLogSuccess } from "@/lib/gateway/chat-post-success";
+import { hasImageInMessages, runVisionChat } from "@/lib/gateway/chat-vision-router";
 import { waitUntil } from "@vercel/functions";
 import {
     buildMemorySystemBlock,
@@ -61,6 +63,10 @@ type ChatRequestBody = {
     stream?: boolean;
     temperature?: number;
     max_tokens?: number;
+    frequency_penalty?: number;
+    frequencyPenalty?: number;
+    presence_penalty?: number;
+    presencePenalty?: number;
     user?: string;
     prompt?: {
         name: string;
@@ -268,6 +274,23 @@ export async function POST(req: NextRequest) {
             );
         }
         const model = normalizeGatewayModelId(configuredModel.trim());
+
+        // ── Vision auto-routing ──
+        // Image content parts can't flow through the text pipeline (they'd
+        // be stringified away) — route through the Vision engine, which
+        // upgrades the model if needed and returns OpenAI chat.completion
+        // shape. Mirrors the /api/ai/chat behavior.
+        if (gatewayCtx && hasImageInMessages(messages)) {
+            const visionResponse = await runVisionChat({
+                ctx: gatewayCtx,
+                rawMessages: messages,
+                requestedModel: model,
+                maxTokens: body.max_tokens,
+                temperature: body.temperature,
+                stream: shouldStream,
+            });
+            return respond(visionResponse as NextResponse);
+        }
 
         // Inject system prompt from agent config (agent mode only).
         if (agentConfig?.system_prompt) {
@@ -670,6 +693,8 @@ export async function POST(req: NextRequest) {
             tokenMap: inputPipeline.tokenMap,
             temperature: body.temperature,
             maxTokens: body.max_tokens,
+            frequencyPenalty: body.frequency_penalty ?? body.frequencyPenalty,
+            presencePenalty: body.presence_penalty ?? body.presencePenalty,
             stream: shouldStream,
             tools: tools as Tool[] | undefined,
             toolChoice: tool_choice,
@@ -679,23 +704,16 @@ export async function POST(req: NextRequest) {
             onCompletion: ({ fullText }) => {
                 scheduleMemoryWriteback(fullText);
             },
-            logSuccess: (meta) => {
-                void logGatewayRequest(activeGatewayCtx, {
-                    endpoint: "/v1/chat/completions",
-                    model: meta.model,
-                    provider: meta.provider,
-                    status: meta.status,
-                    promptTokens: meta.promptTokens,
-                    completionTokens: meta.completionTokens,
-                    totalTokens: meta.totalTokens,
-                    costUsd: meta.cencoriChargeUsd,
-                    providerCostUsd: meta.providerCostUsd,
-                    cencoriChargeUsd: meta.cencoriChargeUsd,
-                    markupPercentage: meta.markupPercentage,
-                    endUserId: endUserId || undefined,
-                    errorMessage: meta.errorMessage,
-                });
-            },
+            logSuccess: makeChatLogSuccess({
+                supabase: adminClient,
+                gatewayCtx: activeGatewayCtx,
+                endpoint: "/v1/chat/completions",
+                requestModel: model,
+                unifiedMessages: guardedMessages,
+                isStreaming: shouldStream,
+                endUserId,
+                customRules: inputPipeline.customRules,
+            }),
             incrementUsage: (chargeUsd) => {
                 void incrementUsage(activeGatewayCtx, chargeUsd);
             },

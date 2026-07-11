@@ -9,6 +9,8 @@ import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-execut
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
+import { buildCencoriChatResponse } from '@/lib/gateway/ai-chat-support';
+import { estimateTokenCount } from '@/lib/providers/utils';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import type { ToolCallPayload } from '@/lib/gateway/v1-types';
 
@@ -27,6 +29,22 @@ export type V1ExecuteParams = {
     stream: boolean;
     tools?: Tool[];
     toolChoice?: UnifiedChatRequest['toolChoice'];
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+    /**
+     * Wire format of the HTTP response. 'openai' (default) emits strict
+     * OpenAI chat.completion JSON / chunk SSE. 'cencori' emits the legacy
+     * /api/ai/chat superset shape ({delta} string chunks, top-level
+     * content/cost_usd/provider, both toolCalls spellings) that every
+     * deployed SDK parses.
+     */
+    wireFormat?: 'openai' | 'cencori';
+    /**
+     * Server-side max_tokens enforcement: some providers ignore max_tokens,
+     * so the stream is cut off with finish_reason "length" (and non-stream
+     * content sliced) once the estimate crosses the limit.
+     */
+    enforceMaxTokens?: boolean;
     endUserId: string | null;
     endUserQuota: QuotaCheckResult | null;
     recordEndUserUsage: (usage: {
@@ -48,6 +66,9 @@ export type V1ExecuteParams = {
         cencoriChargeUsd: number;
         markupPercentage: number;
         errorMessage?: string;
+        /** Full (detokenized) assistant text — for payload logging + eval hooks */
+        responseText?: string;
+        finishReason?: string;
     }) => void;
     incrementUsage: (chargeUsd: number) => void;
     /**
@@ -170,6 +191,8 @@ export async function runV1ProviderExecution(
             tools: params.tools,
             toolChoice: params.toolChoice,
             userId: params.endUserId || undefined,
+            frequencyPenalty: params.frequencyPenalty,
+            presencePenalty: params.presencePenalty,
         };
 
         if (!params.stream) {
@@ -186,6 +209,12 @@ export async function runV1ProviderExecution(
             let content = result.content;
             if (params.tokenMap) {
                 content = deTokenize(content, params.tokenMap);
+            }
+
+            // Server-side max_tokens enforcement: some providers/models
+            // ignore the parameter.
+            if (params.enforceMaxTokens && params.maxTokens && estimateTokenCount(content) > params.maxTokens) {
+                content = content.slice(0, params.maxTokens * 4);
             }
 
             const outputBlock = await runGatewayOutputGuard({
@@ -210,6 +239,7 @@ export async function runV1ProviderExecution(
                             type: 'invalid_request_error',
                             code: outputBlock.code,
                         },
+                        ...(outputBlock.reasons ? { reasons: outputBlock.reasons } : {}),
                     },
                 };
             }
@@ -251,6 +281,8 @@ export async function runV1ProviderExecution(
                 providerCostUsd: result.cost.providerCostUsd,
                 cencoriChargeUsd: result.cost.cencoriChargeUsd,
                 markupPercentage: result.cost.markupPercentage,
+                responseText: content,
+                finishReason: result.finishReason,
             });
             params.incrementUsage(result.cost.cencoriChargeUsd);
             params.recordEndUserUsage({
@@ -262,34 +294,144 @@ export async function runV1ProviderExecution(
                 markupPercentage: result.cost.markupPercentage,
             });
 
-            const json = buildOpenAiCompletionJson({
-                model: result.actualModel,
-                content,
-                toolCalls: openAiToolCalls,
-                usage: result.usage,
-                finishReason: result.finishReason,
-                fallbackMeta: result.usedFallback
-                    ? {
-                          usedFallback: true,
-                          originalProvider: result.originalProvider,
-                          originalModel: result.originalModel,
-                      }
-                    : undefined,
-            });
+            const json = params.wireFormat === 'cencori'
+                ? buildCencoriChatResponse({
+                      content,
+                      actualModel: result.actualModel,
+                      actualProvider: providerLogName,
+                      usage: result.usage,
+                      costUsd: result.cost.cencoriChargeUsd,
+                      finishReason: result.finishReason,
+                      toolCalls: openAiToolCalls,
+                      usedFallback: result.usedFallback,
+                      originalModel: result.originalModel,
+                      originalProvider: result.originalProvider,
+                  })
+                : buildOpenAiCompletionJson({
+                      model: result.actualModel,
+                      content,
+                      toolCalls: openAiToolCalls,
+                      usage: result.usage,
+                      finishReason: result.finishReason,
+                      fallbackMeta: result.usedFallback
+                          ? {
+                                usedFallback: true,
+                                originalProvider: result.originalProvider,
+                                originalModel: result.originalModel,
+                            }
+                          : undefined,
+                  });
 
             params.onCompletion?.({ fullText: content });
 
             return { ok: true, response: NextResponse.json(json) };
         }
 
+        const isCencoriWire = params.wireFormat === 'cencori';
+
         const stream = new ReadableStream({
             async start(controller) {
                 const encoder = new TextEncoder();
                 let fullText = '';
+                let emittedFirstContent = false;
+                let tokenLimitReached = false;
                 const collectedToolCalls: Record<
                     number,
                     { id: string; type: string; function: { name: string; arguments: string } }
                 > = {};
+
+                const sse = (payload: unknown) =>
+                    encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+
+                /**
+                 * Token/pricing accounting + logging + usage hooks shared by
+                 * the natural finish and the server-side length cutoff.
+                 * Returns the figures the cencori terminal metrics chunk needs.
+                 */
+                const settleStream = async (meta: {
+                    actualModel: string;
+                    actualProvider: string;
+                    usedFallback: boolean;
+                    finishReason: string;
+                }) => {
+                    const streamProvider = resolved.provider;
+                    const promptText = params.messages.map((m) => m.content).join(' ');
+                    let promptTokens = 0;
+                    let completionTokens = 0;
+                    try {
+                        promptTokens = await streamProvider.countTokens(promptText, meta.actualModel);
+                        completionTokens = await streamProvider.countTokens(fullText, meta.actualModel);
+                    } catch {
+                        promptTokens = Math.max(1, Math.ceil(promptText.length / 4));
+                        completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+                    }
+                    const totalTokens = promptTokens + completionTokens;
+                    const pricing = await streamProvider.getPricing(meta.actualModel);
+                    const providerCostUsd =
+                        (promptTokens / 1000) * pricing.inputPer1KTokens
+                        + (completionTokens / 1000) * pricing.outputPer1KTokens;
+                    const cencoriChargeUsd =
+                        providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100);
+
+                    const finalText = params.tokenMap
+                        ? deTokenize(fullText, params.tokenMap)
+                        : fullText;
+
+                    const providerLogName = resolved.customProviderTag || meta.actualProvider;
+                    params.logSuccess({
+                        provider: providerLogName,
+                        model: meta.actualModel,
+                        status: meta.usedFallback ? 'success_fallback' : 'success',
+                        promptTokens,
+                        completionTokens,
+                        totalTokens,
+                        providerCostUsd,
+                        cencoriChargeUsd,
+                        markupPercentage: pricing.cencoriMarkupPercentage,
+                        responseText: finalText,
+                        finishReason: meta.finishReason,
+                    });
+                    params.incrementUsage(cencoriChargeUsd);
+                    params.recordEndUserUsage({
+                        promptTokens,
+                        completionTokens,
+                        totalTokens,
+                        providerCostUsd,
+                        cencoriChargeUsd,
+                        markupPercentage: pricing.cencoriMarkupPercentage,
+                    });
+
+                    params.onCompletion?.({ fullText: finalText });
+
+                    return { promptTokens, completionTokens, totalTokens, cencoriChargeUsd };
+                };
+
+                /** Terminal chunks after settlement, per wire format. */
+                const finishStream = (
+                    figures: Awaited<ReturnType<typeof settleStream>>,
+                    meta: { actualModel: string; finishReason: string }
+                ) => {
+                    if (isCencoriWire) {
+                        // NEW terminal metrics chunk (additive — legacy never
+                        // sent usage/cost; parsers tolerate delta-less chunks).
+                        controller.enqueue(
+                            sse({
+                                usage: {
+                                    prompt_tokens: figures.promptTokens,
+                                    completion_tokens: figures.completionTokens,
+                                    total_tokens: figures.totalTokens,
+                                },
+                                cost_usd: figures.cencoriChargeUsd,
+                            })
+                        );
+                    } else {
+                        controller.enqueue(
+                            sse(buildOpenAiStreamChunk(meta.actualModel, {}, meta.finishReason))
+                        );
+                    }
+                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    controller.close();
+                };
 
                 try {
                     for await (const chunk of streamGatewayChat({
@@ -303,6 +445,17 @@ export async function runV1ProviderExecution(
                     })) {
                         if (chunk.delta) {
                             fullText += chunk.delta;
+                        }
+
+                        // Server-side max_tokens enforcement — some
+                        // providers/models don't respect the parameter.
+                        if (
+                            params.enforceMaxTokens &&
+                            params.maxTokens &&
+                            !tokenLimitReached &&
+                            estimateTokenCount(fullText) >= params.maxTokens
+                        ) {
+                            tokenLimitReached = true;
                         }
 
                         if (chunk.toolCalls) {
@@ -338,13 +491,13 @@ export async function runV1ProviderExecution(
                         });
 
                         if (!outputCheck.ok) {
-                            const errChunk = buildOpenAiStreamChunk(params.model, {
-                                content: '',
-                            }, 'content_filter');
-                            controller.enqueue(
-                                encoder.encode(`data: ${JSON.stringify({ error: outputCheck.message })}\n\n`)
-                            );
-                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                            controller.enqueue(sse({ error: outputCheck.message }));
+                            if (!isCencoriWire) {
+                                // Legacy contract: error chunks close WITHOUT
+                                // [DONE]; OpenAI mode keeps its existing
+                                // [DONE]-after-error behavior.
+                                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                            }
                             controller.close();
                             return;
                         }
@@ -353,23 +506,66 @@ export async function runV1ProviderExecution(
                             ? deTokenize(chunk.delta, params.tokenMap)
                             : chunk.delta;
 
-                        const delta: Record<string, unknown> = {};
-                        if (deltaContent) delta.content = deltaContent;
-                        if (chunk.toolCalls?.length) {
-                            delta.tool_calls = chunk.toolCalls.map((tc, i) => ({
-                                index: i,
-                                id: tc.id,
-                                type: tc.type,
-                                function: tc.function,
-                            }));
+                        if (isCencoriWire) {
+                            // Legacy chunk: {delta: <string>, finish_reason}
+                            // — finish_reason passthrough, dropped by
+                            // JSON.stringify when undefined.
+                            if (deltaContent || chunk.toolCalls?.length || chunk.finishReason) {
+                                const payload: Record<string, unknown> = {
+                                    delta: deltaContent ?? '',
+                                    finish_reason: tokenLimitReached ? 'length' : chunk.finishReason,
+                                };
+                                if (!emittedFirstContent && chunk.usedFallback) {
+                                    payload.fallback_used = true;
+                                    payload.original_provider = chunk.originalProvider ?? resolved.providerName;
+                                    payload.original_model = chunk.originalModel ?? resolved.model;
+                                }
+                                if (chunk.toolCalls?.length) {
+                                    // BOTH spellings: snake for Vercel/TanStack,
+                                    // camel for Python/PHP/Rust stream parsers.
+                                    payload.tool_calls = chunk.toolCalls;
+                                    payload.toolCalls = chunk.toolCalls;
+                                }
+                                controller.enqueue(sse(payload));
+                                emittedFirstContent = true;
+                            }
+                        } else {
+                            const delta: Record<string, unknown> = {};
+                            if (deltaContent) delta.content = deltaContent;
+                            if (chunk.toolCalls?.length) {
+                                delta.tool_calls = chunk.toolCalls.map((tc, i) => ({
+                                    index: i,
+                                    id: tc.id,
+                                    type: tc.type,
+                                    function: tc.function,
+                                }));
+                            }
+
+                            if (Object.keys(delta).length > 0) {
+                                controller.enqueue(
+                                    sse(buildOpenAiStreamChunk(
+                                        chunk.actualModel,
+                                        delta,
+                                        tokenLimitReached ? 'length' : null
+                                    ))
+                                );
+                            }
                         }
 
-                        if (Object.keys(delta).length > 0) {
-                            controller.enqueue(
-                                encoder.encode(
-                                    `data: ${JSON.stringify(buildOpenAiStreamChunk(chunk.actualModel, delta, null))}\n\n`
-                                )
-                            );
+                        if (tokenLimitReached) {
+                            // Cut the stream: settle accounting with
+                            // finish_reason "length" and terminate.
+                            const figures = await settleStream({
+                                actualModel: chunk.actualModel,
+                                actualProvider: chunk.actualProvider,
+                                usedFallback: chunk.usedFallback,
+                                finishReason: 'length',
+                            });
+                            finishStream(figures, {
+                                actualModel: chunk.actualModel,
+                                finishReason: 'length',
+                            });
+                            return;
                         }
 
                         if (chunk.finishReason) {
@@ -416,69 +612,16 @@ export async function runV1ProviderExecution(
                                 }
                             }
 
-                            const streamProvider = resolved.provider;
-                            const promptText = params.messages.map((m) => m.content).join(' ');
-                            let promptTokens = 0;
-                            let completionTokens = 0;
-                            try {
-                                promptTokens = await streamProvider.countTokens(
-                                    promptText,
-                                    chunk.actualModel
-                                );
-                                completionTokens = await streamProvider.countTokens(
-                                    fullText,
-                                    chunk.actualModel
-                                );
-                            } catch {
-                                promptTokens = Math.max(1, Math.ceil(promptText.length / 4));
-                                completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-                            }
-                            const totalTokens = promptTokens + completionTokens;
-                            const pricing = await streamProvider.getPricing(chunk.actualModel);
-                            const providerCostUsd =
-                                (promptTokens / 1000) * pricing.inputPer1KTokens
-                                + (completionTokens / 1000) * pricing.outputPer1KTokens;
-                            const cencoriChargeUsd =
-                                providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100);
-
-                            const providerLogName =
-                                resolved.customProviderTag || chunk.actualProvider;
-                            params.logSuccess({
-                                provider: providerLogName,
-                                model: chunk.actualModel,
-                                status: chunk.usedFallback ? 'success_fallback' : 'success',
-                                promptTokens,
-                                completionTokens,
-                                totalTokens,
-                                providerCostUsd,
-                                cencoriChargeUsd,
-                                markupPercentage: pricing.cencoriMarkupPercentage,
+                            const figures = await settleStream({
+                                actualModel: chunk.actualModel,
+                                actualProvider: chunk.actualProvider,
+                                usedFallback: chunk.usedFallback,
+                                finishReason: chunk.finishReason,
                             });
-                            params.incrementUsage(cencoriChargeUsd);
-                            params.recordEndUserUsage({
-                                promptTokens,
-                                completionTokens,
-                                totalTokens,
-                                providerCostUsd,
-                                cencoriChargeUsd,
-                                markupPercentage: pricing.cencoriMarkupPercentage,
+                            finishStream(figures, {
+                                actualModel: chunk.actualModel,
+                                finishReason: chunk.finishReason,
                             });
-
-                            params.onCompletion?.({
-                                fullText: params.tokenMap
-                                    ? deTokenize(fullText, params.tokenMap)
-                                    : fullText,
-                            });
-
-                            controller.enqueue(
-                                encoder.encode(
-                                    `data: ${JSON.stringify(
-                                        buildOpenAiStreamChunk(chunk.actualModel, {}, chunk.finishReason)
-                                    )}\n\n`
-                                )
-                            );
-                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                            controller.close();
                         }
                     }
                 } catch (error) {
@@ -495,19 +638,24 @@ export async function runV1ProviderExecution(
                         markupPercentage: 0,
                         errorMessage: message,
                     });
-                    controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`)
-                    );
+                    controller.enqueue(sse({ error: message }));
                     controller.close();
                 }
             },
         });
 
+        const streamHeaders: Record<string, string> = {
+            'Content-Type': 'text/event-stream',
+        };
+        if (isCencoriWire) {
+            // Legacy stream headers
+            streamHeaders['Cache-Control'] = 'no-cache';
+            streamHeaders['Connection'] = 'keep-alive';
+        }
+
         return {
             ok: true,
-            response: new NextResponse(stream, {
-                headers: { 'Content-Type': 'text/event-stream' },
-            }),
+            response: new NextResponse(stream, { headers: streamHeaders }),
         };
     } catch (error) {
         return v1ProviderFailureResult(error);

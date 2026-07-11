@@ -56,6 +56,7 @@ export interface LogRequestParams {
     provider: string;
     status: 'success' | 'error' | 'filtered' | 'blocked' | 'success_fallback' | 'blocked_output' | 'rate_limited';
     requestPayload?: Record<string, unknown>;
+    responsePayload?: Record<string, unknown>;
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
@@ -702,12 +703,14 @@ export function handleCorsPreFlight(): NextResponse {
 
 /**
  * Log a request to the ai_requests table with full cost tracking.
+ * Returns the inserted row id (used by post-success hooks like RagMetrics),
+ * or null when the insert fails — logging must never throw.
  */
-export async function logGatewayRequest(context: GatewayContext, params: LogRequestParams): Promise<void> {
+export async function logGatewayRequest(context: GatewayContext, params: LogRequestParams): Promise<string | null> {
     const latencyMs = Date.now() - context.startTime;
 
     try {
-        await context.supabase.from('ai_requests').insert({
+        const { data } = await context.supabase.from('ai_requests').insert({
             project_id: context.projectId,
             api_key_id: context.apiKeyId,
             environment: context.environment === 'test' ? 'test' : 'production',
@@ -731,12 +734,16 @@ export async function logGatewayRequest(context: GatewayContext, params: LogRequ
             // request_payload is NOT NULL in the live schema — omitting it makes
             // the whole insert fail silently (see catch below), losing the log.
             request_payload: params.requestPayload || {},
+            response_payload: params.responsePayload,
             request_id: context.requestId,
             fallback_provider: params.fallbackProvider,
             fallback_model: params.fallbackModel,
-        });
+        }).select('id').single();
+
+        return data?.id ?? null;
     } catch (error) {
         console.error(`[Gateway] Failed to log request ${context.requestId}:`, error);
+        return null;
     }
 }
 
@@ -750,6 +757,24 @@ async function chargeCreditsForRequest(context: GatewayContext, costUsd?: number
     const amount = costUsd ?? 0;
     if (!(amount > 0)) {
         return;
+    }
+
+    // Idempotency: deduct_organization_credits inserts blindly, so a retried
+    // request (or a double-fired logging path) would double-charge without
+    // this reference pre-check.
+    try {
+        const { data: existingCharge } = await context.supabase
+            .from('credit_transactions')
+            .select('id')
+            .eq('organization_id', context.organizationId)
+            .eq('transaction_type', 'usage')
+            .eq('reference_id', context.requestId)
+            .maybeSingle();
+        if (existingCharge?.id) {
+            return;
+        }
+    } catch (error) {
+        console.warn(`[Gateway] Charge idempotency check failed for ${context.requestId}:`, error);
     }
 
     const description = `Usage charge: gateway`;
