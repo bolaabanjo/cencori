@@ -1,65 +1,13 @@
 import crypto from 'crypto';
-import type { createAdminClient } from '@/lib/supabaseAdmin';
-import { deductCredits } from '@/lib/credits';
 import { checkOutputSecurity } from '@/lib/safety/multi-layer-check';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import type { UnifiedMessage } from '@/lib/providers/base';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 
-type SupabaseAdmin = ReturnType<typeof createAdminClient>;
-
-export async function incrementMonthlyUsage(
-    supabase: SupabaseAdmin,
-    organizationId: string,
-    fallbackUsage: number
-): Promise<void> {
-    const { error } = await supabase.rpc('increment_monthly_usage', { org_id: organizationId });
-    if (!error) return;
-    await supabase
-        .from('organizations')
-        .update({ monthly_requests_used: fallbackUsage + 1 })
-        .eq('id', organizationId);
-}
-
-export async function chargeUsageCredits(
-    supabase: SupabaseAdmin,
-    organizationId: string,
-    tier: string,
-    amount: number,
-    referenceId: string | null,
-    endpoint: string
-): Promise<void> {
-    if (tier === 'free' || tier === 'enterprise') return;
-    if (!(amount > 0) || !referenceId) return;
-
-    const { data: existingCharge, error: existingChargeError } = await supabase
-        .from('credit_transactions')
-        .select('id')
-        .eq('organization_id', organizationId)
-        .eq('transaction_type', 'usage')
-        .eq('reference_id', referenceId)
-        .maybeSingle();
-
-    if (existingChargeError) {
-        console.warn(
-            `[Billing] Failed to check existing charge for reference=${referenceId}:`,
-            existingChargeError.message
-        );
-    }
-    if (existingCharge?.id) return;
-
-    const charged = await deductCredits(
-        organizationId,
-        amount,
-        `Usage charge: ${endpoint}`,
-        referenceId
-    );
-    if (!charged) {
-        console.warn(
-            `[Billing] Failed to deduct credits for org=${organizationId} endpoint=${endpoint} amount=${amount}`
-        );
-    }
-}
+// NOTE: chargeUsageCredits and incrementMonthlyUsage were removed when the
+// legacy chat engine collapsed into the unified pipeline — billing now runs
+// through incrementUsage/chargeCreditsForRequest in lib/gateway-middleware.ts
+// (which inherited the credit_transactions idempotency pre-check).
 
 export function parseCachedPayload(rawPayload: unknown): Record<string, unknown> | null {
     if (!rawPayload) return null;

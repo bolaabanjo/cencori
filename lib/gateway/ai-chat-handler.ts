@@ -1,53 +1,69 @@
+/**
+ * /api/ai/chat — legacy-shape adapter over the unified gateway engine.
+ *
+ * Every deployed SDK (JS, TanStack, Vercel provider, Python, PHP, Rust) and
+ * the dashboard playground call this route and parse its wire format:
+ * flat errors ({error: string, message?}), the Cencori response superset
+ * (top-level content/provider/cost_usd/toolCalls + OpenAI choices), and
+ * {delta: string} SSE chunks. That contract is preserved here byte-for-byte
+ * while execution runs through the same engine as /v1/chat/completions
+ * (runV1ProviderExecution with wireFormat: 'cencori').
+ *
+ * The engine provides: input/output guards, provider failover, server-side
+ * max_tokens enforcement, payload-masked logging, RagMetrics, budget
+ * alerts, credit idempotency, Redis spend counters — identical on both
+ * doors, so features can never drift between them again.
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { waitUntil } from '@vercel/functions';
 import type { UnifiedMessage, Tool, UnifiedChatRequest } from '@/lib/providers/base';
 import {
     validateGatewayRequest,
     handleCorsPreFlight,
     addGatewayHeaders,
+    logGatewayRequest,
+    incrementUsage,
     type GatewayContext,
 } from '@/lib/gateway-middleware';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import { hasImageInMessages, runVisionChat } from '@/lib/gateway/chat-vision-router';
-import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
-import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
-import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { loadAgentKeyContext } from '@/lib/gateway/agent-context';
+import { runV1ProviderExecution } from '@/lib/gateway/v1-execute';
+import { makeChatLogSuccess } from '@/lib/gateway/chat-post-success';
 import {
-    incrementMonthlyUsage,
-    chargeUsageCredits,
     parseCachedPayload,
     getCachedContent,
     getCachedUsage,
     buildCencoriChatResponse,
     validateCachedOutput,
 } from '@/lib/gateway/ai-chat-support';
-import { processCustomRules, applyMask, applyRedact, applyTokenize, deTokenize } from '@/lib/safety/custom-data-rules';
 import { checkEndUserQuota, recordEndUserUsage, type QuotaCheckResult } from '@/lib/end-user-billing';
-import { checkAndSendBudgetAlerts } from '@/lib/budgets';
 import {
     computeExactCacheKey,
     getProjectCacheConfig,
     lookupCache,
     storeInCache,
     recordCacheHit,
-    logCacheEvent,
 } from '@/lib/cache/prompt-cache';
 import { getCachedCacheConfig, setCachedCacheConfig } from '@/lib/config-cache';
 import type { CacheConfig, CacheLookupResult } from '@/lib/cache/types';
-import {
-    getGatewayFeatureFlags,
-    incrementGatewayCounter,
-    logGatewayEvent,
-    mapProviderErrorToHttpResponse,
-} from '@/lib/gateway-reliability';
+import { getGatewayFeatureFlags, mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 import { resolvePrompt, logPromptUsage } from '@/lib/prompts/registry';
 import type { ResolvedPrompt } from '@/lib/prompts/types';
-import { evaluateWithRagMetrics, extractRAGContext } from '@/lib/integrations/ragmetrics';
-import { estimateTokenCount } from '@/lib/providers/utils';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
+import {
+    buildMemorySystemBlock,
+    getProjectMemorySettings,
+    parseMemoryDirective,
+    retrieveMemories,
+    runChatMemoryWriteback,
+    type MemoryDirective,
+    type MemorySettings,
+    type RetrievedMemory,
+} from '@/lib/memory';
 
 const ROUTE = '/api/ai/chat';
 
@@ -57,16 +73,8 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
     const startTime = Date.now();
-    const requestId = crypto.randomUUID();
     const supabase = createAdminClient();
     const reliabilityFlags = getGatewayFeatureFlags();
-
-    let rateLimitStatus: 'ok' | 'skipped' | 'failed_open' | 'failed_closed' =
-        reliabilityFlags.rateLimitEnabled ? 'ok' : 'skipped';
-    let semanticCacheReadStatus: 'hit' | 'miss' | 'error' | 'disabled' =
-        reliabilityFlags.semanticCacheEnabled ? 'miss' : 'disabled';
-    let semanticCacheWriteStatus: 'ok' | 'skipped' | 'error' | 'disabled' =
-        reliabilityFlags.semanticCacheEnabled ? 'skipped' : 'disabled';
 
     const wrap = (response: NextResponse, ctx?: GatewayContext) =>
         ctx ? addGatewayHeaders(response, { requestId: ctx.requestId }) : response;
@@ -78,8 +86,8 @@ export async function POST(req: NextRequest) {
         }
 
         const ctx = validation.context;
-        rateLimitStatus = ctx.rateLimit?.status ?? rateLimitStatus;
 
+        // ── Agent key handling (legacy contract: strict) ──
         let agentConfigModel: string | null = null;
         const rawApiKey = extractCencoriApiKeyFromHeaders(req.headers);
         const { data: keyMeta } = await supabase
@@ -104,9 +112,6 @@ export async function POST(req: NextRequest) {
         try {
             const agentCtx = await loadAgentKeyContext(supabase, ctx.apiKeyId);
             agentConfigModel = agentCtx.agentConfigModel;
-            if (agentCtx.agentName) {
-                console.log('[Agent Identity] Request from:', agentCtx.agentName);
-            }
         } catch (error) {
             if (error instanceof Error && error.message === 'AGENT_DISABLED') {
                 return wrap(
@@ -120,20 +125,37 @@ export async function POST(req: NextRequest) {
             throw error;
         }
 
+        // ── Body parse + legacy alias normalization ──
         const body = await req.json();
-        const {
-            messages: rawMessages,
-            model,
-            temperature,
-            maxTokens,
-            max_tokens,
-            stream,
-            userId,
-            tools,
-            toolChoice,
-            frequencyPenalty,
-            presencePenalty,
-        } = body;
+        const rawMessages = body.messages;
+        const model: string | undefined = body.model;
+        const temperature: number | undefined =
+            typeof body.temperature === 'number' ? body.temperature : undefined;
+        const maxTokens: number | undefined =
+            typeof body.maxTokens === 'number'
+                ? body.maxTokens
+                : typeof body.max_tokens === 'number'
+                  ? body.max_tokens
+                  : undefined;
+        const isStreaming = body.stream === true;
+        const endUserId: string | null =
+            (typeof body.userId === 'string' && body.userId.trim())
+            || (typeof body.user === 'string' && body.user.trim())
+            || null;
+        const tools = body.tools as Tool[] | undefined;
+        const toolChoice = (body.toolChoice ?? body.tool_choice) as UnifiedChatRequest['toolChoice'];
+        const frequencyPenalty: number | undefined =
+            typeof body.frequencyPenalty === 'number'
+                ? body.frequencyPenalty
+                : typeof body.frequency_penalty === 'number'
+                  ? body.frequency_penalty
+                  : undefined;
+        const presencePenalty: number | undefined =
+            typeof body.presencePenalty === 'number'
+                ? body.presencePenalty
+                : typeof body.presence_penalty === 'number'
+                  ? body.presence_penalty
+                  : undefined;
 
         if (!rawMessages || !Array.isArray(rawMessages)) {
             return wrap(
@@ -147,47 +169,30 @@ export async function POST(req: NextRequest) {
 
         let messages = rawMessages as Array<{ role: string; content: string }>;
 
-        // ── Vision auto-route ──────────────────────────────
-        // Standard chat pipeline stringifies content, so multi-part messages
-        // with images can't reach the provider intact. When we detect image
-        // content, route through the Vision analyzer instead — this also
-        // auto-upgrades non-vision-capable models (e.g. claude-3-5-haiku →
-        // claude-3-5-sonnet-latest) so callers don't have to think about it.
+        // ── Vision auto-route ──
+        // Multi-part messages with images can't survive the text pipeline;
+        // route through the Vision engine (auto-upgrades non-vision models).
         if (hasImageInMessages(rawMessages as Array<{ role: string; content: unknown }>)) {
             try {
                 return await runVisionChat({
                     ctx,
                     rawMessages: rawMessages as Array<{ role: string; content: unknown }>,
                     requestedModel: model,
-                    maxTokens: typeof maxTokens === 'number' ? maxTokens : (typeof max_tokens === 'number' ? max_tokens : undefined),
-                    temperature: typeof temperature === 'number' ? temperature : undefined,
-                    stream: stream === true,
+                    maxTokens,
+                    temperature,
+                    stream: isStreaming,
                 });
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'vision_route_failed';
-                return wrap(
-                    NextResponse.json({ error: message }, { status: 400 }),
-                    ctx
-                );
+                return wrap(NextResponse.json({ error: message }, { status: 400 }), ctx);
             }
         }
 
-        const { data: orgRow } = await supabase
-            .from('organizations')
-            .select('monthly_requests_used')
-            .eq('id', ctx.organizationId)
-            .single();
-        const currentUsage = orgRow?.monthly_requests_used ?? 0;
-
+        // ── End-user billing quota (legacy flat shapes) ──
         let endUserQuota: QuotaCheckResult | null = null;
-        if (ctx.endUserBillingEnabled && userId) {
+        if (ctx.endUserBillingEnabled && endUserId) {
             try {
-                endUserQuota = await checkEndUserQuota(
-                    ctx.projectId,
-                    userId,
-                    model,
-                    ctx.environment
-                );
+                endUserQuota = await checkEndUserQuota(ctx.projectId, endUserId, model, ctx.environment);
 
                 const modelNotAllowed =
                     endUserQuota.reason?.startsWith('model_not_allowed:')
@@ -246,6 +251,40 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        const maybeRecordEndUserUsage = (usageAndCost: {
+            promptTokens: number;
+            completionTokens: number;
+            totalTokens: number;
+            providerCostUsd: number;
+            cencoriChargeUsd: number;
+            markupPercentage: number;
+        }) => {
+            if (ctx.endUserBillingEnabled && endUserId && endUserQuota) {
+                recordEndUserUsage({
+                    projectId: ctx.projectId,
+                    externalUserId: endUserId,
+                    environment: ctx.environment,
+                    tokens: {
+                        prompt: usageAndCost.promptTokens,
+                        completion: usageAndCost.completionTokens,
+                        total: usageAndCost.totalTokens,
+                    },
+                    cost: {
+                        providerUsd: usageAndCost.providerCostUsd,
+                        cencoriChargeUsd: usageAndCost.cencoriChargeUsd,
+                    },
+                    customerMarkupPercentage: endUserQuota.markupPercentage,
+                    flatRatePerRequest: endUserQuota.flatRatePerRequest,
+                    currency: endUserQuota.currency,
+                    pricingModel: endUserQuota.pricingModel,
+                    pricingTiers: endUserQuota.pricingTiers,
+                    monthlyTokensUsed: endUserQuota.monthlyTokensUsed,
+                    platformCommissionPercentage: endUserQuota.platformCommissionPercentage,
+                });
+            }
+        };
+
+        // ── Prompt registry (legacy flat 404) ──
         let resolvedPromptData: ResolvedPrompt | null = null;
         const promptRef = body.prompt?.name || req.headers.get('X-Cencori-Prompt');
         if (promptRef) {
@@ -271,6 +310,41 @@ export async function POST(req: NextRequest) {
             content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? ''),
         }));
 
+        // ── Memory (API opt-in — same engine feature as /v1) ──
+        let memoryDirective: MemoryDirective | null = null;
+        let memorySettings: MemorySettings | null = null;
+        if (body.memory !== undefined) {
+            memorySettings = await getProjectMemorySettings(supabase, ctx.projectId);
+            if (!memorySettings.enabled) {
+                return wrap(
+                    NextResponse.json(
+                        { error: 'memory_disabled', message: 'Memory is disabled for this project.' },
+                        { status: 403 }
+                    ),
+                    ctx
+                );
+            }
+            const parsedDirective = parseMemoryDirective(body.memory);
+            if (!parsedDirective.ok) {
+                return wrap(NextResponse.json({ error: parsedDirective.error }, { status: 400 }), ctx);
+            }
+            memoryDirective = parsedDirective.directive;
+        }
+
+        const lastUserMessageText =
+            [...unifiedMessages].reverse().find((m) => m.role === 'user')?.content ?? '';
+        const memoryPromise: Promise<RetrievedMemory[]> =
+            memoryDirective?.retrieve
+                ? retrieveMemories({
+                      supabase,
+                      organizationId: ctx.organizationId,
+                      projectId: ctx.projectId,
+                      directive: memoryDirective,
+                      queryText: lastUserMessageText,
+                  })
+                : Promise.resolve([]);
+
+        // ── Input security pipeline (shared) → legacy flat errors ──
         const tier = (ctx.tier || 'free') as SubscriptionTier;
         const inputPipeline = await runGatewayInputPipeline({
             supabase,
@@ -279,7 +353,7 @@ export async function POST(req: NextRequest) {
             environment: ctx.environment,
             tier,
             messages: unifiedMessages,
-            endUserId: userId ?? null,
+            endUserId,
         });
 
         if (!inputPipeline.ok) {
@@ -302,25 +376,32 @@ export async function POST(req: NextRequest) {
         }
 
         unifiedMessages = inputPipeline.messages;
-        const inputText = inputPipeline.inputText;
-        const inputSecurity = inputPipeline.inputSecurity;
-        const customRulesResult = inputPipeline.customRules;
-        const requestTokenMap = inputPipeline.tokenMap;
 
-        const resolvedModel =
-            model === 'auto' || model === 'cencori/auto' ? null : model;
+        // Memory injection after the guard (stored facts are pre-redacted).
+        const retrievedMemories = await memoryPromise;
+        if (retrievedMemories.length > 0) {
+            const memoryMessage: UnifiedMessage = {
+                role: 'system',
+                content: buildMemorySystemBlock(retrievedMemories),
+            };
+            let insertAt = 0;
+            while (insertAt < unifiedMessages.length && unifiedMessages[insertAt].role === 'system') {
+                insertAt++;
+            }
+            unifiedMessages.splice(insertAt, 0, memoryMessage);
+        }
+
+        // ── Model resolution (legacy chain, incl. hardcoded fallback) ──
+        const resolvedModel = model === 'auto' || model === 'cencori/auto' ? null : model;
         const requestedModel =
             resolvedModel || agentConfigModel || ctx.defaultModel || 'gemini-2.0-flash';
 
-        const cacheEligible = stream !== true && (!Array.isArray(tools) || tools.length === 0);
+        // ── Prompt cache (skip both directions when memory retrieval active) ──
+        const cacheEligible =
+            !isStreaming
+            && (!Array.isArray(tools) || tools.length === 0)
+            && !memoryDirective?.retrieve;
         const skipCache = req.headers.get('x-skip-cache')?.toLowerCase() === 'true';
-        const cacheMaxTokens =
-            typeof maxTokens === 'number'
-                ? maxTokens
-                : typeof max_tokens === 'number'
-                  ? max_tokens
-                  : undefined;
-        const cacheTemperature = typeof temperature === 'number' ? temperature : undefined;
 
         let cacheConfig: CacheConfig | null = null;
         let cacheResult: CacheLookupResult | null = null;
@@ -344,18 +425,11 @@ export async function POST(req: NextRequest) {
                 const effectiveCacheConfig: CacheConfig = {
                     ...loadedConfig,
                     semanticMatchEnabled:
-                        loadedConfig.semanticMatchEnabled
-                        && reliabilityFlags.semanticCacheEnabled,
+                        loadedConfig.semanticMatchEnabled && reliabilityFlags.semanticCacheEnabled,
                 };
 
-                if (!effectiveCacheConfig.semanticMatchEnabled) {
-                    semanticCacheReadStatus = 'disabled';
-                    semanticCacheWriteStatus = 'disabled';
-                }
-
-                const requestTemp = cacheTemperature ?? 0;
-                const normalizedModel = requestedModel;
-                const modelExcluded = effectiveCacheConfig.excludedModels.includes(normalizedModel);
+                const requestTemp = temperature ?? 0;
+                const modelExcluded = effectiveCacheConfig.excludedModels.includes(requestedModel);
                 cacheWriteEligible = Boolean(
                     effectiveCacheConfig.cacheEnabled
                     && !modelExcluded
@@ -372,9 +446,9 @@ export async function POST(req: NextRequest) {
                     exactCacheKey = computeExactCacheKey({
                         projectId: ctx.projectId,
                         environment: ctx.environment,
-                        model: normalizedModel,
+                        model: requestedModel,
                         temperature: requestTemp,
-                        maxTokens: cacheMaxTokens,
+                        maxTokens,
                         messages: normalizedCacheMessages,
                     });
                     cachePromptText = normalizedCacheMessages
@@ -386,16 +460,10 @@ export async function POST(req: NextRequest) {
                         environment: ctx.environment,
                         cacheKey: exactCacheKey,
                         promptText: cachePromptText,
-                        model: normalizedModel,
-                        maxTokens: cacheMaxTokens,
+                        model: requestedModel,
+                        maxTokens,
                         config: effectiveCacheConfig,
                     });
-
-                    if (cacheResult.hitType === 'semantic') {
-                        semanticCacheReadStatus = 'hit';
-                    } else if (effectiveCacheConfig.semanticMatchEnabled) {
-                        semanticCacheReadStatus = 'miss';
-                    }
 
                     if (cacheResult.hit && cacheResult.response && cacheResult.hitType) {
                         const cachedPayload = parseCachedPayload(cacheResult.response);
@@ -403,9 +471,9 @@ export async function POST(req: NextRequest) {
                             const cachedContent = getCachedContent(cachedPayload);
                             const finalCachedContent = validateCachedOutput({
                                 cachedContent,
-                                tokenMap: requestTokenMap,
-                                inputText,
-                                inputSecurity,
+                                tokenMap: inputPipeline.tokenMap,
+                                inputText: inputPipeline.inputText,
+                                inputSecurity: inputPipeline.inputSecurity,
                                 conversationHistory: unifiedMessages,
                             });
 
@@ -426,7 +494,7 @@ export async function POST(req: NextRequest) {
                                     actualModel:
                                         typeof cachedPayload.model === 'string'
                                             ? cachedPayload.model
-                                            : normalizedModel,
+                                            : requestedModel,
                                     actualProvider:
                                         typeof cachedPayload.provider === 'string'
                                             ? cachedPayload.provider
@@ -440,31 +508,26 @@ export async function POST(req: NextRequest) {
                                     cacheHit: { type: cacheType },
                                 });
 
-                                await supabase.from('ai_requests').insert({
-                                    project_id: ctx.projectId,
-                                    api_key_id: ctx.apiKeyId,
-                                    environment: ctx.environment,
+                                // Unified logging path (replaces inline insert)
+                                void logGatewayRequest(ctx, {
+                                    endpoint: ROUTE,
+                                    model: requestedModel,
                                     provider:
                                         typeof cachedPayload.provider === 'string'
                                             ? cachedPayload.provider
                                             : 'cache',
-                                    model: normalizedModel,
-                                    prompt_tokens: cachedUsage.promptTokens,
-                                    completion_tokens: cachedUsage.completionTokens,
-                                    total_tokens: cachedUsage.totalTokens,
-                                    cost_usd: 0,
-                                    provider_cost_usd: 0,
-                                    cencori_charge_usd: 0,
-                                    latency_ms: Date.now() - startTime,
                                     status: 'success',
-                                    end_user_id: userId,
-                                    request_payload: { messages, model, cache_hit: true },
-                                    response_payload: { content: finalCachedContent },
-                                    ip_address: ctx.clientIp,
-                                    country_code: ctx.countryCode,
+                                    promptTokens: cachedUsage.promptTokens,
+                                    completionTokens: cachedUsage.completionTokens,
+                                    totalTokens: cachedUsage.totalTokens,
+                                    costUsd: 0,
+                                    providerCostUsd: 0,
+                                    cencoriChargeUsd: 0,
+                                    endUserId: endUserId || undefined,
+                                    requestPayload: { messages, model, cache_hit: true },
+                                    responsePayload: { content: finalCachedContent },
                                 });
-
-                                await incrementMonthlyUsage(supabase, ctx.organizationId, currentUsage);
+                                void incrementUsage(ctx, 0);
 
                                 const cacheResponse = NextResponse.json(responseBody);
                                 cacheResponse.headers.set(
@@ -482,573 +545,110 @@ export async function POST(req: NextRequest) {
                 }
             } catch (error) {
                 console.error('[Cache] Lookup failed:', error);
-                semanticCacheReadStatus = 'error';
             }
         }
 
-        const resolved = await resolveGatewayProvider({
-            supabase,
-            projectId: ctx.projectId,
-            organizationId: ctx.organizationId,
-            requestedModel,
-        });
-
-        const chatRequest: UnifiedChatRequest = {
-            messages: unifiedMessages,
-            model: resolved.model,
-            temperature,
-            maxTokens: maxTokens || max_tokens,
-            stream: stream === true,
-            userId,
-            tools: tools as Tool[] | undefined,
-            toolChoice: toolChoice as UnifiedChatRequest['toolChoice'],
-            frequencyPenalty,
-            presencePenalty,
+        // ── Memory writeback scheduling ──
+        const scheduleMemoryWriteback = (assistantText: string) => {
+            if (memoryDirective?.write && memorySettings && assistantText) {
+                const directive = memoryDirective;
+                const settings = memorySettings;
+                waitUntil(
+                    runChatMemoryWriteback({
+                        supabase,
+                        gatewayCtx: ctx,
+                        directive,
+                        settings,
+                        userText: inputPipeline.inputText,
+                        assistantText,
+                    })
+                );
+            }
         };
 
-        if (stream === true) {
-            const encoder = new TextEncoder();
-            const streamBody = new ReadableStream({
-                async start(controller) {
-                    try {
-                        let fullContent = '';
-                        let streamProvider = resolved.providerName;
-                        let streamModel = resolved.model;
-                        let streamUsedFallback = false;
-                        let tokenLimitReached = false;
-                        const effectiveMaxTokens = maxTokens || max_tokens;
-
-                        for await (const chunk of streamGatewayChat({
-                            supabase,
-                            projectId: ctx.projectId,
-                            organizationId: ctx.organizationId,
-                            tier,
-                            request: chatRequest,
-                            resolved,
-                            requestId: ctx.requestId,
-                        })) {
-                            streamProvider = chunk.actualProvider;
-                            streamModel = chunk.actualModel;
-                            streamUsedFallback = chunk.usedFallback;
-                            fullContent += chunk.delta;
-
-                            // Server-side max_tokens enforcement
-                            // Some providers/models don't respect the max_tokens parameter
-                            if (effectiveMaxTokens && !tokenLimitReached && estimateTokenCount(fullContent) >= effectiveMaxTokens) {
-                                tokenLimitReached = true;
-                            }
-
-                            const outputBlock = await runGatewayOutputGuard({
-                                supabase,
-                                projectId: ctx.projectId,
-                                apiKeyId: ctx.apiKeyId,
-                                environment: ctx.environment,
-                                outputText: fullContent,
-                                inputText,
-                                inputSecurity,
-                                conversationHistory: unifiedMessages,
-                                endUserId: userId ?? null,
-                            });
-
-                            if (!outputBlock.ok) {
-                                controller.enqueue(
-                                    encoder.encode(
-                                        `data: ${JSON.stringify({ error: outputBlock.message })}\n\n`
-                                    )
-                                );
-                                controller.close();
-                                return;
-                            }
-
-                            const delta = requestTokenMap
-                                ? deTokenize(chunk.delta, requestTokenMap)
-                                : chunk.delta;
-
-                            if (tokenLimitReached) {
-                                // Enqueue the delta that hit the limit, then finish with "length"
-                                const limitData: Record<string, unknown> = {
-                                    delta,
-                                    finish_reason: "length",
-                                };
-                                controller.enqueue(
-                                    encoder.encode(`data: ${JSON.stringify(limitData)}\n\n`)
-                                );
-                                // Jump to DB logging (same as normal finish block)
-                                const promptTokens = await resolved.provider.countTokens(
-                                    unifiedMessages.map((m) => m.content).join(' '),
-                                    streamModel
-                                );
-                                const completionTokens = await resolved.provider.countTokens(
-                                    fullContent,
-                                    streamModel
-                                );
-                                const pricing = await resolved.provider.getPricing(streamModel);
-                                const cost =
-                                    (promptTokens / 1000) * pricing.inputPer1KTokens
-                                    + (completionTokens / 1000) * pricing.outputPer1KTokens;
-                                const charge = cost * (1 + pricing.cencoriMarkupPercentage / 100);
-
-                                const { data: streamLogData } = await supabase
-                                    .from('ai_requests')
-                                    .insert({
-                                        project_id: ctx.projectId,
-                                        api_key_id: ctx.apiKeyId,
-                                        environment: ctx.environment,
-                                        provider: streamProvider,
-                                        model: streamModel,
-                                        prompt_tokens: promptTokens,
-                                        completion_tokens: completionTokens,
-                                        total_tokens: promptTokens + completionTokens,
-                                        cost_usd: cost,
-                                        provider_cost_usd: cost,
-                                        cencori_charge_usd: charge,
-                                        markup_percentage: pricing.cencoriMarkupPercentage,
-                                        latency_ms: Date.now() - startTime,
-                                        status: streamUsedFallback ? 'success_fallback' : 'success',
-                                        end_user_id: userId,
-                                        request_payload: { messages, model, stream: true },
-                                        response_payload: { content: fullContent },
-                                        ip_address: ctx.clientIp,
-                                        country_code: ctx.countryCode,
-                                    })
-                                    .select('id')
-                                    .single();
-
-                                await chargeUsageCredits(
-                                    supabase,
-                                    ctx.organizationId,
-                                    tier,
-                                    charge,
-                                    streamLogData?.id ?? null,
-                                    ROUTE
-                                );
-                                await incrementMonthlyUsage(
-                                    supabase,
-                                    ctx.organizationId,
-                                    currentUsage
-                                );
-
-                                if (ctx.endUserBillingEnabled && userId && endUserQuota) {
-                                    recordEndUserUsage({
-                                        projectId: ctx.projectId,
-                                        externalUserId: userId,
-                                        environment: ctx.environment,
-                                        tokens: {
-                                            prompt: promptTokens,
-                                            completion: completionTokens,
-                                            total: promptTokens + completionTokens,
-                                        },
-                                        cost: {
-                                            providerUsd: cost,
-                                            cencoriChargeUsd: charge,
-                                        },
-                                        customerMarkupPercentage: endUserQuota.markupPercentage,
-                                        flatRatePerRequest: endUserQuota.flatRatePerRequest,
-                                        currency: endUserQuota.currency,
-                                        pricingModel: endUserQuota.pricingModel,
-                                        pricingTiers: endUserQuota.pricingTiers,
-                                        monthlyTokensUsed: endUserQuota.monthlyTokensUsed,
-                                        platformCommissionPercentage:
-                                            endUserQuota.platformCommissionPercentage,
-                                    });
-                                }
-
-                                if (streamLogData?.id) {
-                                    evaluateWithRagMetrics({
-                                        projectId: ctx.projectId,
-                                        requestId: streamLogData.id,
-                                        prompt: unifiedMessages
-                                            .map((m) => `${m.role}: ${m.content}`)
-                                            .join('\n'),
-                                        response: fullContent,
-                                        context: extractRAGContext(unifiedMessages),
-                                        metadata: {
-                                            model: streamModel,
-                                            provider: streamProvider,
-                                            is_streaming: true,
-                                        },
-                                    }).catch((err) =>
-                                        console.error('[RagMetrics] Evaluation failed:', err)
-                                    );
-                                }
-
-                                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                                controller.close();
-                                return;
-                            }
-
-                            const chunkData: Record<string, unknown> = {
-                                delta,
-                                finish_reason: chunk.finishReason,
-                            };
-                            if (streamUsedFallback && fullContent === chunk.delta) {
-                                chunkData.fallback_used = true;
-                                chunkData.original_provider = resolved.providerName;
-                                chunkData.original_model = resolved.model;
-                            }
-                            if (chunk.toolCalls?.length) {
-                                chunkData.tool_calls = chunk.toolCalls;
-                            }
-                            controller.enqueue(
-                                encoder.encode(`data: ${JSON.stringify(chunkData)}\n\n`)
-                            );
-
-                            if (chunk.finishReason) {
-                                const promptTokens = await resolved.provider.countTokens(
-                                    unifiedMessages.map((m) => m.content).join(' '),
-                                    streamModel
-                                );
-                                const completionTokens = await resolved.provider.countTokens(
-                                    fullContent,
-                                    streamModel
-                                );
-                                const pricing = await resolved.provider.getPricing(streamModel);
-                                const cost =
-                                    (promptTokens / 1000) * pricing.inputPer1KTokens
-                                    + (completionTokens / 1000) * pricing.outputPer1KTokens;
-                                const charge = cost * (1 + pricing.cencoriMarkupPercentage / 100);
-
-                                const { data: streamLogData } = await supabase
-                                    .from('ai_requests')
-                                    .insert({
-                                        project_id: ctx.projectId,
-                                        api_key_id: ctx.apiKeyId,
-                                        environment: ctx.environment,
-                                        provider: streamProvider,
-                                        model: streamModel,
-                                        prompt_tokens: promptTokens,
-                                        completion_tokens: completionTokens,
-                                        total_tokens: promptTokens + completionTokens,
-                                        cost_usd: cost,
-                                        provider_cost_usd: cost,
-                                        cencori_charge_usd: charge,
-                                        markup_percentage: pricing.cencoriMarkupPercentage,
-                                        latency_ms: Date.now() - startTime,
-                                        status: streamUsedFallback ? 'success_fallback' : 'success',
-                                        end_user_id: userId,
-                                        request_payload: { messages, model, stream: true },
-                                        response_payload: { content: fullContent },
-                                        ip_address: ctx.clientIp,
-                                        country_code: ctx.countryCode,
-                                    })
-                                    .select('id')
-                                    .single();
-
-                                await chargeUsageCredits(
-                                    supabase,
-                                    ctx.organizationId,
-                                    tier,
-                                    charge,
-                                    streamLogData?.id ?? null,
-                                    ROUTE
-                                );
-                                await incrementMonthlyUsage(
-                                    supabase,
-                                    ctx.organizationId,
-                                    currentUsage
-                                );
-
-                                if (ctx.endUserBillingEnabled && userId && endUserQuota) {
-                                    recordEndUserUsage({
-                                        projectId: ctx.projectId,
-                                        externalUserId: userId,
-                                        environment: ctx.environment,
-                                        tokens: {
-                                            prompt: promptTokens,
-                                            completion: completionTokens,
-                                            total: promptTokens + completionTokens,
-                                        },
-                                        cost: {
-                                            providerUsd: cost,
-                                            cencoriChargeUsd: charge,
-                                        },
-                                        customerMarkupPercentage: endUserQuota.markupPercentage,
-                                        flatRatePerRequest: endUserQuota.flatRatePerRequest,
-                                        currency: endUserQuota.currency,
-                                        pricingModel: endUserQuota.pricingModel,
-                                        pricingTiers: endUserQuota.pricingTiers,
-                                        monthlyTokensUsed: endUserQuota.monthlyTokensUsed,
-                                        platformCommissionPercentage:
-                                            endUserQuota.platformCommissionPercentage,
-                                    });
-                                }
-
-                                if (streamLogData?.id) {
-                                    evaluateWithRagMetrics({
-                                        projectId: ctx.projectId,
-                                        requestId: streamLogData.id,
-                                        prompt: unifiedMessages
-                                            .map((m) => `${m.role}: ${m.content}`)
-                                            .join('\n'),
-                                        response: fullContent,
-                                        context: extractRAGContext(unifiedMessages),
-                                        metadata: {
-                                            model: streamModel,
-                                            provider: streamProvider,
-                                            is_streaming: true,
-                                        },
-                                    }).catch((err) =>
-                                        console.error('[RagMetrics] Evaluation failed:', err)
-                                    );
-                                }
-
-                                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                            }
-                        }
-                        controller.close();
-                    } catch (error) {
-                        controller.enqueue(
-                            encoder.encode(
-                                `data: ${JSON.stringify({
-                                    error: error instanceof Error ? error.message : 'Stream error',
-                                })}\n\n`
-                            )
-                        );
-                        controller.close();
-                    }
-                },
-            });
-
-            return new Response(streamBody, {
-                headers: {
-                    'Content-Type': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    Connection: 'keep-alive',
-                },
-            });
-        }
-
-        let result;
-        try {
-            result = await executeGatewayChat({
-                supabase,
-                projectId: ctx.projectId,
-                organizationId: ctx.organizationId,
-                tier,
-                request: chatRequest,
-                resolved,
-                requestId: ctx.requestId,
-            });
-        } catch (error) {
-            const providerFailure = mapProviderErrorToHttpResponse(error, resolved.providerName);
-            logGatewayEvent(
-                'chat.response',
-                {
-                    requestId,
-                    route: ROUTE,
-                    provider: providerFailure.provider || resolved.providerName,
-                    model: resolved.model,
-                    response: { status: providerFailure.status },
-                    error: providerFailure.error,
-                },
-                providerFailure.status >= 500 ? 'error' : 'warn'
-            );
-            return wrap(
-                NextResponse.json(
-                    {
-                        error: providerFailure.error,
-                        message: providerFailure.message,
-                        ...(providerFailure.retryAfter
-                            ? { retry_after: providerFailure.retryAfter }
-                            : {}),
-                    },
-                    { status: providerFailure.status }
-                ),
-                ctx
-            );
-        }
-
-        let content = result.content;
-        if (requestTokenMap) {
-            content = deTokenize(content, requestTokenMap);
-        }
-
-        // Server-side max_tokens enforcement for non-streaming
-        const nonStreamMaxTokens = maxTokens || max_tokens;
-        if (nonStreamMaxTokens && estimateTokenCount(content) > nonStreamMaxTokens) {
-            content = content.slice(0, nonStreamMaxTokens * 4);
-            result.content = content;
-        }
-
-        const outputBlock = await runGatewayOutputGuard({
+        // ── Unified engine, legacy wire format ──
+        const execResult = await runV1ProviderExecution({
             supabase,
-            projectId: ctx.projectId,
-            apiKeyId: ctx.apiKeyId,
-            environment: ctx.environment,
-            outputText: content,
-            inputText,
-            inputSecurity,
-            conversationHistory: unifiedMessages,
-            endUserId: userId ?? null,
-        });
-
-        if (!outputBlock.ok) {
-            return wrap(
-                NextResponse.json(
-                    {
-                        error: 'Security violation detected',
-                        message: 'Response blocked as it contains sensitive data.',
-                        reasons: outputBlock.reasons,
-                    },
-                    { status: outputBlock.status }
-                ),
-                ctx
-            );
-        }
-
-        let loggedMessages = messages;
-        let loggedResponse = result.content;
-        if (customRulesResult.rules.length > 0) {
-            const responseRulesResult = await processCustomRules(
-                result.content,
-                customRulesResult.rules
-            );
-            loggedResponse = responseRulesResult.content;
-            if (customRulesResult.inputResult.wasProcessed) {
-                loggedMessages = messages.map((msg) => ({
-                    ...msg,
-                    content: customRulesResult.inputResult.matchedRules.reduce(
-                        (c, match) => {
-                            if (match.rule.action === 'mask') return applyMask(c, match.snippets);
-                            if (match.rule.action === 'redact') return applyRedact(c, match.snippets);
-                            if (match.rule.action === 'tokenize') {
-                                return applyTokenize(c, match.snippets, match.rule.name).text;
-                            }
-                            return c;
-                        },
-                        msg.content
-                    ),
-                }));
-            }
-        }
-
-        const { data: logData, error: logError } = await supabase
-            .from('ai_requests')
-            .insert({
-                project_id: ctx.projectId,
-                api_key_id: ctx.apiKeyId,
-                environment: ctx.environment,
-                provider: result.actualProvider,
-                model: result.actualModel,
-                prompt_tokens: result.usage.promptTokens,
-                completion_tokens: result.usage.completionTokens,
-                total_tokens: result.usage.totalTokens,
-                cost_usd: result.cost.providerCostUsd,
-                provider_cost_usd: result.cost.providerCostUsd,
-                cencori_charge_usd: result.cost.cencoriChargeUsd,
-                markup_percentage: result.cost.markupPercentage,
-                latency_ms: result.latencyMs,
-                status: result.usedFallback ? 'success_fallback' : 'success',
-                end_user_id: userId,
-                request_payload: {
-                    messages: loggedMessages,
-                    model,
-                    temperature,
-                    maxTokens,
-                    max_tokens,
-                    stream,
-                    original_provider: result.usedFallback ? result.originalProvider : undefined,
-                    original_model: result.usedFallback ? result.originalModel : undefined,
-                },
-                response_payload: {
-                    content: loggedResponse,
-                    finishReason: result.finishReason,
-                },
-                ip_address: ctx.clientIp,
-                country_code: ctx.countryCode,
-            })
-            .select('id')
-            .single();
-
-        if (logError) {
-            console.error('[AI Chat] Failed to log request:', logError);
-        } else {
-            await chargeUsageCredits(
+            gatewayCtx: ctx,
+            model: requestedModel,
+            messages: unifiedMessages,
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            tokenMap: inputPipeline.tokenMap,
+            temperature,
+            maxTokens,
+            frequencyPenalty,
+            presencePenalty,
+            stream: isStreaming,
+            tools,
+            toolChoice,
+            wireFormat: 'cencori',
+            enforceMaxTokens: true,
+            endUserId,
+            endUserQuota,
+            recordEndUserUsage: maybeRecordEndUserUsage,
+            onCompletion: ({ fullText }) => {
+                scheduleMemoryWriteback(fullText);
+            },
+            logSuccess: makeChatLogSuccess({
                 supabase,
-                ctx.organizationId,
-                tier,
-                result.cost.cencoriChargeUsd,
-                logData?.id ?? null,
-                ROUTE
-            );
-        }
-
-        await incrementMonthlyUsage(supabase, ctx.organizationId, currentUsage);
-
-        if (resolvedPromptData) {
-            logPromptUsage({
-                projectId: ctx.projectId,
-                promptId: resolvedPromptData.promptId,
-                versionId: resolvedPromptData.versionId,
-                model: result.actualModel,
-                apiKeyId: ctx.apiKeyId ?? undefined,
-                requestId,
-                variablesUsed: body.prompt?.variables || null,
-                latencyMs: Date.now() - startTime,
-            }).catch((err) => console.error('[Prompts] Usage logging failed:', err));
-        }
-
-        if (ctx.endUserBillingEnabled && userId && endUserQuota) {
-            recordEndUserUsage({
-                projectId: ctx.projectId,
-                externalUserId: userId,
-                environment: ctx.environment,
-                tokens: {
-                    prompt: result.usage.promptTokens,
-                    completion: result.usage.completionTokens,
-                    total: result.usage.totalTokens,
-                },
-                cost: {
-                    providerUsd: result.cost.providerCostUsd,
-                    cencoriChargeUsd: result.cost.cencoriChargeUsd,
-                },
-                customerMarkupPercentage: endUserQuota.markupPercentage,
-                flatRatePerRequest: endUserQuota.flatRatePerRequest,
-                currency: endUserQuota.currency,
-                pricingModel: endUserQuota.pricingModel,
-                pricingTiers: endUserQuota.pricingTiers,
-                monthlyTokensUsed: endUserQuota.monthlyTokensUsed,
-                platformCommissionPercentage: endUserQuota.platformCommissionPercentage,
-            });
-        }
-
-        checkAndSendBudgetAlerts(ctx.projectId, ctx.projectId, ctx.organizationId).catch(
-            (err) => console.error('[Budget] Alert check failed:', err)
-        );
-
-        if (logData?.id) {
-            evaluateWithRagMetrics({
-                projectId: ctx.projectId,
-                requestId: logData.id,
-                prompt: unifiedMessages.map((m) => `${m.role}: ${m.content}`).join('\n'),
-                response: result.content,
-                context: extractRAGContext(unifiedMessages),
-                metadata: {
-                    model: result.actualModel,
-                    provider: result.actualProvider,
-                    is_streaming: false,
-                },
-            }).catch((err) => console.error('[RagMetrics] Evaluation failed:', err));
-        }
-
-        const openAiToolCalls = result.toolCalls?.map((tc) => ({
-            id: tc.id,
-            type: tc.type,
-            function: tc.function,
-        }));
-
-        const responseBody = buildCencoriChatResponse({
-            content,
-            actualModel: result.actualModel,
-            actualProvider: result.actualProvider,
-            usage: result.usage,
-            costUsd: result.cost.cencoriChargeUsd,
-            finishReason: result.finishReason,
-            toolCalls: openAiToolCalls,
-            usedFallback: result.usedFallback,
-            originalModel: result.originalModel,
-            originalProvider: result.originalProvider,
+                gatewayCtx: ctx,
+                endpoint: ROUTE,
+                requestModel: requestedModel,
+                unifiedMessages,
+                isStreaming,
+                endUserId,
+                customRules: inputPipeline.customRules,
+            }),
+            incrementUsage: (chargeUsd) => {
+                void incrementUsage(ctx, chargeUsd);
+            },
         });
+
+        if (!execResult.ok) {
+            // Map the engine's nested OpenAI error bodies to legacy flat shapes.
+            const nested = execResult.body.error as
+                | { message?: string; code?: string }
+                | undefined;
+            const reasons = execResult.body.reasons as string[] | undefined;
+
+            if (nested?.code === 'output_security_violation' || reasons) {
+                return wrap(
+                    NextResponse.json(
+                        {
+                            error: 'Security violation detected',
+                            message: 'Response blocked as it contains sensitive data.',
+                            ...(reasons ? { reasons } : {}),
+                        },
+                        { status: execResult.status }
+                    ),
+                    ctx
+                );
+            }
+
+            const flatBody: Record<string, unknown> = {
+                error: nested?.code || 'provider_error',
+                message: nested?.message || 'Provider request failed',
+            };
+            if (execResult.body.retry_after != null) {
+                flatBody.retry_after = execResult.body.retry_after;
+            }
+            return wrap(NextResponse.json(flatBody, { status: execResult.status }), ctx);
+        }
+
+        // ── Streaming: engine already emits legacy chunks ──
+        if (isStreaming) {
+            if (memoryDirective) {
+                execResult.response.headers.set(
+                    'X-Cencori-Memory-Retrieved',
+                    String(retrievedMemories.length)
+                );
+            }
+            return wrap(execResult.response, ctx);
+        }
+
+        // ── Non-streaming: legacy superset JSON from the engine ──
+        const responseBody = (await execResult.response.json()) as Record<string, unknown>;
 
         if (cacheWriteEligible && exactCacheKey && cachePromptText && cacheConfig) {
             void storeInCache({
@@ -1056,32 +656,42 @@ export async function POST(req: NextRequest) {
                 environment: ctx.environment,
                 cacheKey: exactCacheKey,
                 promptText: cachePromptText,
-                model: resolved.model,
-                temperature: cacheTemperature,
-                maxTokens: cacheMaxTokens,
+                model: typeof responseBody.model === 'string' ? responseBody.model : requestedModel,
+                temperature,
+                maxTokens,
                 response: responseBody,
                 embedding: cacheResult?.embedding ?? null,
                 ttlSeconds: cacheConfig.ttlSeconds,
-                estimatedTokens: result.usage.totalTokens,
-                estimatedCostUsd: result.cost.cencoriChargeUsd,
+                estimatedTokens:
+                    (responseBody.usage as { total_tokens?: number } | undefined)?.total_tokens ?? 0,
+                estimatedCostUsd: Number(responseBody.cost_usd ?? 0),
             }).catch((err) => console.error('[Cache] Store failed:', err));
         }
 
-        incrementGatewayCounter('provider_request_success', {
-            requestId,
-            route: ROUTE,
-            provider: result.actualProvider,
-            model: result.actualModel,
-        });
-        logGatewayEvent('chat.response', {
-            requestId,
-            route: ROUTE,
-            provider: result.actualProvider,
-            model: result.actualModel,
-            rateLimit: { status: rateLimitStatus },
-            semanticCache: { read: semanticCacheReadStatus, write: semanticCacheWriteStatus },
-            response: { status: 200 },
-        });
+        if (resolvedPromptData) {
+            void logPromptUsage({
+                projectId: ctx.projectId,
+                promptId: resolvedPromptData.promptId,
+                versionId: resolvedPromptData.versionId,
+                model: typeof responseBody.model === 'string' ? responseBody.model : requestedModel,
+                apiKeyId: ctx.apiKeyId ?? undefined,
+                requestId: ctx.requestId,
+                variablesUsed: body.prompt?.variables || null,
+                latencyMs: Date.now() - startTime,
+            });
+        }
+
+        if (memoryDirective) {
+            responseBody.memory = {
+                retrieved: retrievedMemories.map((m) => ({
+                    id: m.id,
+                    score: m.similarity,
+                    content: m.content,
+                })),
+                written: [],
+                write_status: memoryDirective.write ? 'pending' : 'disabled',
+            };
+        }
 
         const finalResponse = NextResponse.json(responseBody);
         if (cacheWriteEligible) {
@@ -1092,18 +702,6 @@ export async function POST(req: NextRequest) {
     } catch (error: unknown) {
         console.error('[API] Error:', error);
         const providerFailure = mapProviderErrorToHttpResponse(error);
-        logGatewayEvent(
-            'chat.response',
-            {
-                requestId,
-                route: ROUTE,
-                rateLimit: { status: rateLimitStatus },
-                semanticCache: { read: semanticCacheReadStatus, write: semanticCacheWriteStatus },
-                response: { status: providerFailure.status },
-                error: providerFailure.error,
-            },
-            providerFailure.status >= 500 ? 'error' : 'warn'
-        );
         return NextResponse.json(
             {
                 error: providerFailure.error,

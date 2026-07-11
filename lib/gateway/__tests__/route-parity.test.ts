@@ -343,7 +343,9 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
         routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
         const chatResult = createMockChatResponse();
 
-        routeMocks.runV1ProviderExecution.mockResolvedValue({
+        // Both doors run through the unified engine — fresh Response per
+        // call (bodies are single-read).
+        routeMocks.runV1ProviderExecution.mockImplementation(async () => ({
             ok: true,
             response: new Response(
                 JSON.stringify({
@@ -360,8 +362,7 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
                 }),
                 { status: 200, headers: { 'Content-Type': 'application/json' } }
             ),
-        });
-        routeMocks.executeGatewayChat.mockResolvedValue(chatResult);
+        }));
 
         const { POST: v1Post } = await import('@/app/api/v1/chat/completions/route');
         const { POST: aiPost } = await import('@/app/api/ai/chat/route');
@@ -373,8 +374,9 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
 
         expect(v1Res.status).toBe(200);
         expect(aiRes.status).toBe(200);
-        expect(routeMocks.runV1ProviderExecution).toHaveBeenCalledTimes(1);
-        expect(routeMocks.executeGatewayChat).toHaveBeenCalledTimes(1);
+        expect(routeMocks.runV1ProviderExecution).toHaveBeenCalledTimes(2);
+        // The adapter delegates to the engine — no direct executor calls.
+        expect(routeMocks.executeGatewayChat).not.toHaveBeenCalled();
     });
 
     it('passes the same user messages into runGatewayInputPipeline', async () => {
@@ -423,35 +425,13 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
     it('both return event-stream on stream: true', async () => {
         const messages = toUnifiedMessages(CHAT_REQUEST_BODY.messages);
         routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
-        routeMocks.runV1ProviderExecution.mockResolvedValue({
+        routeMocks.runV1ProviderExecution.mockImplementation(async () => ({
             ok: true,
             response: new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
                 status: 200,
                 headers: { 'Content-Type': 'text/event-stream' },
             }),
-        });
-
-        async function* streamGen() {
-            yield {
-                delta: 'Hello',
-                finishReason: null,
-                actualProvider: 'openai',
-                actualModel: 'gpt-4o',
-                usedFallback: false,
-                originalProvider: 'openai',
-                originalModel: 'gpt-4o',
-            };
-            yield {
-                delta: '',
-                finishReason: 'stop',
-                actualProvider: 'openai',
-                actualModel: 'gpt-4o',
-                usedFallback: false,
-                originalProvider: 'openai',
-                originalModel: 'gpt-4o',
-            };
-        }
-        routeMocks.streamGatewayChat.mockReturnValue(streamGen());
+        }));
 
         const { POST: v1Post } = await import('@/app/api/v1/chat/completions/route');
         const { POST: aiPost } = await import('@/app/api/ai/chat/route');
@@ -465,7 +445,13 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
         expect(aiRes.status).toBe(200);
         expect(v1Res.headers.get('content-type')).toContain('text/event-stream');
         expect(aiRes.headers.get('content-type')).toContain('text/event-stream');
-        expect(routeMocks.streamGatewayChat).toHaveBeenCalledTimes(1);
+        expect(routeMocks.runV1ProviderExecution).toHaveBeenCalledTimes(2);
+        // Adapter passes the legacy wire format + server-side token enforcement.
+        const aiCall = routeMocks.runV1ProviderExecution.mock.calls[1][0] as Record<string, unknown>;
+        expect(aiCall.wireFormat).toBe('cencori');
+        expect(aiCall.enforceMaxTokens).toBe(true);
+        const v1Call = routeMocks.runV1ProviderExecution.mock.calls[0][0] as Record<string, unknown>;
+        expect(v1Call.wireFormat).toBeUndefined();
     });
 
     it('both return 429 when end-user quota is exceeded', async () => {
@@ -548,7 +534,10 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
 
         const messages = toUnifiedMessages([{ role: 'user', content: 'Hello agent' }]);
         routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
-        routeMocks.executeGatewayChat.mockResolvedValue(createMockChatResponse());
+        routeMocks.runV1ProviderExecution.mockImplementation(async () => ({
+            ok: true,
+            response: Response.json({ choices: [{ message: { content: 'ok' } }] }),
+        }));
 
         const { POST: aiPost } = await import('@/app/api/ai/chat/route');
         await aiPost(
@@ -558,8 +547,8 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
             })
         );
 
-        expect(routeMocks.resolveGatewayProvider).toHaveBeenCalledWith(
-            expect.objectContaining({ requestedModel: 'claude-sonnet-4' })
+        expect(routeMocks.runV1ProviderExecution).toHaveBeenCalledWith(
+            expect.objectContaining({ model: 'claude-sonnet-4' })
         );
     });
 
@@ -586,6 +575,7 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
                     type: 'invalid_request_error',
                     code: 'output_security_violation',
                 },
+                reasons: ['pii_leak'],
             },
         });
 
@@ -599,13 +589,33 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
 
         expect(v1Res.status).toBe(403);
         expect(aiRes.status).toBe(403);
-        expect(routeMocks.runGatewayOutputGuard).toHaveBeenCalled();
+
+        // v1 keeps the nested OpenAI error shape.
+        const v1Body = await parseRouteJson(v1Res);
+        expect((v1Body.error as Record<string, unknown>)?.code).toBe('output_security_violation');
+
+        // The adapter maps to the legacy flat shape (pinned: SDKs read
+        // errorData.error as a string).
+        const aiBody = await parseRouteJson(aiRes);
+        expect(aiBody.error).toBe('Security violation detected');
+        expect(aiBody.message).toBe('Response blocked as it contains sensitive data.');
+        expect(aiBody.reasons).toEqual(['pii_leak']);
     });
 
-    it('ai maps AuthenticationError to 401', async () => {
+    it('ai maps provider auth failure to legacy flat 401', async () => {
         const messages = toUnifiedMessages(CHAT_REQUEST_BODY.messages);
         routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
-        routeMocks.executeGatewayChat.mockRejectedValue(new AuthenticationError('openai'));
+        routeMocks.runV1ProviderExecution.mockResolvedValue({
+            ok: false,
+            status: 401,
+            body: {
+                error: {
+                    message: 'Authentication failed. Check API key configuration.',
+                    type: 'invalid_request_error',
+                    code: 'provider_auth_error',
+                },
+            },
+        });
 
         const { POST: aiPost } = await import('@/app/api/ai/chat/route');
         const aiRes = await aiPost(buildGatewayRequest('http://localhost/api/ai/chat', CHAT_REQUEST_BODY));
@@ -613,6 +623,7 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
         expect(aiRes.status).toBe(401);
         const body = await parseRouteJson(aiRes);
         expect(body.error).toBe('provider_auth_error');
+        expect(typeof body.message).toBe('string');
     });
 
     it('v1 returns 401 for provider auth failures (OpenAI-shaped body)', async () => {
