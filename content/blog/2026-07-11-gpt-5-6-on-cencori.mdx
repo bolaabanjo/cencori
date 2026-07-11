@@ -1,0 +1,95 @@
+---
+title: "GPT-5.6 Sol, Terra & Luna Are Live on Cencori"
+slug: "gpt-5-6-on-cencori"
+date: "2026-07-11"
+excerpt: "OpenAI's GPT-5.6 family is here: Sol (flagship, SOTA coding/cyber/science), Terra (GPT-5.5-class at half the cost), and Luna (outperforms GPT-5.5 peak at 25x lower cost). All three are available on Cencori today."
+coverImage: "/blog/images/covers/open.png"
+tags: ["OpenAI", "GPT-5.6", "Sol", "Terra", "Luna", "AI Models", "Release"]
+category: "changelog"
+published: true
+---
+
+**GPT-5.6** is live on Cencori — the full family: **Sol**, **Terra**, and **Luna**.
+
+OpenAI's latest generation introduces a tiered architecture where the generation number identifies the model family, and Sol, Terra, and Luna are durable capability tiers that can advance independently. The result is frontier intelligence across three price points, giving teams a clearer choice between raw capability, throughput, and cost.
+
+All three models are available now through the Cencori gateway with zero configuration changes — switch the model ID and go.
+
+## The Family
+
+| Model | Model ID | Input / 1M | Output / 1M | Positioning |
+|---|---|---|---|---|
+| **Sol** | `gpt-5.6-sol` | $5.00 | $30.00 | Flagship, `max` + `ultra` reasoning, multi-agent |
+| **Terra** | `gpt-5.6-terra` | $2.50 | $15.00 | Balanced, GPT-5.5-class at half the cost |
+| **Luna** | `gpt-5.6-luna` | $1.00 | $6.00 | Fast/affordable, 25x cheaper than GPT-5.5 peak |
+
+### Sol — New State of the Art
+
+Sol is OpenAI's strongest model. Across agentic coding, cybersecurity, science, and knowledge work, it sets new highs while using fewer tokens and less time than competing frontier models.
+
+- **Terminal-Bench 2.1:** 91.9% (SOTA)
+- **ExploitBench:** 73.5% (vs GPT-5.5's 47.9%)
+- **BrowseComp:** 92.2% (new SOTA)
+- **OSWorld 2.0:** 62.6% (surpasses Opus 4.8 using 85% fewer output tokens)
+- **Agents' Last Exam:** 52.7% (+13.1 over Claude Fable 5)
+
+New `max` reasoning gives Sol more time to explore alternatives. New `ultra` mode coordinates four parallel sub-agents to trade higher token use for faster time-to-result on demanding tasks.
+
+### Terra — GPT-5.5 Performance at Half the Cost
+
+Terra delivers performance competitive with GPT-5.5 across coding, knowledge work, and agentic benchmarks at 50% lower token cost. For teams currently on GPT-5.5, Terra is an immediate cost-savings opportunity with no capability regression.
+
+### Luna — 25x Cost Reduction vs GPT-5.5 Peak
+
+Luna outperforms GPT-5.5 at its highest reasoning setting while costing 25x less. It's ideal for high-volume summarization, drafting, classification, and routine agent loops where throughput matters more than peak depth.
+
+## Using GPT-5.6 in Cencori
+
+### SDK
+
+```typescript
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const response = await cencori.ai.chat({
+  model: 'gpt-5.6-sol',
+  messages: [
+    { role: 'system', content: 'You are a senior security engineer.' },
+    { role: 'user', content: 'Audit this codebase for vulnerabilities.' }
+  ]
+});
+```
+
+### REST API
+
+```bash
+curl -X POST https://cencori.com/api/ai/chat \
+  -H "CENCORI_API_KEY: $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.6-terra",
+    "messages": [
+      {"role": "user", "content": "Summarize this quarter's support tickets."}
+    ]
+  }'
+```
+
+## What We Shipped in Cencori
+
+- All three GPT-5.6 models registered in our model catalog and provider config
+- Full routing support — no API migration required, swap the model ID in existing calls
+- Cencori's security logging, data rules, and observability apply automatically
+
+## Notes for Production Teams
+
+- API model IDs are `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`
+- Sol supports `max` and `ultra` reasoning modes via the OpenAI API
+- If you rely on pinned model versions for evals, keep your existing fallback policy
+- Cencori's default OpenAI pricing for non-free models applies as fallback; configure per-model pricing via the dashboard or API for accurate cost tracking
+
+## References
+
+- [OpenAI: GPT-5.6 — Frontier intelligence that scales with your ambition](https://openai.com/index/gpt-5-6/)
+- [OpenAI: Previewing GPT-5.6 Sol](https://openai.com/index/previewing-gpt-5-6-sol/)
+- [Cencori Models Catalog](/docs/ai/models)
