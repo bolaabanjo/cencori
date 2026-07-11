@@ -1,0 +1,147 @@
+---
+title: "Vision on Cencori"
+slug: "vision"
+date: "2026-07-11"
+coverImage: "/blog/images/covers/vision.png"
+excerpt: "Vision is live on Cencori. Analyze, describe, OCR, and classify images across GPT-4o, Claude, and Gemini through one endpoint — and if you send an image through /chat with a non-vision model, Cencori auto-routes it for you. Ships with a drop-in React uploader — the first of a set of importable UI components that turn your API into a product surface."
+tags: ["Product", "Vision", "AI", "React", "Release"]
+category: "changelog"
+published: true
+---
+
+**Vision is live.**
+
+`POST /api/ai/vision` takes an image and returns analysis — description, OCR, structured classification, or an answer to your own prompt. Routes across OpenAI GPT-4o, Anthropic Claude, and Google Gemini vision-capable models. Same gateway, same key, same billing, same logs as everything else on Cencori.
+
+But the more interesting part isn't the API. Every AI platform ships a vision endpoint. What Cencori also ships — starting today — is the UI.
+
+## The API
+
+Four endpoints. Pick the one that matches what you're doing:
+
+```typescript
+import { Cencori } from 'cencori';
+const cencori = new Cencori();
+
+// General analyze with your own prompt
+const r1 = await cencori.vision.analyze({
+  image: { url: 'https://example.com/photo.jpg' },
+  prompt: 'What breed is this?',
+});
+
+// Preset: rich description
+const r2 = await cencori.vision.describe({ image: { url } });
+
+// Preset: extract text (temperature=0)
+const r3 = await cencori.vision.ocr({ image: { url } });
+
+// Preset: structured JSON classification
+const r4 = await cencori.vision.classify({ image: { url } });
+```
+
+Accepts URL, base64, or multipart file. Supports JPEG, PNG, WEBP, GIF everywhere; HEIC/HEIF on Gemini. Per-provider size limits (5MB Anthropic, 20MB OpenAI and Google) enforced up front with a clear structured error — no more mystery 500s when a photo is one megabyte too big.
+
+Streaming works too. Set `stream: true` and you get an SSE stream of text deltas ending with a final chunk carrying the token totals and cost.
+
+Full reference at [`/docs/ai/endpoints/vision`](/docs/ai/endpoints/vision).
+
+## It works with any model, not just the vision ones
+
+The other quiet-but-important piece: you don't have to know which models support vision. If you send an image through the regular `/chat` endpoint on Cencori — no matter which model you picked — it just works.
+
+```typescript
+// You picked claude-3-5-haiku. No vision support natively.
+// Cencori sees the image, upgrades to claude-3-5-sonnet-latest, routes through Vision.
+// The response is a normal chat completion. You get X-Model-Upgraded: true in the headers.
+const response = await cencori.ai.chat({
+  model: 'claude-3-5-haiku-latest',
+  messages: [{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'What is in this image?' },
+      { type: 'image_url', image_url: { url: 'https://…' } }
+    ]
+  }]
+});
+```
+
+Every AI platform makes you pick a vision-capable model up front. If you pick the wrong one, you get a 400. On Cencori you don't have to think about it — vision-capable equivalents in the same model family are auto-selected, and the response tells you when a swap happened.
+
+This is the "unified gateway" pitch actually being true. One request shape. Any model. If it can't natively see, we upgrade it. If it can, we pass through.
+
+## The component
+
+Vision is the first Cencori feature that ships with an importable React component.
+
+```tsx
+import { VisionUploader } from 'cencori/react';
+
+<VisionUploader
+  endpoint="/api/vision/describe"
+  task="describe"
+  onResult={(r) => saveResult(r)}
+/>
+```
+
+Drag-and-drop uploader with a preview thumbnail, client-side format validation (so users see errors instantly, not after a round trip), and — for JPEG/PNG/WEBP — automatic downscaling when a photo exceeds the provider's size limit. It also renders a clear format-support banner and clean error states.
+
+It's meant to be dropped into your product, not just our dashboard. Your customers get the same polished experience your Cencori dashboard would, without you writing the drag-drop logic, the compression, or the error UI.
+
+This is the direction. The next few months of Cencori will fill out `cencori/react` — a chat window, a voice recorder, an agent inspector, a session viewer. The pitch is simple: **most AI infrastructure ships you an API and leaves the UI to you. Cencori ships you both.**
+
+## Five SDKs, one shape
+
+Every SDK gets the same four methods:
+
+- **TypeScript** — `cencori.vision.{analyze,describe,ocr,classify,analyzeStream}` — [`cencori@1.3.0`](https://www.npmjs.com/package/cencori)
+- **Python** — `cencori.vision.{analyze,describe,ocr,classify}` — sync + async
+- **Go** — `client.Vision.{Analyze,Describe,OCR,Classify}`
+- **PHP** — `$cencori->vision->{analyze,describe,ocr,classify}`
+- **Rust** — `cencori.vision.{analyze,describe,ocr,classify}` — sync + async
+
+Each SDK ships with a runnable `examples/vision.*` file so you can see all four methods end-to-end without hunting through docs.
+
+## What it's good for
+
+Some ideas we've seen work well:
+
+- **Receipt scanners** — upload a photo, get merchant + line items + total as JSON. Full walkthrough at [Build a Receipt Scanner](/docs/guides/build-a-receipt-scanner).
+- **Content moderation** — classify user-uploaded images at the edge before storing them
+- **Product cataloging** — auto-tag inventory photos with categories, colors, and materials
+- **Document workflows** — OCR invoices and forms into structured data
+- **Accessibility** — auto-generate `alt` text for images at upload time
+
+Every request is billed through your usual Cencori spend caps, logged with full metadata, and shows up in your usage dashboard next to your chat calls.
+
+## Pricing
+
+Same as any other Cencori model call: provider pricing plus your project's markup. Costs surface in the response payload (`cost.cencoriChargeUsd`) so you can meter or display them in your product. No separate Vision billing lane.
+
+## Getting started
+
+```bash
+npm install cencori
+```
+
+```typescript
+import { Cencori } from 'cencori';
+const cencori = new Cencori(); // reads CENCORI_API_KEY
+
+const { analysis } = await cencori.vision.analyze({
+  image: { url: 'https://example.com/photo.jpg' },
+});
+```
+
+Or use the drop-in component in five lines:
+
+```tsx
+import { VisionUploader } from 'cencori/react';
+
+<VisionUploader endpoint="/api/vision" task="describe" onResult={console.log} />
+```
+
+That's it.
+
+- [Full API reference](/docs/ai/endpoints/vision)
+- [Build a Receipt Scanner](/docs/guides/build-a-receipt-scanner) — end-to-end tutorial
+- [Embed the VisionUploader Component](/docs/guides/vision-uploader) — React integration guide
