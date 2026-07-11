@@ -50,6 +50,13 @@ export type V1ExecuteParams = {
         errorMessage?: string;
     }) => void;
     incrementUsage: (chargeUsd: number) => void;
+    /**
+     * Fires once with the full (detokenized) assistant text when a
+     * completion finishes — non-streaming after the response is built,
+     * streaming at finishReason. Used for post-response hooks like memory
+     * fact extraction. Must not throw.
+     */
+    onCompletion?: (result: { fullText: string }) => void;
     /** Agent shadow mode (optional) */
     agentId?: string | null;
     shadowMode?: boolean;
@@ -270,6 +277,8 @@ export async function runV1ProviderExecution(
                     : undefined,
             });
 
+            params.onCompletion?.({ fullText: content });
+
             return { ok: true, response: NextResponse.json(json) };
         }
 
@@ -453,6 +462,12 @@ export async function runV1ProviderExecution(
                                 providerCostUsd,
                                 cencoriChargeUsd,
                                 markupPercentage: pricing.cencoriMarkupPercentage,
+                            });
+
+                            params.onCompletion?.({
+                                fullText: params.tokenMap
+                                    ? deTokenize(fullText, params.tokenMap)
+                                    : fullText,
                             });
 
                             controller.enqueue(

@@ -28,6 +28,18 @@ import type { ResolvedPrompt } from "@/lib/prompts/types";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import { runV1ProviderExecution } from "@/lib/gateway/v1-execute";
+import { waitUntil } from "@vercel/functions";
+import {
+    buildMemorySystemBlock,
+    getProjectMemorySettings,
+    parseMemoryDirective,
+    retrieveMemories,
+    runChatMemoryWriteback,
+    type MemoryDirective,
+    type MemoryDirectiveInput,
+    type MemorySettings,
+    type RetrievedMemory,
+} from "@/lib/memory";
 import type { ToolCallPayload } from "@/lib/gateway/v1-types";
 import type { SubscriptionTier } from "@/lib/entitlements";
 import type { UnifiedMessage } from "@/lib/providers/base";
@@ -54,6 +66,7 @@ type ChatRequestBody = {
         name: string;
         variables?: Record<string, string>;
     };
+    memory?: MemoryDirectiveInput;
 };
 
 const normalizeGatewayModelId = (modelId: string): string => {
@@ -379,7 +392,42 @@ export async function POST(req: NextRequest) {
 
         const activeGatewayCtx = gatewayCtx;
 
+        // ── Memory directive (API opt-in: presence of `memory` enables it) ──
+        let memoryDirective: MemoryDirective | null = null;
+        let memorySettings: MemorySettings | null = null;
+
+        if (body.memory !== undefined) {
+            memorySettings = await getProjectMemorySettings(adminClient, gatewayCtx.projectId);
+            if (!memorySettings.enabled) {
+                return respondError(403, "Memory is disabled for this project.", "memory_disabled");
+            }
+
+            const parsedDirective = parseMemoryDirective(body.memory);
+            if (!parsedDirective.ok) {
+                return respondError(400, parsedDirective.error, "invalid_memory_directive");
+            }
+            memoryDirective = parsedDirective.directive;
+        }
+
         const pipelineMessages: UnifiedMessage[] = toUnifiedMessages(messages);
+
+        // Kick off memory retrieval in parallel with the input pipeline —
+        // the embedding + RPC overlap the pipeline's own work, keeping added
+        // latency well under the 150ms p95 budget. retrieveMemories is
+        // fail-open: any failure yields [] and the request proceeds.
+        const lastUserMessageText =
+            [...pipelineMessages].reverse().find((m) => m.role === "user")?.content ?? "";
+        const memoryPromise: Promise<RetrievedMemory[]> =
+            memoryDirective?.retrieve
+                ? retrieveMemories({
+                    supabase: adminClient,
+                    organizationId: activeGatewayCtx.organizationId,
+                    projectId: activeGatewayCtx.projectId,
+                    directive: memoryDirective,
+                    queryText: lastUserMessageText,
+                })
+                : Promise.resolve([]);
+
         const inputPipeline = await runGatewayInputPipeline({
             supabase: adminClient,
             projectId: gatewayCtx.projectId,
@@ -407,6 +455,24 @@ export async function POST(req: NextRequest) {
         }
 
         const guardedMessages = inputPipeline.messages;
+
+        // ── Memory injection ──
+        // After the input pipeline: stored facts were already redacted at
+        // write time and must not be re-tokenized. Insert the facts block
+        // after any leading system messages, before the first non-system turn.
+        const retrievedMemories = await memoryPromise;
+        if (retrievedMemories.length > 0) {
+            const memoryMessage: UnifiedMessage = {
+                role: "system",
+                content: buildMemorySystemBlock(retrievedMemories),
+            };
+            let insertAt = 0;
+            while (insertAt < guardedMessages.length && guardedMessages[insertAt].role === "system") {
+                insertAt++;
+            }
+            guardedMessages.splice(insertAt, 0, memoryMessage);
+        }
+
         messages = guardedMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -421,7 +487,11 @@ export async function POST(req: NextRequest) {
         // Check if user wants to skip cache for this request
         const skipCache = req.headers.get('x-skip-cache')?.toLowerCase() === 'true';
 
-        if (gatewayCtx && !shouldStream && !tools && !skipCache) {
+        // Memory interlock: responses assembled with user-specific injected
+        // facts must never be cached (semantic cache matches project-wide —
+        // user A's facts could serve user B), and lookups against such
+        // prompts are useless. Skip the cache in both directions.
+        if (gatewayCtx && !shouldStream && !tools && !skipCache && !memoryDirective?.retrieve) {
             try {
                 // Try cache first - use cached config if available
                 const cachedConfig = await getCachedCacheConfig(gatewayCtx.projectId);
@@ -572,6 +642,24 @@ export async function POST(req: NextRequest) {
             }
         };
 
+        // ── Memory writeback (async — runs after the response flushes) ──
+        const scheduleMemoryWriteback = (assistantText: string) => {
+            if (memoryDirective?.write && memorySettings && assistantText) {
+                const directive = memoryDirective;
+                const settings = memorySettings;
+                waitUntil(
+                    runChatMemoryWriteback({
+                        supabase: adminClient,
+                        gatewayCtx: activeGatewayCtx,
+                        directive,
+                        settings,
+                        userText: inputPipeline.inputText,
+                        assistantText,
+                    })
+                );
+            }
+        };
+
         const execResult = await runV1ProviderExecution({
             supabase: adminClient,
             gatewayCtx: activeGatewayCtx,
@@ -588,6 +676,9 @@ export async function POST(req: NextRequest) {
             endUserId,
             endUserQuota,
             recordEndUserUsage: maybeRecordEndUserUsage,
+            onCompletion: ({ fullText }) => {
+                scheduleMemoryWriteback(fullText);
+            },
             logSuccess: (meta) => {
                 void logGatewayRequest(activeGatewayCtx, {
                     endpoint: "/v1/chat/completions",
@@ -636,10 +727,36 @@ export async function POST(req: NextRequest) {
                 0
             );
             maybeLogPromptUsage();
+
+            // Attach the memory summary. `written` is always [] here —
+            // extraction runs async after the response flushes; clients can
+            // confirm via GET /v1/memory/list.
+            if (memoryDirective) {
+                (responseJson as Record<string, unknown>).memory = {
+                    retrieved: retrievedMemories.map((m) => ({
+                        id: m.id,
+                        score: m.similarity,
+                        content: m.content,
+                    })),
+                    written: [],
+                    write_status: memoryDirective.write ? 'pending' : 'disabled',
+                };
+            }
+
             return respond(NextResponse.json(responseJson));
         }
 
         maybeLogPromptUsage();
+        if (memoryDirective) {
+            execResult.response.headers.set(
+                'X-Cencori-Memory-Retrieved',
+                String(retrievedMemories.length)
+            );
+            execResult.response.headers.set(
+                'X-Cencori-Memory-Write',
+                memoryDirective.write ? 'async' : 'disabled'
+            );
+        }
         return respond(execResult.response);
 
     } catch (error: unknown) {

@@ -114,6 +114,14 @@ export { ComputeNamespace } from './compute';
 export { WorkflowNamespace } from './workflow';
 export { StorageNamespace } from './storage';
 export { MemoryClient } from './memory';
+export {
+    ChatNamespace,
+    type ChatMemoryOptions,
+    type ChatCompletionCreateParams,
+    type ChatCompletionResponse,
+    type ChatCompletionChunk,
+    type ChatCompletionStream,
+} from './chat';
 export { SessionsNamespace, type Session, type SessionEvent, type CreateSessionParams, type TurnParams, type PaginatedResponse, type SessionListParams } from './sessions';
 export { TelemetryClient, type WebTelemetryPayload } from './telemetry';
 

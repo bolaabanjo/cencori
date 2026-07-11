@@ -35,6 +35,7 @@ import { ComputeNamespace } from './compute';
 import { WorkflowNamespace } from './workflow';
 import { StorageNamespace } from './storage';
 import { MemoryClient } from './memory';
+import { ChatNamespace } from './chat';
 import { TelemetryClient } from './telemetry';
 import { fetchWithRetry } from './utils';
 import {
@@ -61,6 +62,19 @@ export class Cencori {
      * await cencori.ai.chat({ model: 'gpt-4o', messages: [...] });
      */
     readonly ai: AINamespace;
+
+    /**
+     * Chat - OpenAI-compatible chat completions with gateway memory.
+     * One line makes chat stateful.
+     *
+     * @example
+     * const response = await cencori.chat.completions.create({
+     *   model: 'gpt-4o',
+     *   messages: [{ role: 'user', content: 'What did we agree about pricing?' }],
+     *   memory: { userId: session.user.id },
+     * });
+     */
+    readonly chat: ChatNamespace;
 
     /**
      * Vision - Analyze, describe, OCR, and classify images
@@ -206,6 +220,7 @@ export class Cencori {
 
         // Initialize namespaces
         this.ai = new AINamespace(this.config);
+        this.chat = new ChatNamespace(this.config);
         this.vision = new VisionNamespace(this.config);
         this.documents = new DocumentsNamespace(this.config);
         this.agents = new AgentsNamespace(this.config);
