@@ -1,4 +1,3 @@
-/* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
@@ -7,20 +6,27 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { generateSlug } from "@/lib/utils";
+import { generateSlug, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Link from "next/link";
-import { CheckCircle, Loader2 } from "lucide-react";
 import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
+import { motion, MotionConfig } from "framer-motion";
+import type { Variants, Transition } from "framer-motion";
+import { HugeiconsIcon } from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  Building06Icon,
+  UserIcon,
+  UserGroupIcon,
+  Rocket01Icon,
+  OfficeIcon,
+  Tick02Icon,
+  CheckmarkBadge01Icon,
+  Loading03Icon,
+  ArrowRight02Icon,
+} from "@hugeicons/core-free-icons";
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "Organization name must be at least 2 characters." }),
@@ -30,6 +36,64 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type CreatedOrg = { id: string; slug: string };
+
+const ORG_TYPES: Array<{ value: FormValues["type"]; label: string; description: string; icon: IconSvgElement }> = [
+  { value: "personal", label: "Personal", description: "Just you, building or exploring", icon: UserIcon },
+  { value: "agency", label: "Agency", description: "Building for clients", icon: UserGroupIcon },
+  { value: "startup", label: "Startup", description: "Early-stage, moving fast", icon: Rocket01Icon },
+  { value: "company", label: "Company", description: "An established business", icon: OfficeIcon },
+];
+
+const PLAN_TIERS: Array<{
+  value: FormValues["plan"];
+  label: string;
+  price: string;
+  period?: string;
+  popular?: boolean;
+  features: string[];
+}> = [
+  {
+    value: "free",
+    label: "Free",
+    price: "$0",
+    period: "/month",
+    features: ["1,000 requests/month", "1 active project", "Community support"],
+  },
+  {
+    value: "pro",
+    label: "Pro",
+    price: "$49",
+    period: "/month",
+    popular: true,
+    features: ["50,000 requests/month", "Unlimited projects", "Full security pipeline"],
+  },
+  {
+    value: "team",
+    label: "Team",
+    price: "$149",
+    period: "/month",
+    features: ["250,000 requests/month", "Team seats & collaboration", "24/7 priority support"],
+  },
+  {
+    value: "enterprise",
+    label: "Enterprise",
+    price: "Custom",
+    features: ["Unlimited requests & projects", "SSO & SAML", "Dedicated support & SLAs"],
+  },
+];
+
+// Subtle entrance only — durations 0.2-0.4s, ease-out, opacity + transform (see /design/animation guidelines)
+const pageVariants: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
+};
+
+const tapTransition: Transition = { duration: 0.15, ease: "easeOut" };
 
 // Helper to get monthly request limit based on tier
 function getRequestLimit(tier: string): number {
@@ -70,6 +134,7 @@ export default function NewOrganizationPage() {
   });
 
   const selectedPlan = form.watch("plan");
+  const selectedType = form.watch("type");
   const isPaidPlan = selectedPlan === "pro" || selectedPlan === "team";
 
   // Initialize Bachs checkout (no-op, redirect-based)
@@ -224,154 +289,221 @@ export default function NewOrganizationPage() {
   // Success state
   if (success && createdOrg) {
     return (
-      <div className="w-full max-w-2xl mx-auto px-6 py-20">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto">
-            <CheckCircle className="h-6 w-6 text-emerald-500" />
+      <MotionConfig reducedMotion="user">
+        <motion.div
+          className="w-full max-w-2xl mx-auto px-6 py-24"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+        >
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto">
+              <HugeiconsIcon icon={CheckmarkBadge01Icon} size={22} className="text-emerald-500" />
+            </div>
+            <h1 className="text-xl font-semibold tracking-tight">Organization created</h1>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Your organization is ready and your subscription is active.
+            </p>
+            <Button onClick={() => router.push(`/dashboard/organizations/${createdOrg.slug}/projects`)} className="mt-4 h-8 text-xs px-4 gap-1.5">
+              Go to organization
+              <HugeiconsIcon icon={ArrowRight02Icon} size={13} />
+            </Button>
           </div>
-          <h1 className="text-xl font-semibold">Organization Created!</h1>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Your organization has been created and your subscription is now active.
-          </p>
-          <Button onClick={() => router.push(`/dashboard/organizations/${createdOrg.slug}/projects`)} className="mt-4">
-            Go to Organization
-          </Button>
-        </div>
-      </div>
+        </motion.div>
+      </MotionConfig>
     );
   }
 
   // Form
   return (
-    <div className="w-full max-w-2xl mx-auto px-6 py-10">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-base font-medium mb-1">Create a new organization</h1>
-        <p className="text-xs text-muted-foreground">
-          Organizations are a way to group your projects. Each organization can be configured with different team members and billing settings.
-        </p>
-      </div>
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        className="w-full max-w-3xl mx-auto px-6 py-10"
+        variants={pageVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {/* Header */}
+        <motion.div variants={itemVariants} className="mb-8 flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/40 bg-secondary/40">
+            <HugeiconsIcon icon={Building06Icon} size={16} className="text-foreground" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Create your organization</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Organizations group your projects, team, and billing in one place.
+            </p>
+          </div>
+        </motion.div>
 
-      {/* Form Card */}
-      <div className="bg-card border border-border/40 rounded-md">
+        {/* Form Card */}
+        <motion.div variants={itemVariants} className="border border-border/40">
         <form onSubmit={form.handleSubmit(onSubmit)}>
           {/* Name Field */}
-          <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 md:gap-6 p-4 border-b border-border/40">
-            <label htmlFor="name" className="text-xs font-medium pt-2">
-              Name
+          <div className="p-5 space-y-2 border-b border-border/40">
+            <label htmlFor="name" className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              Organization name
             </label>
-            <div className="space-y-1.5">
+            <div className="relative max-w-sm">
+              <HugeiconsIcon
+                icon={Building06Icon}
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
               <Input
                 id="name"
-                placeholder="Organization name"
+                placeholder="Acme Inc."
                 autoComplete="off"
-                className="h-8 text-xs bg-secondary/50 border-border/50"
+                className="h-9 pl-8 text-xs bg-secondary/50 border-border/50"
                 {...form.register("name")}
               />
-              <p className="text-[11px] text-muted-foreground">
-                What's the name of your company or team? You can change this later.
-              </p>
-              {form.formState.errors.name && (
-                <p className="text-[11px] text-red-500">{form.formState.errors.name.message}</p>
-              )}
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              You can change this anytime in settings.
+            </p>
+            {form.formState.errors.name && (
+              <p className="text-[11px] text-red-500">{form.formState.errors.name.message}</p>
+            )}
           </div>
 
           {/* Type Field */}
-          <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 md:gap-6 p-4 border-b border-border/40">
-            <label htmlFor="type" className="text-xs font-medium pt-2">
+          <div className="p-5 space-y-3 border-b border-border/40">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
               Type
             </label>
-            <div className="space-y-1.5">
-              <Select
-                onValueChange={(value: string) => form.setValue("type", value as FormValues["type"])}
-                defaultValue={form.getValues("type")}
-              >
-                <SelectTrigger id="type" className="h-8 text-xs bg-secondary/50 border-border/50">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="personal" className="text-xs">Personal</SelectItem>
-                  <SelectItem value="agency" className="text-xs">Agency</SelectItem>
-                  <SelectItem value="startup" className="text-xs">Startup</SelectItem>
-                  <SelectItem value="company" className="text-xs">Company</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                What best describes your organization?
-              </p>
+            <div role="radiogroup" aria-label="Organization type" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {ORG_TYPES.map((opt) => {
+                const isSelected = selectedType === opt.value;
+                return (
+                  <motion.button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    whileTap={{ scale: 0.97 }}
+                    transition={tapTransition}
+                    onClick={() => form.setValue("type", opt.value)}
+                    className={cn(
+                      "flex flex-col items-center justify-center gap-1.5 rounded-md border p-3 text-center transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border/50 bg-secondary/30 hover:bg-secondary/60"
+                    )}
+                  >
+                    <HugeiconsIcon
+                      icon={opt.icon}
+                      size={16}
+                      className={isSelected ? "text-primary" : "text-muted-foreground"}
+                    />
+                    <span className={cn("text-xs font-medium", isSelected ? "text-foreground" : "text-muted-foreground")}>
+                      {opt.label}
+                    </span>
+                  </motion.button>
+                );
+              })}
             </div>
           </div>
 
           {/* Plan Field */}
-          <div className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 md:gap-6 p-4">
-            <label htmlFor="plan" className="text-xs font-medium pt-2">
+          <div className="p-5 space-y-3">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
               Plan
             </label>
-            <div className="space-y-1.5">
-              <Select
-                onValueChange={(value: string) => form.setValue("plan", value as FormValues["plan"])}
-                defaultValue={form.getValues("plan")}
-              >
-                <SelectTrigger id="plan" className="h-8 text-xs bg-secondary/50 border-border/50">
-                  <SelectValue placeholder="Select plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free" className="text-xs">Free - $0/month</SelectItem>
-                  <SelectItem value="pro" className="text-xs">Pro - $49/month</SelectItem>
-                  <SelectItem value="team" className="text-xs">Team - $149/month</SelectItem>
-                  <SelectItem value="enterprise" className="text-xs">Enterprise - Custom</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                Which plan fits your organization's needs best?{" "}
-                <Link href="/pricing" className="text-primary hover:underline">
-                  Learn more
-                </Link>
-              </p>
-              {isPaidPlan && (
-                <p className="text-[11px] text-emerald-500">
-                  Payment will be collected in a secure overlay after creating.
-                </p>
-              )}
+            <div role="radiogroup" aria-label="Plan" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {PLAN_TIERS.map((tier) => {
+                const isSelected = selectedPlan === tier.value;
+                return (
+                  <motion.button
+                    key={tier.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    whileTap={{ scale: 0.97 }}
+                    transition={tapTransition}
+                    onClick={() => form.setValue("plan", tier.value)}
+                    className={cn(
+                      "relative flex flex-col items-start gap-2 rounded-md border p-3 text-left transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border/50 bg-secondary/30 hover:bg-secondary/60"
+                    )}
+                  >
+                    {tier.popular && (
+                      <span className="absolute -top-2 right-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-emerald-500">
+                        Popular
+                      </span>
+                    )}
+                    <span className="text-xs font-medium text-foreground">{tier.label}</span>
+                    <span className="font-mono text-sm font-semibold text-foreground">
+                      {tier.price}
+                      {tier.period && (
+                        <span className="ml-0.5 font-sans text-[10px] font-normal text-muted-foreground">{tier.period}</span>
+                      )}
+                    </span>
+                    <ul className="space-y-1">
+                      {tier.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-1 text-[10px] text-muted-foreground">
+                          <HugeiconsIcon icon={Tick02Icon} size={10} className="mt-0.5 shrink-0 text-emerald-500" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  </motion.button>
+                );
+              })}
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Need more detail?{" "}
+              <Link href="/pricing" className="text-primary hover:underline">
+                Compare plans
+              </Link>
+            </p>
+            {isPaidPlan && (
+              <p className="text-[11px] text-emerald-500">
+                Payment will be collected in a secure overlay after creating.
+              </p>
+            )}
           </div>
         </form>
-      </div>
+        </motion.div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between mt-4">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs px-3"
-          onClick={() => router.push("/dashboard/organizations")}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          size="sm"
-          className="h-7 text-xs px-4"
-          disabled={loading || checkoutLoading}
-          onClick={form.handleSubmit(onSubmit)}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              Creating...
-            </>
-          ) : checkoutLoading ? (
-            <>
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              Opening checkout...
-            </>
-          ) : (
-            "Create organization"
-          )}
-        </Button>
-      </div>
-    </div>
+        {/* Footer */}
+        <motion.div variants={itemVariants} className="flex items-center justify-between mt-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs px-3"
+            onClick={() => router.push("/dashboard/organizations")}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="sm"
+            className="h-8 text-xs px-4 gap-1.5"
+            disabled={loading || checkoutLoading}
+            onClick={form.handleSubmit(onSubmit)}
+          >
+            {loading ? (
+              <>
+                <HugeiconsIcon icon={Loading03Icon} size={13} className="animate-spin" />
+                Creating...
+              </>
+            ) : checkoutLoading ? (
+              <>
+                <HugeiconsIcon icon={Loading03Icon} size={13} className="animate-spin" />
+                Opening checkout...
+              </>
+            ) : (
+              <>
+                Create organization
+                <HugeiconsIcon icon={ArrowRight02Icon} size={13} />
+              </>
+            )}
+          </Button>
+        </motion.div>
+      </motion.div>
+    </MotionConfig>
   );
 }
