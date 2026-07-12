@@ -16,13 +16,12 @@ import {
     SidebarMenuSub,
     SidebarMenuSubItem,
     SidebarMenuSubButton,
-    SidebarRail,
     SidebarGroup,
-    SidebarTrigger,
     SidebarSeparator,
+    SidebarFooter,
 } from "@/components/ui/sidebar";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Book, ArrowUpRight } from "lucide-react";
 import DashboardCircleIcon from "@hugeicons/core-free-icons/DashboardCircleIcon";
 import DiscoverSquareIcon from "@hugeicons/core-free-icons/DiscoverSquareIcon";
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
@@ -41,6 +40,8 @@ import BrainCogIcon from "@hugeicons/core-free-icons/BrainCogIcon";
 import { useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { BudgetAlertBanner } from "@/components/dashboard/BudgetAlertBanner";
+import { UserMenu } from "@/components/dashboard/UserMenu";
+import { FeedbackMenu } from "@/components/dashboard/FeedbackMenu";
 import { cn } from "@/lib/utils";
 
 interface ProjectData {
@@ -277,14 +278,14 @@ export default function ProjectLayoutClient({
             return (
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton
-                            onClick={() => setActiveView("main")}
-                            size="sm"
-                            className="gap-1 text-muted-foreground"
-                        >
-                            <ChevronLeft className="!h-4 !w-4" />
-                            <span className="text-xs">Back</span>
-                        </SidebarMenuButton>
+                    <SidebarMenuButton
+                        onClick={() => setActiveView("main")}
+                        size="sm"
+                        className="gap-1 text-muted-foreground"
+                    >
+                        <ChevronLeft className="!h-4 !w-4" />
+                        <span className="text-xs">Back</span>
+                    </SidebarMenuButton>
                     </SidebarMenuItem>
                     {aiGatewayItems.map((item) => (
                         <ProjectSidebarLink
@@ -329,16 +330,25 @@ export default function ProjectLayoutClient({
             className={isPlayground ? "min-h-0 flex-1 overflow-hidden" : undefined}
             style={isPlayground ? { minHeight: "0px" } : undefined}
         >
-            <Sidebar collapsible="icon" expandOnHover className="top-12 h-[calc(100vh-3rem)] hidden lg:block border-r border-border/40">
+            <Sidebar className="top-12 h-[calc(100vh-3rem)] hidden lg:block border-r border-border/40">
                 <SidebarContent>
                     <SidebarGroup className="pt-3">
                         <SidebarNav />
                     </SidebarGroup>
                 </SidebarContent>
-                <SidebarRail />
-                <div className="absolute bottom-0 left-0 w-full p-2">
-                    <SidebarTrigger />
-                </div>
+                <SidebarFooter className="pt-1 space-y-0.5">
+                    <Link
+                        href="/docs"
+                        target="_blank"
+                        className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
+                    >
+                        <Book className="size-3.5 shrink-0" />
+                        <span className="flex-1">Documentation</span>
+                        <ArrowUpRight className="size-3 shrink-0" />
+                    </Link>
+                    <FeedbackMenu />
+                    <UserMenu />
+                </SidebarFooter>
             </Sidebar>
 
             <Sheet open={isOpen} onOpenChange={setIsOpen}>

@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { CircleUserRound, CreditCard, Settings, HelpCircle, Book, Wrench, Activity, Mail, Command, Menu } from "lucide-react";
+import { CreditCard, HelpCircle, Book, Wrench, Activity, Mail, Command, Menu } from "lucide-react";
 import { GradientAvatar } from "@outpacelabs/avatars";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
@@ -38,7 +38,6 @@ import { ReactQueryProvider } from "@/lib/providers/ReactQueryProvider";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import posthog from "posthog-js";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -169,8 +168,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   const { organizations, projects } = useOrganizationProject();
   const { toggle } = useMobileSheet();
   const { setEnvironment, isTestMode } = useEnvironment();
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackText, setFeedbackText] = useState("");
+
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // Fetch user profile to get custom avatar
@@ -508,56 +506,6 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             <Menu className="h-4 w-4 text-muted-foreground" />
           </button>
 
-          {/* Feedback Button - hidden on mobile */}
-          <DropdownMenu open={feedbackOpen} onOpenChange={setFeedbackOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="hidden lg:block h-6 px-2.5 text-[11px] font-medium rounded-full bg-secondary/60 hover:bg-secondary text-foreground transition-colors cursor-pointer"
-              >
-                Feedback
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 p-3 font-mono">
-              <div className="space-y-3">
-                <textarea
-                  placeholder="My idea for improving Cencori is..."
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  className="w-full h-24 text-xs font-inter bg-secondary/50 border border-border/40 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring/20"
-                />
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    className="h-7 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    disabled={!feedbackText.trim()}
-                    onClick={async () => {
-                      try {
-                        const response = await fetch('/api/feedback', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            type: 'general',
-                            content: feedbackText
-                          })
-                        });
-                        if (response.ok) {
-                          toast.success("Thanks for your feedback!");
-                        }
-                      } catch (error) {
-                        console.error("Feedback submission failed:", error);
-                      }
-                      setFeedbackText("");
-                      setFeedbackOpen(false);
-                    }}
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {/* Help Button - hidden on mobile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -614,70 +562,6 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* User Avatar Menu - hidden on mobile (mobile nav has it) */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="hidden lg:inline-flex w-7 h-7 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-transparent hover:bg-secondary transition-colors overflow-hidden"
-                aria-label="User menu"
-              >
-                {typeof displayAvatar === "string" && displayAvatar.length > 0 ? (
-                  <img src={displayAvatar} alt={typeof name === "string" ? name : "User avatar"} className="w-full h-full object-cover" />
-                ) : (
-                  <GradientAvatar seed="Bola " size={28} />
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-66 p-1 font-mono" align="end" forceMount>
-              <div className="px-2 py-1.5 border-b border-border/40 mb-1">
-                <p className="text-xs font-medium truncate dark:text-white text-black">
-                  {user.email}
-                </p>
-              </div>
-              <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
-                <CircleUserRound className="mr-2 h-3.5 w-3.5" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
-                <Settings className="mr-2 h-3.5 w-3.5" />
-                Settings
-              </DropdownMenuItem>
-              <div className="my-1 border-t border-border/40" />
-              <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Theme</p>
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("light")}>
-                {theme === "light" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                {theme !== "light" && <span className="mr-2 h-1.5 w-1.5" />}
-                Light
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("dark")}>
-                {theme === "dark" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                {theme !== "dark" && <span className="mr-2 h-1.5 w-1.5" />}
-                Dark
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("system")}>
-                {theme === "system" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                {theme !== "system" && <span className="mr-2 h-1.5 w-1.5" />}
-                System
-              </DropdownMenuItem>
-              <div className="my-1 border-t border-border/40" />
-              <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/")}>
-                Homepage
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
-                onClick={async () => {
-                  sessionStorage.removeItem("cencori:org-project-cache");
-                  await supabase.auth.signOut();
-                  posthog.reset();
-                  router.push("/login");
-                }}
-              >
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </header>
       )}
