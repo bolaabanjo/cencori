@@ -18,11 +18,21 @@ import {
     SidebarTrigger,
     SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { PanelTopIcon } from "@/components/animate-ui/icons/panel-top";
-import { SettingsIcon } from "@/components/animate-ui/icons/settings";
-import { ScrollText, ShieldAlert, Server, Puzzle, Cpu, Webhook, Boxes, DatabaseZap, FileText, Receipt } from "lucide-react";
-import { BeakerIcon } from "@/components/icons/BeakerIcon";
-import { ObservabilityIcon } from "@/components/icons/ObservabilityIcon";
+import { HugeiconsIcon } from "@hugeicons/react";
+import DashboardCircleIcon from "@hugeicons/core-free-icons/DashboardCircleIcon";
+import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
+import Analytics01Icon from "@hugeicons/core-free-icons/Analytics01Icon";
+import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
+import AiCloudIcon from "@hugeicons/core-free-icons/AiCloudIcon";
+import AiChipIcon from "@hugeicons/core-free-icons/AiChipIcon";
+import AiSettingIcon from "@hugeicons/core-free-icons/AiSettingIcon";
+import Blockchain03Icon from "@hugeicons/core-free-icons/Blockchain03Icon";
+import AiChemistry01Icon from "@hugeicons/core-free-icons/AiChemistry01Icon";
+import AiLockIcon from "@hugeicons/core-free-icons/AiLockIcon";
+import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
+import CreditCardAcceptIcon from "@hugeicons/core-free-icons/CreditCardAcceptIcon";
+import AirdropIcon from "@hugeicons/core-free-icons/AirdropIcon";
+import BrainCogIcon from "@hugeicons/core-free-icons/BrainCogIcon";
 import { useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { BudgetAlertBanner } from "@/components/dashboard/BudgetAlertBanner";
@@ -127,7 +137,7 @@ async function prefetchProjectPage(
 // Nav item type
 interface NavItem {
     href: string;
-    icon: React.ComponentType<{ animateOnHover?: boolean; className?: string }>;
+    icon: React.ReactNode;
     label: string;
     prefetch?: () => void;
 }
@@ -135,14 +145,14 @@ interface NavItem {
 // Sidebar link with prefetching
 function ProjectSidebarLink({
     href,
-    icon: Icon,
+    icon,
     label,
     isActive,
     prefetch,
     onClick,
 }: {
     href: string;
-    icon: React.ComponentType<{ animateOnHover?: boolean; className?: string }>;
+    icon: React.ReactNode;
     label: string;
     isActive: boolean;
     prefetch?: () => void;
@@ -158,7 +168,7 @@ function ProjectSidebarLink({
         <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={label} isActive={isActive} size="sm">
                 <Link href={href} prefetch={true} onMouseEnter={handleMouseEnter} onClick={onClick}>
-                    <Icon className="h-3.5 w-3.5" />
+                    {icon}
                     <span className="text-xs">{label}</span>
                 </Link>
             </SidebarMenuButton>
@@ -237,33 +247,33 @@ export default function ProjectLayoutClient({
 
     // Grouped navigation items
     const coreItems: NavItem[] = [
-        { href: basePath, icon: PanelTopIcon, label: "Project Overview" },
+        { href: basePath, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-6 !w-6" />, label: "Project Overview" },
 
-        { href: `${basePath}/prompts`, icon: FileText, label: "Prompts" },
-        { href: `${basePath}/observability`, icon: ObservabilityIcon, label: "Observability", prefetch: createPrefetch("observability") },
-        { href: `${basePath}/logs`, icon: ScrollText, label: "Logs" },
+        { href: `${basePath}/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-6 !w-6" />, label: "Prompts" },
+        { href: `${basePath}/observability`, icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-6 !w-6" />, label: "Observability", prefetch: createPrefetch("observability") },
+        { href: `${basePath}/logs`, icon: <HugeiconsIcon icon={Activity03Icon} className="!h-6 !w-6" />, label: "Logs" },
     ];
 
     const infrastructureItems: NavItem[] = [
-        { href: `${basePath}/providers`, icon: Cpu, label: "Providers", prefetch: createPrefetch("providers") },
-        { href: `${basePath}/models`, icon: Boxes, label: "Models" },
-        { href: `${basePath}/custom-providers`, icon: Server, label: "Custom Providers" },
-        { href: `${basePath}/cache`, icon: DatabaseZap, label: "Cache" },
-        { href: `${basePath}/playground`, icon: BeakerIcon, label: "Playground" },
+        { href: `${basePath}/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-6 !w-6" />, label: "Providers", prefetch: createPrefetch("providers") },
+        { href: `${basePath}/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-6 !w-6" />, label: "Models" },
+        { href: `${basePath}/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-6 !w-6" />, label: "Custom Providers" },
+        { href: `${basePath}/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-6 !w-6" />, label: "Cache" },
+        { href: `${basePath}/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-6 !w-6" />, label: "Playground" },
     ];
 
     const securityItems: NavItem[] = [
-        { href: `${basePath}/security`, icon: ShieldAlert, label: "Security" },
-        { href: `${basePath}/edge`, icon: Puzzle, label: "Edge" },
+        { href: `${basePath}/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-6 !w-6" />, label: "Security" },
+        { href: `${basePath}/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-6 !w-6" />, label: "Edge" },
     ];
 
     const billingItems: NavItem[] = [
-        { href: `${basePath}/end-user-billing`, icon: Receipt, label: "End-User Billing" },
+        { href: `${basePath}/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-6 !w-6" />, label: "End-User Billing" },
     ];
 
     const settingsItems: NavItem[] = [
-        { href: `${basePath}/webhooks`, icon: Webhook, label: "Webhooks" },
-        { href: `${basePath}/settings`, icon: SettingsIcon, label: "Project Settings" },
+        { href: `${basePath}/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-6 !w-6" />, label: "Webhooks" },
+        { href: `${basePath}/settings`, icon: <HugeiconsIcon icon={BrainCogIcon} className="!h-6 !w-6" />, label: "Project Settings" },
     ];
 
     const isPlayground = pathname.includes("/playground");
