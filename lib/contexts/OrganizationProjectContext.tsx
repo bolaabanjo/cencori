@@ -33,10 +33,31 @@ const OrganizationProjectContext = createContext<OrganizationProjectContextType 
     undefined
 );
 
+const CACHE_KEY = "cencori:org-project-cache";
+
+function loadCache(): { organizations: Organization[]; projects: Project[] } | null {
+    try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.organizations) && Array.isArray(parsed.projects)) {
+            return parsed;
+        }
+    } catch { /* ignore corrupt cache */ }
+    return null;
+}
+
+function saveCache(organizations: Organization[], projects: Project[]) {
+    try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ organizations, projects }));
+    } catch { /* storage full, ignore */ }
+}
+
 export const OrganizationProjectProvider = ({ children }: { children: ReactNode }) => {
-    const [organizations, setOrganizations] = useState<Organization[]>([]);
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [loading, setLoading] = useState(true);
+    const cached = useMemo(() => loadCache(), []);
+    const [organizations, setOrganizations] = useState<Organization[]>(cached?.organizations ?? []);
+    const [projects, setProjects] = useState<Project[]>(cached?.projects ?? []);
+    const [loading, setLoading] = useState(!cached);
 
     const supabase = useMemo(
         () =>
@@ -73,6 +94,7 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
             }
 
             // Fetch projects
+            let projectsWithOrgSlug: Project[] = [];
             if (orgsData && orgsData.length > 0) {
                 const orgIds = orgsData.map((org) => org.id);
                 const { data: projectsData, error: projectsError } = await supabase
@@ -84,7 +106,7 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
                     console.error("Error fetching projects:", projectsError.message);
                 } else {
                     // Map project data to include orgSlug
-                    const projectsWithOrgSlug =
+                    projectsWithOrgSlug =
                         projectsData?.map((proj) => ({
                             ...proj,
                             orgSlug: orgsData.find((org) => org.id === proj.organization_id)?.slug,
@@ -92,6 +114,8 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
                     setProjects(projectsWithOrgSlug);
                 }
             }
+
+            saveCache(orgsData || [], projectsWithOrgSlug);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {

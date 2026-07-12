@@ -48,9 +48,6 @@ function useProjectLayout(orgSlug: string, projectSlug: string) {
     return useQuery({
         queryKey: ["projectLayout", orgSlug, projectSlug],
         queryFn: async () => {
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-            if (userError || !user) throw new Error("Not authenticated");
-
             const { data: orgData, error: orgError } = await supabase
                 .from("organizations")
                 .select("id, name, slug")
@@ -160,7 +157,7 @@ function ProjectSidebarLink({
     return (
         <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={label} isActive={isActive} size="sm">
-                <Link href={href} prefetch={false} onMouseEnter={handleMouseEnter} onClick={onClick}>
+                <Link href={href} prefetch={true} onMouseEnter={handleMouseEnter} onClick={onClick}>
                     <Icon className="h-3.5 w-3.5" />
                     <span className="text-xs">{label}</span>
                 </Link>

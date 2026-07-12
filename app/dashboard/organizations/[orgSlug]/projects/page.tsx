@@ -52,9 +52,6 @@ function useOrgAndProjects(orgSlug: string) {
   return useQuery({
     queryKey: ["orgProjects", orgSlug],
     queryFn: async () => {
-      const { data: { user }, error: userError } = await browserSupabase.auth.getUser();
-      if (userError || !user) throw new Error("Not authenticated");
-
       const { data: orgData, error: orgError } = await browserSupabase
         .from("organizations")
         .select("id, name, slug")
@@ -75,7 +72,7 @@ function useOrgAndProjects(orgSlug: string) {
         projects: (projectsData || []) as ProjectData[],
       };
     },
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 5 * 60 * 1000,
   });
 }
 

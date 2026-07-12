@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { notFound, useRouter, usePathname } from "next/navigation";
+import React from "react";
+import { notFound, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import {
@@ -24,6 +24,7 @@ import { UnplugIcon } from "@/components/animate-ui/icons/unplug";
 import { UserRoundIcon } from "@/components/animate-ui/icons/user-round";
 import { UsageLimitBanner } from "@/components/billing/UsageLimitBanner";
 import { ScrollText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -39,6 +40,26 @@ interface OrganizationData {
 
 type LayoutParams = { orgSlug: string } | Promise<{ orgSlug: string }>;
 
+function useOrganization(orgSlug: string) {
+    return useQuery({
+        queryKey: ["orgLayout", orgSlug],
+        queryFn: async () => {
+            const { data: orgData, error: orgError } = await supabase
+                .from("organizations")
+                .select("id, name, slug, subscription_tier, monthly_requests_used, monthly_request_limit")
+                .eq("slug", orgSlug)
+                .single();
+
+            if (orgError || !orgData) {
+                throw new Error("Organization not found");
+            }
+
+            return orgData as OrganizationData;
+        },
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
 // Component that applies sidebar mode from context
 function SidebarWithMode({
     children,
@@ -49,9 +70,6 @@ function SidebarWithMode({
 }) {
     const { sidebarMode } = useSidebar();
 
-    // Map mode to sidebar props
-    // Note: We use collapsible="icon" for expanded mode too to get consistent styling
-    // The sidebar stays open because we set defaultOpen=true in SidebarProvider
     const sidebarProps = {
         expanded: { collapsible: "icon" as const, expandOnHover: false },
         collapsed: { collapsible: "icon" as const, expandOnHover: false },
@@ -76,62 +94,19 @@ export default function OrganizationLayoutClient({
     children: React.ReactNode;
     params: LayoutParams;
 }) {
-    const router = useRouter();
+    const resolved = params instanceof Promise ? React.use(params) : params;
+    const { orgSlug } = resolved;
     const pathname = usePathname();
-    const [organization, setOrganization] = useState<OrganizationData | null>(null);
-    const [error, setError] = useState<string | null>(null);
     const { isOpen, setIsOpen } = useMobileSheet();
+
+    const { data: organization, error } = useOrganization(orgSlug);
 
     const isProjectRoute = pathname.includes(`/dashboard/organizations/${organization?.slug}/projects/`);
 
-    useEffect(() => {
-        const fetchOrganization = async () => {
-            setError(null);
-            try {
-                const resolvedParams = await Promise.resolve(params);
-                const { orgSlug } = resolvedParams;
+    if (error) {
+        notFound();
+    }
 
-                const {
-                    data: { user },
-                    error: userError,
-                } = await supabase.auth.getUser();
-
-                if (userError || !user) {
-                    router.push("/login");
-                    return;
-                }
-
-                const { data: orgData, error: orgError } = await supabase
-                    .from("organizations")
-                    .select("id, name, slug, subscription_tier, monthly_requests_used, monthly_request_limit")
-                    .eq("slug", orgSlug)
-                    .single();
-
-                if (orgError || !orgData) {
-                    console.error("Error fetching organization:", orgError?.message);
-                    notFound();
-                    return;
-                }
-
-                setOrganization(orgData);
-            } catch (err: unknown) {
-                console.error("Unexpected error:", (err as Error).message);
-                setError("An unexpected error occurred.");
-            }
-        };
-
-        fetchOrganization();
-    }, [params, router]);
-
-
-    if (error)
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-theme(spacing.16))]">
-                <p className="text-sm text-red-500">{error}</p>
-            </div>
-        );
-
-    // Don't render until we have organization data
     if (!organization) return null;
 
     return (
@@ -144,7 +119,7 @@ export default function OrganizationLayoutClient({
                             <SidebarMenu>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Projects" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/projects`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/projects`} prefetch={true}>
                                             <LayersIcon animateOnHover />
                                             <span className="text-[13px]">Projects</span>
                                         </Link>
@@ -152,7 +127,7 @@ export default function OrganizationLayoutClient({
                                 </SidebarMenuItem>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Billing" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/billing`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/billing`} prefetch={true}>
                                             <PanelTopIcon animateOnHover />
                                             <span className="text-[13px]">Billing</span>
                                         </Link>
@@ -160,7 +135,7 @@ export default function OrganizationLayoutClient({
                                 </SidebarMenuItem>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Usage" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/usage`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/usage`} prefetch={true}>
                                             <ActivityIcon animateOnHover />
                                             <span className="text-[13px]">Usage</span>
                                         </Link>
@@ -169,7 +144,7 @@ export default function OrganizationLayoutClient({
 
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Integrations" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/integrations`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/integrations`} prefetch={true}>
                                             <UnplugIcon animateOnHover />
                                             <span className="text-[13px]">Integrations</span>
                                         </Link>
@@ -177,7 +152,7 @@ export default function OrganizationLayoutClient({
                                 </SidebarMenuItem>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Teams" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/teams`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/teams`} prefetch={true}>
                                             <UserRoundIcon animateOnHover />
                                             <span className="text-[13px]">Teams</span>
                                         </Link>
@@ -185,7 +160,7 @@ export default function OrganizationLayoutClient({
                                 </SidebarMenuItem>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Audit Log" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/audit-log`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/audit-log`} prefetch={true}>
                                             <ScrollText className="h-4 w-4" />
                                             <span className="text-[13px]">Audit Log</span>
                                         </Link>
@@ -193,7 +168,7 @@ export default function OrganizationLayoutClient({
                                 </SidebarMenuItem>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton asChild tooltip="Settings" size="sm">
-                                        <Link href={`/dashboard/organizations/${organization.slug}/settings`} prefetch={false}>
+                                        <Link href={`/dashboard/organizations/${organization.slug}/settings`} prefetch={true}>
                                             <SettingsIcon animateOnHover />
                                             <span className="text-[13px]">Settings</span>
                                         </Link>
@@ -217,7 +192,7 @@ export default function OrganizationLayoutClient({
                                 <SidebarMenu>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/projects`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/projects`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <LayersIcon animateOnHover />
                                                 <span className="text-[13px]">Projects</span>
                                             </Link>
@@ -225,7 +200,7 @@ export default function OrganizationLayoutClient({
                                     </SidebarMenuItem>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/billing`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/billing`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <PanelTopIcon animateOnHover />
                                                 <span className="text-[13px]">Billing</span>
                                             </Link>
@@ -233,7 +208,7 @@ export default function OrganizationLayoutClient({
                                     </SidebarMenuItem>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/usage`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/usage`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <ActivityIcon animateOnHover />
                                                 <span className="text-[13px]">Usage</span>
                                             </Link>
@@ -242,7 +217,7 @@ export default function OrganizationLayoutClient({
 
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/integrations`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/integrations`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <UnplugIcon animateOnHover />
                                                 <span className="text-[13px]">Integrations</span>
                                             </Link>
@@ -250,7 +225,7 @@ export default function OrganizationLayoutClient({
                                     </SidebarMenuItem>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/teams`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/teams`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <UserRoundIcon animateOnHover />
                                                 <span className="text-[13px]">Teams</span>
                                             </Link>
@@ -258,7 +233,7 @@ export default function OrganizationLayoutClient({
                                     </SidebarMenuItem>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/audit-log`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/audit-log`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <ScrollText className="h-4 w-4" />
                                                 <span className="text-[13px]">Audit Log</span>
                                             </Link>
@@ -266,7 +241,7 @@ export default function OrganizationLayoutClient({
                                     </SidebarMenuItem>
                                     <SidebarMenuItem>
                                         <SidebarMenuButton asChild size="sm">
-                                            <Link href={`/dashboard/organizations/${organization.slug}/settings`} prefetch={false} onClick={() => setIsOpen(false)}>
+                                            <Link href={`/dashboard/organizations/${organization.slug}/settings`} prefetch={true} onClick={() => setIsOpen(false)}>
                                                 <SettingsIcon animateOnHover />
                                                 <span className="text-[13px]">Settings</span>
                                             </Link>

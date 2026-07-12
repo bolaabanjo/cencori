@@ -9,14 +9,14 @@ export function ReactQueryProvider({ children }: { children: React.ReactNode }) 
             new QueryClient({
                 defaultOptions: {
                     queries: {
-                        // Data is considered fresh for 30 seconds
-                        staleTime: 30 * 1000,
-                        // Cache data for 5 minutes
-                        gcTime: 5 * 60 * 1000,
+                        // Data is considered fresh for 5 minutes
+                        staleTime: 5 * 60 * 1000,
+                        // Cache data for 30 minutes
+                        gcTime: 30 * 60 * 1000,
                         // Retry failed requests once
                         retry: 1,
-                        // Refetch on window focus (feels fast like Supabase)
-                        refetchOnWindowFocus: true,
+                        // Don't refetch on window focus — prevents full reload on tab-return
+                        refetchOnWindowFocus: false,
                         // Don't refetch on mount if data is fresh
                         refetchOnMount: false,
                     },

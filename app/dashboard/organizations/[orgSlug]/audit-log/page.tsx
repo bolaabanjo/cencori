@@ -128,8 +128,6 @@ export default function AuditLogPage({ params }: PageProps) {
     const { data: projects } = useQuery<Project[]>({
         queryKey: ["auditLogProjects", orgSlug],
         queryFn: async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return [];
             const { data: org } = await supabase
                 .from("organizations")
                 .select("id")
