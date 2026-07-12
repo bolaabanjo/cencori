@@ -18,8 +18,6 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-import { AuthNavbar } from "@/components/landing/AuthNavbar";
-import { Footer } from "@/components/landing/Footer";
 import { ShareButtons } from "@/components/blog/ShareButtons";
 import { BlogTableOfContents } from "@/components/blog/BlogTableOfContents";
 import { CopyMarkdownButton } from "@/components/blog/CopyMarkdownButton";
@@ -51,12 +49,7 @@ export function PostView({
     nextPost = null,
 }: PostViewProps) {
     return (
-        <div
-            className="min-h-screen bg-background flex flex-col"
-            style={{ fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}
-        >
-            <AuthNavbar />
-
+        <>
             <main className="flex-1 pt-20">
                 <div className="container mx-auto px-4 max-w-4xl py-12">
                     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_200px] gap-12">
@@ -177,8 +170,6 @@ export function PostView({
                     </div>
                 </div>
             </main>
-
-            <Footer />
-        </div>
+        </>
     );
 }

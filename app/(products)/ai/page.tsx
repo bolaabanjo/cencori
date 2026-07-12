@@ -1,15 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { ArrowRight, Shield, Zap, Lock, Users, Settings, Globe, ChevronRight, Code, Layers } from "lucide-react";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
 
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
-import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 
 const features = [
@@ -76,76 +72,12 @@ const integrations = [
 ];
 
 export default function ProductAIPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        setIsAuthenticated(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const meta = user.user_metadata ?? {};
-          const avatar = meta.avatar_url ?? meta.picture ?? null;
-          const name = meta.name ?? user.email?.split("@")[0] ?? null;
-          setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-        }
-      } else {
-        setIsAuthenticated(false);
-        setUserProfile({ name: null, avatar: null });
-      }
-    };
-    checkUser();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-      if (session) {
-        setIsAuthenticated(true);
-        const { user } = session;
-        if (user) {
-          const meta = user.user_metadata ?? {};
-          const avatar = meta.avatar_url ?? meta.picture ?? null;
-          const name = meta.name ?? user.email?.split("@")[0] ?? null;
-          setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-        }
-      } else {
-        setIsAuthenticated(false);
-        setUserProfile({ name: null, avatar: null });
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const unauthenticatedActions = [
-    { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-    { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" },
-  ];
-
-  const authenticatedActions = [
-    { text: "Dashboard", href: "/dashboard/organizations", isButton: true, variant: "default" },
-    { text: userProfile.name || "User", href: "#", isButton: false, isAvatar: true, avatarSrc: userProfile.avatar, avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase() },
-  ];
-
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-      <Navbar
-        homeUrl="/"
-        actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
-        isAuthenticated={isAuthenticated}
-        userProfile={isAuthenticated ? userProfile : undefined}
-      />
-
       <main>
-        {/* Hero Section - Matching main landing page style */}
         <section className="relative flex flex-col items-center justify-center overflow-hidden bg-background pt-32 pb-20">
-          {/* Background Effects */}
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-foreground/5 via-background to-background pointer-events-none" />
 
           <div className="container relative z-10 px-4 md:px-6 flex flex-col items-center text-center">
-            {/* Badge */}
             <div className="mb-8 animate-appear">
               <Link href="/docs" className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/5 px-3 py-1 text-sm font-medium text-foreground/80 transition-colors hover:bg-foreground/10 hover:text-foreground">
                 <span className="flex h-2 w-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
@@ -154,17 +86,14 @@ export default function ProductAIPage() {
               </Link>
             </div>
 
-            {/* Headline */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter mb-6 max-w-4xl animate-appear [animation-delay:100ms] text-transparent bg-clip-text bg-gradient-to-b from-foreground to-foreground/50">
               AI <span className="italic">Gateway</span>
             </h1>
 
-            {/* Subheadline */}
             <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-10 animate-appear [animation-delay:200ms] leading-relaxed">
               The inline proxy between your applications and LLMs. Inspect, redact, sanitize, or block content in real-time.
             </p>
 
-            {/* CTAs */}
             <div className="flex flex-col sm:flex-row gap-3 animate-appear [animation-delay:300ms]">
               <Link href={siteConfig.links.getStartedUrl}>
                 <Button size="default" className="h-10 px-6 text-sm rounded-full bg-foreground text-background hover:bg-foreground/90 transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)]">
@@ -180,7 +109,6 @@ export default function ProductAIPage() {
           </div>
         </section>
 
-        {/* Features Section */}
         <section className="py-20 bg-background">
           <div className="container mx-auto px-4 md:px-6">
             <div className="flex flex-col items-center text-center mb-12">
@@ -227,7 +155,6 @@ export default function ProductAIPage() {
           </div>
         </section>
 
-        {/* Integration Section */}
         <section className="py-20 bg-background border-t border-border/40">
           <div className="container mx-auto px-4 md:px-6">
             <div className="flex flex-col items-center text-center mb-12">
@@ -258,7 +185,6 @@ export default function ProductAIPage() {
           </div>
         </section>
 
-        {/* Who Uses It Section */}
         <section className="py-20 bg-background border-t border-border/40">
           <div className="container mx-auto px-4 md:px-6">
             <div className="max-w-3xl mx-auto text-center">
@@ -280,11 +206,9 @@ export default function ProductAIPage() {
           </div>
         </section>
 
-        {/* CTA Section */}
         <section className="py-16 bg-background relative overflow-hidden">
           <div className="max-w-screen-xl mx-auto px-4 md:px-6 relative z-10">
             <div className="relative overflow-hidden rounded-xl border border-border/30 bg-foreground/[0.02] px-6 py-12 md:px-10 text-center">
-              {/* Background Effects */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-foreground/5 via-transparent to-transparent opacity-50" />
               <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:20px_20px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
 
@@ -318,8 +242,5 @@ export default function ProductAIPage() {
           </div>
         </section>
       </main>
-
-      <Footer />
-    </div>
   );
 }

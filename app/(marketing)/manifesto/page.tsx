@@ -1,12 +1,7 @@
 import React from 'react';
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
 
 export default function ManifestoPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-      <Navbar homeUrl="/" />
-
       <main className="container mx-auto py-32 px-6 max-w-2xl min-h-screen flex flex-col justify-center">
         <header className="mb-12 text-center sm:text-left">
           <h1 className="text-6xl sm:text-7xl font-serif italic font-normal tracking-tight">Manifesto</h1>
@@ -54,8 +49,5 @@ export default function ManifestoPage() {
           </p>
         </div>
       </main>
-
-      <Footer />
-    </div>
   );
 }

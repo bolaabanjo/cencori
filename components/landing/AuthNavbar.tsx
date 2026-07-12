@@ -1,93 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Navbar from "@/components/landing/Navbar";
-import { Logo } from "@/components/logo";
-import { siteConfig } from "@/config/site";
-import { supabase } from "@/lib/supabaseClient";
 
 interface AuthNavbarProps {
     className?: string;
 }
 
 export function AuthNavbar({ className }: AuthNavbarProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-    useEffect(() => {
-        const checkUser = async () => {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session) {
-                setIsAuthenticated(true);
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        };
-        checkUser();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-            if (session) {
-                setIsAuthenticated(true);
-                const { user } = session;
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
-
-    const unauthenticatedActions = [
-        { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-        {
-            text: "Get Started",
-            href: siteConfig.links.getStartedUrl,
-            isButton: true,
-            variant: "default",
-        },
-    ];
-
-    const authenticatedActions = [
-        {
-            text: "Dashboard",
-            href: "/dashboard/organizations",
-            isButton: true,
-            variant: "default",
-        },
-        {
-            text: userProfile.name || "User",
-            href: "#",
-            isButton: false,
-            isAvatar: true,
-            avatarSrc: userProfile.avatar,
-            avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase(),
-        },
-    ];
-
-    return (
-        <Navbar
-            homeUrl="/"
-            className={className}
-            actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
-            isAuthenticated={isAuthenticated}
-            userProfile={isAuthenticated ? userProfile : undefined}
-        />
-    );
+    return <Navbar homeUrl="/" className={className} />;
 }

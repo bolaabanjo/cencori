@@ -1,8 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { codeToHtml } from 'shiki';
-import Navbar from '@/components/landing/Navbar';
-import { Footer } from '@/components/landing/Footer';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 
@@ -131,10 +129,7 @@ const CAPABILITIES = [
 
 export default async function DevelopersPage() {
     return (
-        <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-            <Navbar />
-
-            <main className="pt-28 sm:pt-36">
+      <main className="pt-28 sm:pt-36">
                 {/* --- HERO ------------------------------------------------ */}
                 <section className="bg-background border-b border-border/30 pb-0">
                     <div className="mx-auto max-w-6xl border-t border-x border-border/30 relative px-6 py-20 sm:px-12 sm:py-28">
@@ -500,8 +495,5 @@ export default async function DevelopersPage() {
                     </div>
                 </section>
             </main>
-
-            <Footer />
-        </div>
     );
 }

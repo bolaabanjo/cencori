@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CircleUserRound, CreditCard, Settings, HelpCircle, Book, Wrench, Activity, Mail, Command, Menu } from "lucide-react";
+import { GradientAvatar } from "@outpacelabs/avatars";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -562,7 +563,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="hidden lg:inline-flex w-7 h-7 items-center justify-center rounded-full border border-border/40 bg-transparent hover:bg-secondary transition-colors cursor-pointer"
+                className="hidden lg:inline-flex w-7 h-7 items-center justify-center rounded-full border border-border/80 bg-transparent hover:bg-secondary transition-colors cursor-pointer"
                 aria-label="Help"
               >
                 <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -618,13 +619,13 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="hidden lg:inline-flex w-7 h-7 cursor-pointer items-center justify-center rounded-full border border-border/40 bg-transparent hover:bg-secondary transition-colors overflow-hidden"
+                className="hidden lg:inline-flex w-7 h-7 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-transparent hover:bg-secondary transition-colors overflow-hidden"
                 aria-label="User menu"
               >
                 {typeof displayAvatar === "string" && displayAvatar.length > 0 ? (
                   <img src={displayAvatar} alt={typeof name === "string" ? name : "User avatar"} className="w-full h-full object-cover" />
                 ) : (
-                  <CircleUserRound className="h-4 w-4 text-muted-foreground" />
+                  <GradientAvatar seed="Bola " size={28} />
                 )}
               </button>
             </DropdownMenuTrigger>

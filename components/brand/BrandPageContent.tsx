@@ -4,93 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Download, Check, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import Navbar from "@/components/landing/Navbar";
+import { useState } from "react";
 import { Footer } from "@/components/landing/Footer";
-import { Logo } from "@/components/logo";
-import { siteConfig } from "@/config/site";
-import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
 
 export default function BrandPageContent() {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-    useEffect(() => {
-        const checkUser = async () => {
-            const { data, error } = await supabase.auth.getSession();
-            if (data?.session) {
-                setIsAuthenticated(true);
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        };
-        checkUser();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-            if (session) {
-                setIsAuthenticated(true);
-                const { user } = session;
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
-
-    const unauthenticatedActions = [
-        { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-        {
-            text: "Get Started",
-            href: siteConfig.links.getStartedUrl,
-            isButton: true,
-            variant: "default",
-        },
-    ];
-
-    const authenticatedActions = [
-        {
-            text: "Dashboard",
-            href: "/dashboard/organizations",
-            isButton: true,
-            variant: "default",
-        },
-        {
-            text: userProfile.name || "User",
-            href: "#",
-            isButton: false,
-            isAvatar: true,
-            avatarSrc: userProfile.avatar,
-            avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase(),
-        },
-    ];
-
     return (
-        <div className="min-h-screen bg-background text-foreground selection:bg-purple-500/30 selection:text-purple-200 font-sans">
-            <Navbar
-                homeUrl="/"
-                actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
-                isAuthenticated={isAuthenticated}
-                userProfile={isAuthenticated ? userProfile : undefined}
-            />
-
+        <>
             <main className="container mx-auto max-w-6xl pt-24 pb-32 md:pb-32 px-4 flex flex-col items-center justify-center relative z-10">
 
                 {/* Announcement Badge */}
@@ -101,181 +20,247 @@ export default function BrandPageContent() {
                     </div>
                 </div>
 
-                {/* Headline */}
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter mb-6 max-w-4xl text-center animate-appear [animation-delay:100ms] text-transparent bg-clip-text bg-gradient-to-b from-foreground to-foreground/50">
-                    Brand Assets
-                </h1>
-
-                {/* Subheadline */}
-                <p className="text-lg md:text-xl text-muted-foreground max-w-xl text-center mb-10 animate-appear [animation-delay:200ms] leading-relaxed">
-                    Download official Cencori logos and marks. Please use these according to our guidelines to maintain consistency.
-                </p>
-
-                {/* CTAs */}
-                <div className="flex flex-col sm:flex-row gap-3 animate-appear [animation-delay:300ms] items-center">
-                    <Link href="/cencori-brand-assets.zip" download>
-                        <Button size="default" className="h-7 px-3 text-[11px] font-medium rounded-full bg-foreground text-background hover:bg-foreground/90 transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] dark:shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)]">
-                            <Download className="mr-2 h-3 w-3" />
-                            Download Asset Kit (.zip)
-                        </Button>
-                    </Link>
-                    <Link href="/design">
-                        <Button variant="outline" size="default" className="h-7 px-3 text-[11px] font-medium rounded-full border-foreground/20 text-muted-foreground hover:text-foreground hover:bg-foreground/5 hover:border-foreground/40 transition-all">
-                            View Design System
-                        </Button>
-                    </Link>
+                {/* Title */}
+                <div className="mb-16 animate-appear flex flex-col items-center gap-2 [animation-delay:100ms]">
+                    <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-center max-w-3xl text-slate-50">
+                        Brand Assets
+                    </h1>
+                    <p className="text-base sm:text-lg text-zinc-400 text-center max-w-xl">
+                        Download official Cencori logos, icons, and brand guidelines.
+                    </p>
                 </div>
 
-                <div className="mt-20 w-full grid gap-20 px-4">
-                    {/* Logomark Section */}
-                    <section className="space-y-8">
-                        <div className="flex flex-col items-center text-center gap-4 border-b border-border pb-6">
-                            <div>
-                                <h2 className="text-3xl font-semibold tracking-tight text-foreground mb-2">Logomark</h2>
-                                <p className="text-muted-foreground">The standalone symbol. Use for avatars, icons, or constrained spaces.</p>
-                            </div>
-                        </div>
+                {/* Logo Section */}
+                <section className="w-full animate-appear [animation-delay:200ms] space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold mb-2">Logos</h2>
+                        <p className="text-sm text-zinc-400">Primary logo variations for web, print, and presentations.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {logos.map((logo, i) => (
+                            <BrandCard key={i} {...logo} />
+                        ))}
+                    </div>
+                </section>
 
-                        <div className="grid md:grid-cols-2 gap-6">
-                            {/* Dark Mode Variant (White Logo) */}
-                            <div className="group rounded-3xl border border-border bg-card text-card-foreground overflow-hidden transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5">
-                                <div className="aspect-[4/3] relative flex items-center justify-center bg-[#050505] bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]">
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-                                    <div className="relative w-32 h-32 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
-                                        <Image
-                                            src="/logo white.svg"
-                                            alt="Cencori Logo White"
-                                            fill
-                                            className="object-contain"
-                                        />
-                                    </div>
-                                    <div className="absolute bottom-4 left-4">
-                                        <div className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/5 text-[10px] font-mono text-zinc-400">
-                                            on-dark
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-6 border-t border-border bg-muted/30 backdrop-blur-xl flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-medium text-foreground">White Logomark</h3>
-                                        <p className="text-xs text-muted-foreground font-mono mt-1">SVG</p>
-                                    </div>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground" asChild>
-                                        <a href="/logo white.svg" download>
-                                            <Download className="h-4 w-4" />
-                                        </a>
-                                    </Button>
-                                </div>
-                            </div>
+                {/* Icon Section */}
+                <section className="w-full mt-24 animate-appear [animation-delay:400ms] space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold mb-2">Icons</h2>
+                        <p className="text-sm text-zinc-400">Standalone icons for app icons, badges, and small UI spaces.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {icons.map((icon, i) => (
+                            <BrandCard key={i} {...icon} />
+                        ))}
+                    </div>
+                </section>
 
-                            {/* Light Mode Variant (Black Logo) */}
-                            <div className="group rounded-3xl border border-border bg-card text-card-foreground overflow-hidden transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5">
-                                <div className="aspect-[4/3] relative flex items-center justify-center bg-white relative">
-                                    <div className="relative w-32 h-32 transition-transform duration-500 group-hover:scale-110 drop-shadow-xl">
-                                        <Image
-                                            src="/logo black.svg"
-                                            alt="Cencori Logo Black"
-                                            fill
-                                            className="object-contain"
-                                        />
-                                    </div>
-                                    <div className="absolute bottom-4 left-4">
-                                        <div className="px-3 py-1 rounded-full bg-black/5 backdrop-blur-md border border-black/5 text-[10px] font-mono text-zinc-500">
-                                            on-light
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-6 border-t border-border bg-muted/30 backdrop-blur-xl flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-medium text-foreground">Black Logomark</h3>
-                                        <p className="text-xs text-muted-foreground font-mono mt-1">SVG</p>
-                                    </div>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground" asChild>
-                                        <a href="/logo black.svg" download>
-                                            <Download className="h-4 w-4" />
-                                        </a>
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
+                {/* Wallpapers Section */}
+                <section className="w-full mt-24 animate-appear [animation-delay:500ms] space-y-8">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold mb-2">Wallpapers</h2>
+                        <p className="text-sm text-zinc-400">Desktop and mobile wallpapers featuring the Cencori brand.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {wallpapers.map((wp, i) => (
+                            <BrandCard key={i} {...wp} />
+                        ))}
+                    </div>
+                </section>
 
-                    {/* Wordmark Section */}
-                    <section className="space-y-8">
-                        <div className="flex flex-col items-center text-center gap-4 border-b border-border pb-6">
-                            <div>
-                                <h2 className="text-3xl font-semibold tracking-tight text-foreground mb-2">Wordmark</h2>
-                                <p className="text-muted-foreground">The full brand name. Use for headers, partnerships, and primary branding.</p>
-                            </div>
-                        </div>
-
-                        <div className="grid md:grid-cols-2 gap-6">
-                            {/* Dark Mode Variant (White Wordmark) */}
-                            <div className="group rounded-3xl border border-border bg-card text-card-foreground overflow-hidden transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5">
-                                <div className="aspect-[2/1] relative flex items-center justify-center bg-[#050505] bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]">
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-                                    <div className="relative w-56 h-16 transition-transform duration-500 group-hover:scale-105 drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
-                                        <Image
-                                            src="/logos/ww.png"
-                                            alt="Cencori Wordmark White"
-                                            fill
-                                            className="object-contain"
-                                        />
-                                    </div>
-                                    <div className="absolute bottom-4 left-4">
-                                        <div className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/5 text-[10px] font-mono text-zinc-400">
-                                            on-dark
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-6 border-t border-border bg-muted/30 backdrop-blur-xl flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-medium text-foreground">White Wordmark</h3>
-                                        <p className="text-xs text-muted-foreground font-mono mt-1">PNG</p>
-                                    </div>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground" asChild>
-                                        <a href="/logos/ww.png" download>
-                                            <Download className="h-4 w-4" />
-                                        </a>
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* Light Mode Variant (Black Wordmark) */}
-                            <div className="group rounded-3xl border border-border bg-card text-card-foreground overflow-hidden transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5">
-                                <div className="aspect-[2/1] relative flex items-center justify-center bg-white">
-                                    <div className="relative w-56 h-16 transition-transform duration-500 group-hover:scale-105 drop-shadow-xl">
-                                        <Image
-                                            src="/logos/bw.png"
-                                            alt="Cencori Wordmark Black"
-                                            fill
-                                            className="object-contain"
-                                        />
-                                    </div>
-                                    <div className="absolute bottom-4 left-4">
-                                        <div className="px-3 py-1 rounded-full bg-black/5 backdrop-blur-md border border-black/5 text-[10px] font-mono text-zinc-500">
-                                            on-light
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="p-6 border-t border-border bg-muted/30 backdrop-blur-xl flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-medium text-foreground">Black Wordmark</h3>
-                                        <p className="text-xs text-muted-foreground font-mono mt-1">PNG</p>
-                                    </div>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground" asChild>
-                                        <a href="/logos/bw.png" download>
-                                            <Download className="h-4 w-4" />
-                                        </a>
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-                </div>
+                {/* Guidelines */}
+                <section className="w-full mt-24 animate-appear [animation-delay:600ms]">
+                    <div className="rounded-xl border border-border/60 bg-gradient-to-br from-zinc-900/90 to-zinc-950/90 p-8 sm:p-12 flex flex-col items-center text-center">
+                        <h2 className="text-2xl font-bold mb-4">Brand Guidelines</h2>
+                        <p className="text-sm text-zinc-400 max-w-xl mb-6">
+                            Our comprehensive brand guidelines cover logo usage, color palette, typography, tone of voice, and more.
+                        </p>
+                        <Button variant="default" size="lg" asChild>
+                            <a href="/brand-guidelines.pdf" download>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download Guidelines
+                            </a>
+                        </Button>
+                    </div>
+                </section>
             </main>
 
             <Footer />
+        </>
+    );
+}
+
+type BrandItem = {
+    title: string;
+    preview: string;
+    src: string;
+    format: string;
+};
+
+const logos: BrandItem[] = [
+    {
+        title: "Cencori Logo — Light",
+        preview: "/brand/cencori-logo-light.svg",
+        src: "/brand/cencori-logo-light.svg",
+        format: "SVG",
+    },
+    {
+        title: "Cencori Logo — Dark",
+        preview: "/brand/cencori-logo-dark.svg",
+        src: "/brand/cencori-logo-dark.svg",
+        format: "SVG",
+    },
+    {
+        title: "Cencori Logo — Symbol",
+        preview: "/brand/cencori-symbol.svg",
+        src: "/brand/cencori-symbol.svg",
+        format: "SVG",
+    },
+    {
+        title: "Cencori Logo — Light PNG",
+        preview: "/brand/cencori-logo-light.png",
+        src: "/brand/cencori-logo-light.png",
+        format: "PNG",
+    },
+    {
+        title: "Cencori Logo — Dark PNG",
+        preview: "/brand/cencori-logo-dark.png",
+        src: "/brand/cencori-logo-dark.png",
+        format: "PNG",
+    },
+    {
+        title: "Cencori Logo — Symbol PNG",
+        preview: "/brand/cencori-symbol.png",
+        src: "/brand/cencori-symbol.png",
+        format: "PNG",
+    },
+];
+
+const icons: BrandItem[] = [
+    {
+        title: "Cencori Icon — Light",
+        preview: "/brand/cencori-icon-light.svg",
+        src: "/brand/cencori-icon-light.svg",
+        format: "SVG",
+    },
+    {
+        title: "Cencori Icon — Dark",
+        preview: "/brand/cencori-icon-dark.svg",
+        src: "/brand/cencori-icon-dark.svg",
+        format: "SVG",
+    },
+    {
+        title: "Cencori Icon — Light PNG",
+        preview: "/brand/cencori-icon-light.png",
+        src: "/brand/cencori-icon-light.png",
+        format: "PNG",
+    },
+    {
+        title: "Cencori Icon — Dark PNG",
+        preview: "/brand/cencori-icon-dark.png",
+        src: "/brand/cencori-icon-dark.png",
+        format: "PNG",
+    },
+];
+
+const wallpapers: BrandItem[] = [
+    {
+        title: "Desktop Wallpaper — Dark",
+        preview: "/brand/wallpaper-desktop-dark.png",
+        src: "/brand/wallpaper-desktop-dark.png",
+        format: "PNG",
+    },
+    {
+        title: "Desktop Wallpaper — Light",
+        preview: "/brand/wallpaper-desktop-light.png",
+        src: "/brand/wallpaper-desktop-light.png",
+        format: "PNG",
+    },
+    {
+        title: "Mobile Wallpaper — Dark",
+        preview: "/brand/wallpaper-mobile-dark.png",
+        src: "/brand/wallpaper-mobile-dark.png",
+        format: "PNG",
+    },
+    {
+        title: "Mobile Wallpaper — Light",
+        preview: "/brand/wallpaper-mobile-light.png",
+        src: "/brand/wallpaper-mobile-light.png",
+        format: "PNG",
+    },
+];
+
+function BrandCard({ title, preview, src, format }: BrandItem) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        try {
+            // Fetch the image as a blob
+            const response = await fetch(src);
+            const blob = await response.blob();
+
+            await navigator.clipboard.write([
+                new ClipboardItem({ [blob.type]: blob }),
+            ]);
+
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // Fallback: copy the URL
+            try {
+                await navigator.clipboard.writeText(src);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+            } catch {
+                // silently fail
+            }
+        }
+    };
+
+    return (
+        <div className="group relative rounded-xl border border-border/40 bg-card overflow-hidden transition-all duration-300 hover:border-border/80 hover:shadow-lg">
+            <div className="aspect-[4/3] relative bg-gradient-to-br from-zinc-900 to-zinc-950 p-8 flex items-center justify-center">
+                <Image
+                    src={preview}
+                    alt={title}
+                    width={320}
+                    height={240}
+                    className="max-w-full max-h-full object-contain"
+                />
+            </div>
+            <div className="p-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{format}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={handleCopy}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                    >
+                        {copied ? (
+                            <>
+                                <Check className="w-3 h-3" />
+                                Copied
+                            </>
+                        ) : (
+                            <>
+                                <Download className="w-3 h-3" />
+                                Copy
+                            </>
+                        )}
+                    </button>
+                    <Link
+                        href={src}
+                        download
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                        <Download className="w-3 h-3" />
+                        Download
+                    </Link>
+                </div>
+            </div>
         </div>
     );
 }

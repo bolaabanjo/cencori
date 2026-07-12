@@ -6,6 +6,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import { GradientAvatar } from "@outpacelabs/avatars";
 import {
     ExternalLink,
     LogOut,
@@ -218,7 +219,7 @@ export default function ScanLayoutClient({ children }: ScanLayoutClientProps) {
                                     {avatar ? (
                                         <img src={avatar} alt={name || "User"} className="w-full h-full object-cover" />
                                     ) : (
-                                        <CircleUserRound className="h-4 w-4 text-muted-foreground" />
+                                        <GradientAvatar seed="Bola " size={28} />
                                     )}
                                 </button>
                             </DropdownMenuTrigger>

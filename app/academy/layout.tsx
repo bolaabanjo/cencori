@@ -24,5 +24,11 @@ export default function AcademyLayout({
 }: {
     children: React.ReactNode;
 }) {
-    return <>{children}</>;
+    return (
+        <div className="min-h-screen bg-background text-foreground">
+            <AuthNavbar />
+            {children}
+            <Footer />
+        </div>
+    );
 }

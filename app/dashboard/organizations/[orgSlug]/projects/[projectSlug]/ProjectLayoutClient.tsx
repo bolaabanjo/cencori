@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use } from "react";
+import React, { use, useState } from "react";
 import Link from "next/link";
 import { notFound, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,21 +13,26 @@ import {
     SidebarMenu,
     SidebarMenuItem,
     SidebarMenuButton,
+    SidebarMenuSub,
+    SidebarMenuSubItem,
+    SidebarMenuSubButton,
     SidebarRail,
     SidebarGroup,
     SidebarTrigger,
     SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import DashboardCircleIcon from "@hugeicons/core-free-icons/DashboardCircleIcon";
+import DiscoverSquareIcon from "@hugeicons/core-free-icons/DiscoverSquareIcon";
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
-import Analytics01Icon from "@hugeicons/core-free-icons/Analytics01Icon";
-import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
 import AiCloudIcon from "@hugeicons/core-free-icons/AiCloudIcon";
 import AiChipIcon from "@hugeicons/core-free-icons/AiChipIcon";
 import AiSettingIcon from "@hugeicons/core-free-icons/AiSettingIcon";
 import Blockchain03Icon from "@hugeicons/core-free-icons/Blockchain03Icon";
 import AiChemistry01Icon from "@hugeicons/core-free-icons/AiChemistry01Icon";
+import Analytics01Icon from "@hugeicons/core-free-icons/Analytics01Icon";
+import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
 import AiLockIcon from "@hugeicons/core-free-icons/AiLockIcon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import CreditCardAcceptIcon from "@hugeicons/core-free-icons/CreditCardAcceptIcon";
@@ -53,7 +58,6 @@ interface OrganizationData {
 
 type LayoutParams = Promise<{ orgSlug: string; projectSlug: string }>;
 
-// Hook to fetch project and org with caching
 function useProjectLayout(orgSlug: string, projectSlug: string) {
     return useQuery({
         queryKey: ["projectLayout", orgSlug, projectSlug],
@@ -80,17 +84,15 @@ function useProjectLayout(orgSlug: string, projectSlug: string) {
                 project: projectData as ProjectData,
             };
         },
-        staleTime: 5 * 60 * 1000, // 5 minutes - layout data rarely changes
+        staleTime: 5 * 60 * 1000,
     });
 }
 
-// Prefetch helper for project pages
 async function prefetchProjectPage(
     queryClient: ReturnType<typeof useQueryClient>,
     projectId: string,
     pageType: string
 ) {
-    // Prefetch common data based on page type
     const prefetchMap: Record<string, () => Promise<void>> = {
         "api-keys": async () => {
             await queryClient.prefetchQuery({
@@ -134,7 +136,6 @@ async function prefetchProjectPage(
     }
 }
 
-// Nav item type
 interface NavItem {
     href: string;
     icon: React.ReactNode;
@@ -142,7 +143,6 @@ interface NavItem {
     prefetch?: () => void;
 }
 
-// Sidebar link with prefetching
 function ProjectSidebarLink({
     href,
     icon,
@@ -176,7 +176,6 @@ function ProjectSidebarLink({
     );
 }
 
-// Render nav group with optional divider
 function NavGroup({
     items,
     isActive,
@@ -217,12 +216,11 @@ export default function ProjectLayoutClient({
     const pathname = usePathname();
     const queryClient = useQueryClient();
     const { isOpen, setIsOpen } = useMobileSheet();
+    const [activeView, setActiveView] = useState<"main" | "ai-gateway">("main");
 
-    // Fetch project and org with caching - INSTANT ON REVISIT!
     const { data, error } = useProjectLayout(orgSlug, projectSlug);
     const project = data?.project;
 
-    // Helper to check if a route is active
     const isActive = (path: string) => {
         if (path.endsWith(projectSlug || '')) {
             return pathname === path;
@@ -230,53 +228,100 @@ export default function ProjectLayoutClient({
         return pathname.startsWith(path);
     };
 
-    // Only show not found if there's an error (not while loading)
     if (error) {
         notFound();
     }
 
-    // Use URL params directly for nav - no need to wait for query!
     const basePath = `/dashboard/organizations/${orgSlug}/projects/${projectSlug}`;
 
-    // Create prefetch functions for data-heavy pages (only if project data is loaded)
     const createPrefetch = (pageType: string) => () => {
         if (project?.id) {
             prefetchProjectPage(queryClient, project.id, pageType);
         }
     };
 
-    // Grouped navigation items
-    const coreItems: NavItem[] = [
-        { href: basePath, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-6 !w-6" />, label: "Project Overview" },
-
-        { href: `${basePath}/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-6 !w-6" />, label: "Prompts" },
-        { href: `${basePath}/observability`, icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-6 !w-6" />, label: "Observability", prefetch: createPrefetch("observability") },
-        { href: `${basePath}/logs`, icon: <HugeiconsIcon icon={Activity03Icon} className="!h-6 !w-6" />, label: "Logs" },
+    const standaloneItems: NavItem[] = [
+        { href: basePath, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-4 !w-4" />, label: "Project Overview" },
+        { href: `${basePath}/observability`, icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-4 !w-4" />, label: "Observability", prefetch: createPrefetch("observability") },
+        { href: `${basePath}/logs`, icon: <HugeiconsIcon icon={Activity03Icon} className="!h-4 !w-4" />, label: "Logs" },
     ];
 
-    const infrastructureItems: NavItem[] = [
-        { href: `${basePath}/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-6 !w-6" />, label: "Providers", prefetch: createPrefetch("providers") },
-        { href: `${basePath}/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-6 !w-6" />, label: "Models" },
-        { href: `${basePath}/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-6 !w-6" />, label: "Custom Providers" },
-        { href: `${basePath}/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-6 !w-6" />, label: "Cache" },
-        { href: `${basePath}/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-6 !w-6" />, label: "Playground" },
+    const aiGatewayItems: NavItem[] = [
+        { href: basePath, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-4 !w-4" />, label: "Project Overview" },
+        { href: `${basePath}/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-4 !w-4" />, label: "Prompts" },
+        { href: `${basePath}/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-4 !w-4" />, label: "BYOK", prefetch: createPrefetch("providers") },
+        { href: `${basePath}/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-4 !w-4" />, label: "Models" },
+        { href: `${basePath}/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-4 !w-4" />, label: "Custom Providers" },
+        { href: `${basePath}/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-4 !w-4" />, label: "Cache" },
+        { href: `${basePath}/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-4 !w-4" />, label: "Playground" },
     ];
 
     const securityItems: NavItem[] = [
-        { href: `${basePath}/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-6 !w-6" />, label: "Security" },
-        { href: `${basePath}/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-6 !w-6" />, label: "Edge" },
+        { href: `${basePath}/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-4 !w-4" />, label: "Security" },
+        { href: `${basePath}/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-4 !w-4" />, label: "Edge" },
     ];
 
     const billingItems: NavItem[] = [
-        { href: `${basePath}/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-6 !w-6" />, label: "End-User Billing" },
+        { href: `${basePath}/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-4 !w-4" />, label: "End-User Billing" },
     ];
 
     const settingsItems: NavItem[] = [
-        { href: `${basePath}/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-6 !w-6" />, label: "Webhooks" },
-        { href: `${basePath}/settings`, icon: <HugeiconsIcon icon={BrainCogIcon} className="!h-6 !w-6" />, label: "Project Settings" },
+        { href: `${basePath}/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-4 !w-4" />, label: "Webhooks" },
+        { href: `${basePath}/settings`, icon: <HugeiconsIcon icon={BrainCogIcon} className="!h-4 !w-4" />, label: "Project Settings" },
     ];
 
     const isPlayground = pathname.includes("/playground");
+
+    function SidebarNav({ onItemClick }: { onItemClick?: () => void }) {
+        if (activeView === "ai-gateway") {
+            return (
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={() => setActiveView("main")}
+                            size="sm"
+                            className="gap-1 text-muted-foreground"
+                        >
+                            <ChevronLeft className="!h-4 !w-4" />
+                            <span className="text-xs">Back</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    {aiGatewayItems.map((item) => (
+                        <ProjectSidebarLink
+                            key={item.href}
+                            href={item.href}
+                            icon={item.icon}
+                            label={item.label}
+                            isActive={isActive(item.href)}
+                            prefetch={item.prefetch}
+                            onClick={onItemClick}
+                        />
+                    ))}
+                </SidebarMenu>
+            );
+        }
+
+        return (
+            <SidebarMenu>
+                <NavGroup items={standaloneItems} isActive={isActive} onClick={onItemClick} />
+                <SidebarMenuItem>
+                    <SidebarMenuButton
+                        onClick={() => setActiveView("ai-gateway")}
+                        size="sm"
+                        className="gap-1"
+                    >
+                        <HugeiconsIcon icon={DiscoverSquareIcon} className="!h-4 !w-4" />
+                        <span className="text-xs">AI Gateway</span>
+                        <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarSeparator className="my-2 mx-0 w-full" />
+                <NavGroup items={securityItems} isActive={isActive} onClick={onItemClick} />
+                <NavGroup items={billingItems} isActive={isActive} onClick={onItemClick} />
+                <NavGroup items={settingsItems} isActive={isActive} onClick={onItemClick} showDivider={false} />
+            </SidebarMenu>
+        );
+    }
 
     return (
         <SidebarProvider
@@ -284,17 +329,10 @@ export default function ProjectLayoutClient({
             className={isPlayground ? "min-h-0 flex-1 overflow-hidden" : undefined}
             style={isPlayground ? { minHeight: "0px" } : undefined}
         >
-            {/* Desktop Sidebar - hidden on mobile */}
             <Sidebar collapsible="icon" expandOnHover className="top-12 h-[calc(100vh-3rem)] hidden lg:block border-r border-border/40">
                 <SidebarContent>
                     <SidebarGroup className="pt-3">
-                        <SidebarMenu>
-                            <NavGroup items={coreItems} isActive={isActive} />
-                            <NavGroup items={infrastructureItems} isActive={isActive} />
-                            <NavGroup items={securityItems} isActive={isActive} />
-                            <NavGroup items={billingItems} isActive={isActive} />
-                            <NavGroup items={settingsItems} isActive={isActive} showDivider={false} />
-                        </SidebarMenu>
+                        <SidebarNav />
                     </SidebarGroup>
                 </SidebarContent>
                 <SidebarRail />
@@ -303,18 +341,11 @@ export default function ProjectLayoutClient({
                 </div>
             </Sidebar>
 
-            {/* Mobile Sheet */}
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
                 <SheetContent side="bottom" className="h-[70vh]">
                     <div className="py-3">
                         <SidebarGroup>
-                            <SidebarMenu>
-                                <NavGroup items={coreItems} isActive={isActive} onClick={() => setIsOpen(false)} />
-                                <NavGroup items={infrastructureItems} isActive={isActive} onClick={() => setIsOpen(false)} />
-                                <NavGroup items={securityItems} isActive={isActive} onClick={() => setIsOpen(false)} />
-                                <NavGroup items={billingItems} isActive={isActive} onClick={() => setIsOpen(false)} />
-                                <NavGroup items={settingsItems} isActive={isActive} onClick={() => setIsOpen(false)} showDivider={false} />
-                            </SidebarMenu>
+                            <SidebarNav onItemClick={() => setIsOpen(false)} />
                         </SidebarGroup>
                     </div>
                 </SheetContent>

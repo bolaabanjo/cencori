@@ -125,7 +125,7 @@
     --accent: #1a1a1a;
     --accent-foreground: #f2f2f2;
     --destructive: #ef4444;
-    --border: #2a2a2a;
+    --border: #333333;
     --input: #1a1a1a;
     --ring: #f2f2f2;
     --chart-1: #e5e5e5;
@@ -139,7 +139,7 @@
     --sidebar-primary-foreground: #000000;
     --sidebar-accent: #151515;
     --sidebar-accent-foreground: #f2f2f2;
-    --sidebar-border: #262626;
+    --sidebar-border: #222222;
     --sidebar-ring: #f2f2f2;
     --color-vesper-type: oklch(0.8689 0.0877 60.68);
     --color-vesper-string: oklch(0.93 0.1035 175.07);

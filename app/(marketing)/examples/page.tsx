@@ -6,8 +6,6 @@ import { ArrowRightIcon, ArrowUpRightIcon } from "@heroicons/react/24/outline";
 import { EXAMPLE_PROJECTS, type ExampleProject } from "@/config/examples";
 import { siteConfig } from "@/config/site";
 
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,16 +50,7 @@ export default function ExamplesPage() {
     const agentExamples = EXAMPLE_PROJECTS.filter(p => p.category === 'agent');
 
     return (
-        <div className="min-h-screen bg-background text-foreground">
-            <Navbar
-                homeUrl="/"
-                actions={[
-                    { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-                    { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" },
-                ]}
-            />
-
-            <main className="pt-32 pb-20">
+      <main className="pt-32 pb-20">
                 <div className="container mx-auto px-4 md:px-6 max-w-4xl">
                     {/* Header */}
                     <div className="mb-12">
@@ -131,8 +120,5 @@ export default function ExamplesPage() {
                     </div>
                 </div>
             </main>
-
-            <Footer />
-        </div>
     );
 }

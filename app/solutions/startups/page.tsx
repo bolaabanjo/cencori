@@ -1,76 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
-import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ChevronRight, Rocket, ShieldCheck, TrendingUp, Users } from "lucide-react";
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
-import { Logo } from "@/components/logo";
 
 export default function StartupsPage() {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-    useEffect(() => {
-        const checkUser = async () => {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session) {
-                setIsAuthenticated(true);
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            }
-        };
-        checkUser();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-            if (session) {
-                setIsAuthenticated(true);
-                const { user } = session;
-                if (user) {
-                    const meta = user.user_metadata ?? {};
-                    const avatar = meta.avatar_url ?? meta.picture ?? null;
-                    const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-                }
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
-
-    const unauthenticatedActions = [
-        { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-        { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" },
-    ];
-
-    const authenticatedActions = [
-        { text: "Dashboard", href: "/dashboard/organizations", isButton: true, variant: "default" },
-        { text: userProfile.name || "User", href: "#", isButton: false, isAvatar: true, avatarSrc: userProfile.avatar, avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase() },
-    ];
 
     return (
-        <div className="min-h-screen bg-background text-foreground">
-            <Navbar
-                homeUrl="/"
-                actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
-                isAuthenticated={isAuthenticated}
-                userProfile={isAuthenticated ? userProfile : undefined}
-            />
-
-            <main>
+      <main>
                 <section className="relative flex flex-col items-center justify-center overflow-hidden bg-background pt-32 pb-20">
                     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-500/5 via-background to-background pointer-events-none" />
 
@@ -144,7 +82,5 @@ export default function StartupsPage() {
                     </div>
                 </section>
             </main>
-            <Footer />
-        </div>
     );
 }

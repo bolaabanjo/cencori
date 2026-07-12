@@ -2,17 +2,12 @@ import { Suspense } from "react";
 import { getAllPosts } from "@/lib/blog";
 import { BlogList } from "@/components/blog/BlogList";
 import { BlogTabs } from "@/components/blog/BlogTabs";
-import { AuthNavbar } from "@/components/landing/AuthNavbar";
-import { Footer } from "@/components/landing/Footer";
 
 export default function BlogPage() {
     const allPosts = getAllPosts().filter((p) => p.category !== "press");
 
     return (
-        <div className="min-h-screen bg-background flex flex-col">
-            <AuthNavbar />
-
-            <main className="flex-1 pt-20">
+        <main className="flex-1 pt-20">
                 <div className="border-b border-border/40">
                     <div className="container mx-auto py-8 px-4 max-w-5xl space-y-5">
                         <div>
@@ -31,8 +26,5 @@ export default function BlogPage() {
                     <BlogList posts={allPosts} />
                 </Suspense>
             </main>
-
-            <Footer />
-        </div>
     );
 }

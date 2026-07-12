@@ -30,6 +30,7 @@ import { ChevronRight, Menu, Settings } from "lucide-react";
 import { ReactNode } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CircleUserRound } from "lucide-react";
+import { GradientAvatar } from "@outpacelabs/avatars";
 import { useTheme } from "next-themes";
 
 import { siteConfig } from "@/config/site";
@@ -451,7 +452,7 @@ export default function Navbar({
                                                     />
                                                 ) : (
                                                     <AvatarFallback className="bg-muted">
-                                                        <CircleUserRound className="h-5 w-5 text-muted-foreground" />
+                                                        <GradientAvatar seed="Bola " size={20} />
                                                     </AvatarFallback>
                                                 )}
                                             </Avatar>

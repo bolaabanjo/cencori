@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { AuthNavbar } from "@/components/landing/AuthNavbar";
-import { Footer } from "@/components/landing/Footer";
 
 interface Course {
     id: string;
@@ -152,8 +150,7 @@ function CourseRow({ course }: { course: Course }) {
 
 export default function AcademyPage() {
     return (
-        <div className="flex min-h-screen flex-col">
-            <AuthNavbar />
+        <>
             <main className="flex-1 container mx-auto px-4 md:px-6 py-8 md:py-12">
                 <div className="max-w-5xl mx-auto">
                     {/* Hero */}
@@ -209,7 +206,6 @@ export default function AcademyPage() {
                     </div>
                 </div>
             </main>
-            <Footer />
-        </div>
+        </>
     );
 }

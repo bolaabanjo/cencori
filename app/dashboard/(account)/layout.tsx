@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { CircleUserRound, Settings, Link2, ShieldCheck, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,18 +19,19 @@ export default function AccountLayout({
     children: React.ReactNode;
 }) {
     const pathname = usePathname();
+    const router = useRouter();
 
     return (
         <div className="flex min-h-[calc(100vh-6rem)]">
             <aside className="hidden lg:flex w-56 flex-col border-r border-border/40 pr-6">
                 <div className="mb-4">
-                    <Link
-                        href="/dashboard/organizations"
-                        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    <button
+                        onClick={() => router.back()}
+                        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     >
                         <ChevronLeft className="h-3 w-3" />
                         Back to Dashboard
-                    </Link>
+                    </button>
                 </div>
                 <h2 className="text-sm font-medium mb-4">Account</h2>
                 <nav className="space-y-1">

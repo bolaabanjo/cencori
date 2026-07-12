@@ -2,8 +2,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
 import { Reveal } from "@/components/landing/Reveal";
 import { partners } from "@/config/partners";
 import { Search, Filter, ArrowUpRight } from "lucide-react";
@@ -25,13 +23,7 @@ export default function PartnersIndexPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-background text-foreground selection:bg-emerald-500/10 selection:text-emerald-500">
-            <Navbar
-                homeUrl="/"
-                actions={navActions}
-            />
-
-            <main className="pt-32 pb-24">
+      <main className="pt-32 pb-24">
                 <div className="mx-auto max-w-6xl px-4 md:px-6">
                     {/* Header */}
                     <div className="mb-20">
@@ -122,8 +114,5 @@ export default function PartnersIndexPage() {
                     </div>
                 </div>
             </main>
-
-            <Footer />
-        </div>
     );
 }

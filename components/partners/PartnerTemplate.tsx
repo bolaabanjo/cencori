@@ -2,45 +2,17 @@
 
 import React from "react";
 import Link from "next/link";
-import Navbar from "@/components/landing/Navbar";
 import { Footer } from "@/components/landing/Footer";
 import { Reveal } from "@/components/landing/Reveal";
 import { PartnerConfig } from "@/types/partner";
-import { siteConfig } from "@/config/site";
 
 interface PartnerTemplateProps {
     config: PartnerConfig;
-    isAuthenticated: boolean;
-    userProfile: { name: string | null; avatar: string | null };
 }
 
-export function PartnerTemplate({ config, isAuthenticated, userProfile }: PartnerTemplateProps) {
-    const navActions = isAuthenticated
-        ? [
-            { text: "Dashboard", href: "/dashboard/organizations", isButton: true, variant: "default" as const },
-            { 
-                text: userProfile.name || "User", 
-                href: "#", 
-                isButton: false, 
-                isAvatar: true, 
-                avatarSrc: userProfile.avatar, 
-                avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase() 
-            },
-        ]
-        : [
-            { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-            { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" as const },
-        ];
-
+export function PartnerTemplate({ config }: PartnerTemplateProps) {
     return (
-        <div className="min-h-screen bg-background text-foreground selection:bg-zinc-500/20 selection:text-zinc-200">
-            <Navbar
-                homeUrl="/"
-                actions={navActions}
-                isAuthenticated={isAuthenticated}
-                userProfile={isAuthenticated ? userProfile : undefined}
-            />
-
+        <>
             <main className="pt-24">
                 <div className="mx-auto max-w-6xl px-4 md:px-6">
                     {/* Breadcrumbs & Navigation */}
@@ -166,6 +138,6 @@ export function PartnerTemplate({ config, isAuthenticated, userProfile }: Partne
             </main>
 
             <Footer />
-        </div>
+        </>
     );
 }

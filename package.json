@@ -36,6 +36,7 @@
     "@octokit/app": "^16.1.2",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
+    "@outpacelabs/avatars": "^0.2.2",
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "@sendbyte/node": "^0.2.1",
     "@shikijs/transformers": "^4.2.0",

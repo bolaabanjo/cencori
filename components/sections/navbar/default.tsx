@@ -3,6 +3,7 @@ import { CreditCard, Menu, Settings, UserPlus, Users, Shield, Book, Rocket, Code
 import { ReactNode } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CircleUserRound } from "lucide-react";
+import { GradientAvatar } from "@outpacelabs/avatars";
 
 import { siteConfig } from "@/config/site"; // Import siteConfig
 import { cn } from "@/lib/utils";
@@ -297,7 +298,7 @@ export default function Navbar({
                           />
                         ) : (
                           <AvatarFallback>
-                            <CircleUserRound className="h-5 w-5 text-zinc-200" />
+                            <GradientAvatar seed="Bola " size={20} />
                           </AvatarFallback>
                         )}
                       </Avatar>

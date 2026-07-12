@@ -12,6 +12,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronsUpDown, HelpCircle, ExternalLink, CircleUserRound, CreditCard, Settings } from "lucide-react";
+import { GradientAvatar } from "@outpacelabs/avatars";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -232,7 +233,7 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                             {typeof avatar === "string" && avatar.length > 0 ? (
                                 <img src={avatar} alt="User avatar" className="w-full h-full object-cover" />
                             ) : (
-                                <CircleUserRound className="h-4 w-4 text-muted-foreground" />
+                                <GradientAvatar seed="Bola " size={28} />
                             )}
                         </button>
                     </DropdownMenuTrigger>

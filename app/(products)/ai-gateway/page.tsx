@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRightIcon,
@@ -8,7 +8,6 @@ import {
   EyeIcon,
   CodeBracketIcon,
   DocumentCheckIcon,
-  ChevronRightIcon,
   Square3Stack3DIcon,
   CheckCircleIcon,
   CurrencyDollarIcon,
@@ -27,17 +26,12 @@ import {
 } from "@lobehub/icons";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
 
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
 import { Integrations } from "@/components/landing/Integrations";
 import { CTA } from "@/components/landing/CTA";
-import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { BudgetControl } from "@/components/landing/BudgetControl";
 
-// The 5 core pillars of AI Gateway
 const pillars = [
   {
     id: "routing",
@@ -95,7 +89,6 @@ const pillars = [
   },
 ];
 
-// Supported providers
 const providers = [
   { name: "OpenAI", icon: OpenAI },
   { name: "Anthropic", icon: Anthropic },
@@ -119,62 +112,8 @@ const colorClasses: Record<string, { bg: string; border: string; text: string }>
 };
 
 export default function AIGatewayPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-  // Interactive Billing Calculator State
   const [selectedCalcModel, setSelectedCalcModel] = useState<"gpt" | "claude" | "llama">("gpt");
   const [markupPercent, setMarkupPercent] = useState(100);
-
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        setIsAuthenticated(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const meta = user.user_metadata ?? {};
-          const avatar = meta.avatar_url ?? meta.picture ?? null;
-          const name = meta.name ?? user.email?.split("@")[0] ?? null;
-          setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-        }
-      } else {
-        setIsAuthenticated(false);
-        setUserProfile({ name: null, avatar: null });
-      }
-    };
-    checkUser();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-      if (session) {
-        setIsAuthenticated(true);
-        const { user } = session;
-        if (user) {
-          const meta = user.user_metadata ?? {};
-          const avatar = meta.avatar_url ?? meta.picture ?? null;
-          const name = meta.name ?? user.email?.split("@")[0] ?? null;
-          setUserProfile({ name: name as string | null, avatar: avatar as string | null });
-        }
-      } else {
-        setIsAuthenticated(false);
-        setUserProfile({ name: null, avatar: null });
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const unauthenticatedActions = [
-    { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-    { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" },
-  ];
-
-  const authenticatedActions = [
-    { text: "Dashboard", href: "/dashboard/organizations", isButton: true, variant: "default" },
-    { text: userProfile.name || "User", href: "#", isButton: false, isAvatar: true, avatarSrc: userProfile.avatar, avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase() },
-  ];
 
   const modelInfo = {
     gpt: { name: "GPT-4o (OpenAI)", raw: 5.00 },
@@ -189,27 +128,15 @@ export default function AIGatewayPage() {
   const profitMarginPercent = retailPrice > 0 ? Math.round((markupAmount / retailPrice) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-      <Navbar
-        homeUrl="/"
-        actions={isAuthenticated ? authenticatedActions : unauthenticatedActions}
-        isAuthenticated={isAuthenticated}
-        userProfile={isAuthenticated ? userProfile : undefined}
-      />
-
       <main>
-        {/* Hero Section */}
         <section className="bg-background border-b border-border/30 pt-28 sm:pt-36 pb-0 relative overflow-hidden">
-          {/* Background Effects */}
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-foreground/5 via-background to-background pointer-events-none" />
 
           <div className="mx-auto max-w-6xl border-t border-x border-border/30 relative px-6 py-20 sm:px-12 sm:py-28 z-10 flex flex-col items-center text-center">
-            {/* Corner Intersection Markers */}
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
-            {/* Badge */}
             <Link
               href="/"
               className="group mb-8 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.25em] text-muted-foreground transition-colors hover:text-foreground animate-appear"
@@ -218,18 +145,15 @@ export default function AIGatewayPage() {
               <ArrowRightIcon className="size-3 -translate-x-1 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
             </Link>
 
-            {/* Headline */}
             <h1 className="mb-8 max-w-3xl text-[2.5rem] font-heading font-black leading-[0.95] tracking-[-0.02em] animate-appear sm:text-[3.5rem] lg:text-[4.5rem] text-foreground">
             Every AI request, under your
               <span className="font-serif italic font-normal text-muted-foreground"> control.</span>
             </h1>
 
-            {/* Subheadline */}
             <p className="mb-10 max-w-[38rem] text-base leading-[1.7] text-muted-foreground animate-appear [animation-delay:200ms]">
             One endpoint for 150+ models. AI control, security, observability, and monetization. <br/>OpenAI-compatible API. Fast setup. No rewrite.
             </p>
 
-            {/* CTAs */}
             <div className="mb-10 flex flex-wrap items-center justify-center gap-3 animate-appear [animation-delay:300ms]">
               <Link href={siteConfig.links.getStartedUrl}>
                 <Button size="default" className="h-8 px-4 text-xs font-medium rounded-md bg-foreground text-background hover:bg-foreground/90 transition-all">
@@ -243,7 +167,6 @@ export default function AIGatewayPage() {
               </Link>
             </div>
 
-            {/* Provider icons */}
             <div className="mt-12 animate-appear [animation-delay:400ms]">
               <p className="text-[10px] text-muted-foreground mb-3 uppercase tracking-wider">Supported Providers</p>
               <div className="flex flex-wrap justify-center gap-4">
@@ -264,16 +187,13 @@ export default function AIGatewayPage() {
           </div>
         </section>
 
-        {/* 5 Pillars Section */}
         <section className="bg-background border-b border-border/30">
           <div className="mx-auto max-w-6xl border-x border-border/30 relative">
-            {/* Corner Intersection Markers */}
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
 
-            {/* Header Area */}
             <div className="flex flex-col items-center text-center px-6 py-20 sm:px-12">
               <h2 className="text-2xl md:text-4xl font-heading font-semibold tracking-[-0.02em] mb-4 text-foreground leading-[1.1]">
                 Everything in <span className="text-muted-foreground">one gateway</span>
@@ -283,13 +203,10 @@ export default function AIGatewayPage() {
               </p>
             </div>
 
-            {/* Pillar Cards - Connected Grid Layout */}
             <div className="relative border-t border-border/30">
-              {/* Horizontal divider intersection markers */}
               <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
               <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
 
-              {/* Grid / Mobile scroll */}
               <div className="flex overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 lg:grid-cols-3">
                 {pillars.map((pillar, index) => {
                   const colors = colorClasses[pillar.color];
@@ -299,29 +216,23 @@ export default function AIGatewayPage() {
                       className={cn(
                         "group relative flex flex-col p-8 transition-colors duration-300 hover:bg-foreground/[0.02]",
                         "w-[80vw] max-w-[280px] sm:max-w-[320px] flex-shrink-0 snap-start md:w-auto md:max-w-none md:flex-shrink md:snap-align-none",
-                        // Mobile: horizontal scroll borders (right border on all except last, no bottom border)
                         "border-r border-border/30 last:border-r-0 border-b-0",
-                        // Medium screen (2 cols): bottom border on first 4, right border on even-index
                         index < 4 ? "md:border-b" : "md:border-b-0",
                         index % 2 === 0 ? "md:border-r" : "md:border-r-0",
-                        // Large screen (3 cols, 2 rows): bottom border on first row, right border on cols 1 & 2
                         index < 3 ? "lg:border-b" : "lg:border-b-0",
                         index % 3 !== 2 ? "lg:border-r" : "lg:border-r-0"
                       )}
                     >
-                      {/* Icon */}
                       <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center mb-4", colors.bg, colors.border, "border")}>
                         <pillar.icon className={cn("h-4 w-4", colors.text)} aria-hidden="true" />
                       </div>
 
-                      {/* Content */}
                       <h3 className="text-base font-semibold tracking-tight mb-1">{pillar.title}</h3>
                       <p className={cn("text-xs font-medium mb-2", colors.text)}>{pillar.tagline}</p>
                       <p className="text-muted-foreground text-sm leading-relaxed mb-4">
                         {pillar.description}
                       </p>
 
-                      {/* Feature list */}
                       <ul className="mt-auto space-y-1.5">
                         {pillar.features.map((feature, i) => (
                           <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -340,10 +251,8 @@ export default function AIGatewayPage() {
 
         <Integrations />
 
-        {/* Code Example Section */}
         <section className="bg-background border-b border-border/30">
           <div className="mx-auto max-w-6xl border-x border-border/30 relative px-6 py-20 sm:px-12 sm:py-28">
-            {/* Corner Intersection Markers */}
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
@@ -404,10 +313,8 @@ export default function AIGatewayPage() {
           </div>
         </section>
 
-        {/* Stats Section */}
         <section className="bg-background border-b border-border/30">
           <div className="mx-auto max-w-6xl border-x border-border/30 relative px-6 py-16 sm:px-12">
-            {/* Corner Intersection Markers */}
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
@@ -429,17 +336,14 @@ export default function AIGatewayPage() {
           </div>
         </section>
 
-        {/* End-User Billing Seductive Section */}
         <section className="bg-background border-b border-border/30 relative overflow-hidden">
           <div className="mx-auto max-w-6xl border-x border-border/30 relative">
-            {/* Corner Intersection Markers */}
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -top-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
             <div className="absolute -bottom-1.5 -right-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
-              {/* Left Column: Copy & Value Props */}
               <div className="lg:col-span-6 p-8 sm:p-12 sm:py-20 flex flex-col justify-center space-y-6">
                 
                 <h2 className="text-3xl sm:text-4xl lg:text-4xl font-heading font-black leading-[0.95] tracking-[-0.02em] text-foreground">
@@ -479,10 +383,7 @@ export default function AIGatewayPage() {
                 </div>
               </div>
 
-              {/* Right Column: Seductive Interactive Visual deconstructed into page grid */}
               <div className="lg:col-span-6 flex flex-col border-t lg:border-t-0 lg:border-l border-border/30 bg-muted/[0.01]">
-                
-                {/* 1. Stripe Connection Header Row */}
                 <div className="relative border-b border-border/30 p-8 sm:px-10 sm:py-6 flex items-center justify-between">
                   <div className="flex items-center">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Stripe Connect: Connected</span>
@@ -490,9 +391,7 @@ export default function AIGatewayPage() {
                   <span className="text-[10px] font-mono text-muted-foreground bg-foreground/5 px-2 py-0.5 rounded border border-border/20">acct_cencori_19a</span>
                 </div>
 
-                {/* 2. Select Model & Surcharge Slider Row */}
                 <div className="relative border-b border-border/30 p-8 sm:px-10 sm:py-8 space-y-6">
-
                   <div className="space-y-2">
                     <label className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">1. Select Resold Model</label>
                     <div className="grid grid-cols-3 gap-2">
@@ -535,9 +434,7 @@ export default function AIGatewayPage() {
                   </div>
                 </div>
 
-                {/* 3. Calculations, Margins and Code block Row */}
                 <div className="p-8 sm:px-10 sm:py-8 space-y-6 flex-grow flex flex-col justify-between">
-                  {/* Math readout */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">Raw API Cost</span>
@@ -549,7 +446,6 @@ export default function AIGatewayPage() {
                     </div>
                   </div>
 
-                  {/* Glowing profit readout */}
                   <div className="bg-amber-500/[0.03] border border-amber-500/20 rounded-lg p-4 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] uppercase font-mono tracking-wider text-amber-500 block mb-0.5">Gross Margin</span>
@@ -565,7 +461,6 @@ export default function AIGatewayPage() {
                     </div>
                   </div>
                   
-                  {/* Visual integration snippet demo */}
                   <div className="space-y-2 mt-2">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block">3. Pass User Context in Header</span>
                     <div className="border border-border/20 bg-background/50 rounded overflow-hidden">
@@ -593,7 +488,6 @@ export default function AIGatewayPage() {
 
         <BudgetControl />
 
-        {/* Playground Section */}
         <section className="bg-background border-b border-border/30">
           <div className="mx-auto max-w-6xl border-x border-border/30 relative px-6 py-16 sm:px-12 text-center">
             <div className="absolute -top-1.5 -left-1.5 flex h-3 w-3 items-center justify-center text-muted-foreground/40 font-mono text-[10px] select-none pointer-events-none">+</div>
@@ -616,10 +510,7 @@ export default function AIGatewayPage() {
           </div>
         </section>
 
-        <CTA isAuthenticated={isAuthenticated} />
+        <CTA />
       </main>
-
-      <Footer />
-    </div>
   );
 }

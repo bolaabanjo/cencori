@@ -1,15 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
-import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Check, Copy } from "lucide-react";
-import Navbar from "@/components/landing/Navbar";
-import { Footer } from "@/components/landing/Footer";
 import { Reveal } from "@/components/landing/Reveal";
-import { Logo } from "@/components/logo";
 import {
     VercelLogo,
     CursorLogo,
@@ -42,60 +37,8 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function VibeCodersPage() {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
-
-    useEffect(() => {
-        const check = async () => {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session) {
-                setIsAuthenticated(true);
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const m = user.user_metadata ?? {};
-                    setUserProfile({
-                        name: (m.name ?? user.email?.split("@")[0] ?? null) as string | null,
-                        avatar: (m.avatar_url ?? m.picture ?? null) as string | null,
-                    });
-                }
-            }
-        };
-        check();
-        const { data: listener } = supabase.auth.onAuthStateChange((_ev: string, session: { user: { user_metadata?: Record<string, unknown>; email?: string } } | null) => {
-            if (session) {
-                setIsAuthenticated(true);
-                const m = session.user.user_metadata ?? {};
-                setUserProfile({
-                    name: (m.name ?? session.user.email?.split("@")[0] ?? null) as string | null,
-                    avatar: (m.avatar_url ?? m.picture ?? null) as string | null,
-                });
-            } else {
-                setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
-            }
-        });
-        return () => { listener.subscription.unsubscribe(); };
-    }, []);
-
-    const navActions = isAuthenticated
-        ? [
-            { text: "Dashboard", href: "/dashboard/organizations", isButton: true, variant: "default" },
-            { text: userProfile.name || "User", href: "#", isButton: false, isAvatar: true, avatarSrc: userProfile.avatar, avatarFallback: (userProfile.name || "U").slice(0, 2).toUpperCase() },
-        ]
-        : [
-            { text: "Sign in", href: siteConfig.links.signInUrl, isButton: false },
-            { text: "Get Started", href: siteConfig.links.getStartedUrl, isButton: true, variant: "default" },
-        ];
 
     return (
-        <div className="min-h-screen bg-background text-foreground">
-            <Navbar
-                homeUrl="/"
-                actions={navActions}
-                isAuthenticated={isAuthenticated}
-                userProfile={isAuthenticated ? userProfile : undefined}
-            />
-
             <main>
                 {/* ━━━ HERO ━━━ */}
                 <section className="bg-background border-b border-border/30 pt-28 sm:pt-36 pb-0">
@@ -447,8 +390,5 @@ export default function VibeCodersPage() {
                     </Reveal>
                 </section>
             </main>
-
-            <Footer />
-        </div>
     );
 }

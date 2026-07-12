@@ -1,7 +1,5 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import Navbar from '@/components/landing/Navbar';
-import { Footer } from '@/components/landing/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -20,7 +18,6 @@ export const metadata: Metadata = {
 export default function ScanLandingPage() {
     return (
         <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background font-sans">
-            <Navbar />
 
             <main className="flex-grow pt-28 sm:pt-40">
                 {/* Hero Section */}
@@ -338,7 +335,6 @@ export default function ScanLandingPage() {
                 </section>
             </main>
 
-            <Footer />
         </div>
     );
 }

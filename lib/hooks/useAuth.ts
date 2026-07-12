@@ -19,6 +19,17 @@ export function useAuth() {
                 const avatar = meta.avatar_url ?? meta.picture ?? null;
                 const name = meta.name ?? user.email?.split("@")[0] ?? null;
                 setUserProfile({ name: name as string | null, avatar: avatar as string | null });
+
+                // Fetch custom avatar from DB (set from /dashboard/profile)
+                try {
+                  const res = await fetch("/api/user/profile");
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data?.profile?.avatar_url) {
+                      setUserProfile(prev => ({ ...prev, avatar: data.profile.avatar_url }));
+                    }
+                  }
+                } catch {}
             }
             setLoading(false);
         };
@@ -32,6 +43,12 @@ export function useAuth() {
                 const avatar = meta.avatar_url ?? meta.picture ?? null;
                 const name = meta.name ?? user.email?.split("@")[0] ?? null;
                 setUserProfile({ name: name as string | null, avatar: avatar as string | null });
+
+                fetch("/api/user/profile").then(r => r.ok && r.json()).then(data => {
+                  if (data?.profile?.avatar_url) {
+                    setUserProfile(prev => ({ ...prev, avatar: data.profile.avatar_url }));
+                  }
+                }).catch(() => {});
             } else {
                 setIsAuthenticated(false);
                 setUserProfile({ name: null, avatar: null });
