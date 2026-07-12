@@ -204,7 +204,10 @@ async function normalizeImage(image: VisionImage): Promise<NormalizedImage> {
         }
         // Remote URL: fetch bytes so all three providers can consume it
         if (image.url.startsWith('http://') || image.url.startsWith('https://')) {
-            const res = await fetch(image.url);
+            // Some hosts (e.g. Wikimedia) reject UA-less requests with 400/403.
+            const res = await fetch(image.url, {
+                headers: { 'User-Agent': 'Cencori-Gateway/1.0 (+https://cencori.com)' },
+            });
             if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
             const buf = Buffer.from(await res.arrayBuffer());
             const mimeType = res.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
@@ -214,6 +217,14 @@ async function normalizeImage(image: VisionImage): Promise<NormalizedImage> {
         throw new Error('Image URL must be http(s):// or data:');
     }
     if (image.base64) {
+        // Lenient: callers routinely paste a full data URL into the base64
+        // field. Strip the prefix instead of forwarding it to providers
+        // (OpenAI tolerates the mistake; Google/Anthropic hard-fail on it).
+        if (image.base64.startsWith('data:')) {
+            const match = image.base64.match(/^data:([^;]+);base64,(.+)$/);
+            if (!match) throw new Error('Invalid data URL in base64 field');
+            return { dataUrl: image.base64, base64: match[2], mimeType: match[1], isRemote: false };
+        }
         const mimeType = image.mimeType ?? 'image/jpeg';
         const dataUrl = `data:${mimeType};base64,${image.base64}`;
         return { dataUrl, base64: image.base64, mimeType, isRemote: false };
