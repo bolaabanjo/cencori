@@ -365,27 +365,27 @@ export default function ProjectLayoutClient({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee] max-h-none overflow-visible">
                             <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                                <Link href="/docs/troubleshooting" className="flex items-center gap-2">
-                                    <Wrench className="h-3.5 w-3.5" />
+                                <Link href="/docs/troubleshooting" className="flex justify-between w-full items-center">
                                     Troubleshooting
+                                    <Wrench className="h-3.5 w-3.5 shrink-0" />
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                                <Link href="/changelog" className="flex items-center gap-2">
-                                    <FileText className="h-3.5 w-3.5" />
+                                <Link href="/changelog" className="flex justify-between w-full items-center">
                                     Changelog
+                                    <FileText className="h-3.5 w-3.5 shrink-0" />
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                                <Link href="https://status.cencori.com" target="_blank" className="flex items-center gap-2">
-                                    <Activity className="h-3.5 w-3.5" />
+                                <Link href="https://status.cencori.com" target="_blank" className="flex justify-between w-full items-center">
                                     Cencori status
+                                    <Activity className="h-3.5 w-3.5 shrink-0" />
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                                <Link href="mailto:support@cencori.com" className="flex items-center gap-2">
-                                    <Mail className="h-3.5 w-3.5" />
+                                <Link href="mailto:support@cencori.com" className="flex justify-between w-full items-center">
                                     Contact support
+                                    <Mail className="h-3.5 w-3.5 shrink-0" />
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="my-1" />

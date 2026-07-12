@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { GradientAvatar } from "@outpacelabs/avatars";
 import { ThemeSwitcher } from "@/components/ui/theme-switcher";
-import { CircleUserRound, Settings } from "lucide-react";
+import { CircleUserRound, Settings, LogOut } from "lucide-react";
+import { Logo } from "@/components/logo";
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -83,13 +84,13 @@ export function UserMenu() {
                     {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
                 </div>
                 <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
-                    <CircleUserRound className="mr-2 h-3.5 w-3.5" />
+                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/dashboard/profile")}>
                     Profile
+                    <CircleUserRound className="h-3.5 w-3.5 ml-auto" />
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
-                    <Settings className="mr-2 h-3.5 w-3.5" />
+                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/dashboard/settings")}>
                     Settings
+                    <Settings className="h-3.5 w-3.5 ml-auto" />
                 </DropdownMenuItem>
                 <div className="my-1 border-t border-border/40" />
                 <div className="px-2 py-1.5">
@@ -106,11 +107,14 @@ export function UserMenu() {
                     <ThemeSwitcher />
                 </div>
                 <div className="my-1 border-t border-border/40" />
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/")}>
+                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/")}>
                     Homepage
+                    <span className="size-3.5 shrink-0">
+                        <Logo variant="mark" className="h-full w-full" />
+                    </span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                    className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
+                    className="text-xs py-1.5 cursor-pointer flex justify-between text-red-500 focus:text-red-500"
                     onClick={async () => {
                         sessionStorage.removeItem("cencori:org-project-cache");
                         await supabase.auth.signOut();
@@ -119,6 +123,7 @@ export function UserMenu() {
                     }}
                 >
                     Log out
+                    <LogOut className="h-3.5 w-3.5" />
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
