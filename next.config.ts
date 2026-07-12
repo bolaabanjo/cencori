@@ -4,6 +4,10 @@ import { createMDX } from "fumadocs-mdx/next";
 const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    staleTimes: {
+      dynamic: 300,
+      static: 300,
+    },
   },
   async redirects() {
     return [

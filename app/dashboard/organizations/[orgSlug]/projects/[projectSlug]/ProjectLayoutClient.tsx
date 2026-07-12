@@ -20,8 +20,15 @@ import {
     SidebarSeparator,
     SidebarFooter,
 } from "@/components/ui/sidebar";
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronLeft, ChevronRight, Book, ArrowUpRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Book, ArrowUpRight, HelpCircle, Wrench, Activity, Mail, FileText } from "lucide-react";
 import DashboardCircleIcon from "@hugeicons/core-free-icons/DashboardCircleIcon";
 import DiscoverSquareIcon from "@hugeicons/core-free-icons/DiscoverSquareIcon";
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
@@ -346,6 +353,64 @@ export default function ProjectLayoutClient({
                         <span className="flex-1">Documentation</span>
                         <ArrowUpRight className="size-3 shrink-0" />
                     </Link>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                type="button"
+                                className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
+                            >
+                                <HelpCircle className="size-3.5 shrink-0" />
+                                <span className="flex-1">Help & Resources</span>
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee] max-h-none overflow-visible">
+                            <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <Link href="/docs/troubleshooting" className="flex items-center gap-2">
+                                    <Wrench className="h-3.5 w-3.5" />
+                                    Troubleshooting
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <Link href="/changelog" className="flex items-center gap-2">
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Changelog
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <Link href="https://status.cencori.com" target="_blank" className="flex items-center gap-2">
+                                    <Activity className="h-3.5 w-3.5" />
+                                    Cencori status
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <Link href="mailto:support@cencori.com" className="flex items-center gap-2">
+                                    <Mail className="h-3.5 w-3.5" />
+                                    Contact support
+                                </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator className="my-1" />
+                            <div className="px-2 py-2">
+                                <p className="text-xs font-medium mb-1">Community support</p>
+                                <p className="text-[10px] text-muted-foreground mb-2">Our Discord community can help with code-related issues.</p>
+                                <Link
+                                    href="https://cencori.com/discord"
+                                    target="_blank"
+                                    className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" color="currentColor" fill="none" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" className="shrink-0">
+                                        <path d="M15.5 17.5C16.5 19 17.3333 19.6667 18 20C19.3333 19.6667 22 18.2 22 15C22 11.8 20.6667 7.33333 20 5.5C18 4.3 15.8333 4 15 4L14.198 5.60393C13.4135 5.28708 12.4058 5.25438 12 5.27763C11.5942 5.25438 10.5865 5.28708 9.80197 5.60393L9 4C8.16667 4 6 4.3 4 5.5C3.33333 7.33333 2 11.8 2 15C2 18.2 4.66667 19.6667 6 20C6.66667 19.6667 7.5 19 8.5 17.5"></path>
+                                        <path d="M17.3652 11.5C17.3652 12.6046 16.5817 13.5 15.6152 13.5C14.6487 13.5 13.8652 12.6046 13.8652 11.5C13.8652 10.3954 14.6487 9.5 15.6152 9.5C16.5817 9.5 17.3652 10.3954 17.3652 11.5Z"></path>
+                                        <path d="M10 11.5C10 12.6046 9.2165 13.5 8.25 13.5C7.2835 13.5 6.5 12.6046 6.5 11.5C6.5 10.3954 7.2835 9.5 8.25 9.5C9.2165 9.5 10 10.3954 10 11.5Z"></path>
+                                        <path d="M17.5 16.5C16.4022 17.3967 14.3502 18 12 18C9.64981 18 7.59785 17.3967 6.5 16.5"></path>
+                                    </svg>
+                                    Join us on Discord
+                                </Link>
+                                <div className="mt-2 -mx-2 -mb-2 rounded-b-md overflow-hidden">
+                                    <img src="/dbanner.png" alt="Discord banner" className="w-full h-auto" />
+                                </div>
+                            </div>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     <FeedbackMenu />
                     <UserMenu />
                 </SidebarFooter>

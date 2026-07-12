@@ -3,13 +3,12 @@
 
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { CreditCard, HelpCircle, Book, Wrench, Activity, Mail, Command, Menu } from "lucide-react";
+import { CreditCard, Command, Menu, ChevronsUpDown, PlusCircle, Search } from "lucide-react";
 import { GradientAvatar } from "@outpacelabs/avatars";
-import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
 import {
   Breadcrumb,
@@ -29,7 +28,6 @@ import {
   SelectValue,
   SelectPrimitive,
 } from "@/components/ui/select";
-import { ChevronsUpDown, PlusCircle, Search } from "lucide-react";
 import { OrganizationProjectProvider, useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import { MobileSheetProvider, useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { MobileNav } from "@/components/dashboard/MobileNav";
@@ -505,62 +503,6 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
           >
             <Menu className="h-4 w-4 text-muted-foreground" />
           </button>
-
-          {/* Help Button - hidden on mobile */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="hidden lg:inline-flex w-7 h-7 items-center justify-center rounded-full border border-border/80 bg-transparent hover:bg-secondary transition-colors cursor-pointer"
-                aria-label="Help"
-              >
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 p-2 font-mono">
-              <div className="px-2 py-1.5">
-                <p className="text-xs font-medium">Need help with your project?</p>
-                <p className="text-[11px] text-muted-foreground">Start with our docs or community.</p>
-              </div>
-              <DropdownMenuSeparator className="my-1" />
-              <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                <Link href="/docs" className="flex items-center gap-2">
-                  <Book className="h-3.5 w-3.5" />
-                  Docs
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                <Link href="/docs/troubleshooting" className="flex items-center gap-2">
-                  <Wrench className="h-3.5 w-3.5" />
-                  Troubleshooting
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                <Link href="https://status.cencori.com" target="_blank" className="flex items-center gap-2">
-                  <Activity className="h-3.5 w-3.5" />
-                  Cencori status
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
-                <Link href="mailto:support@cencori.com" className="flex items-center gap-2">
-                  <Mail className="h-3.5 w-3.5" />
-                  Contact support
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="my-1" />
-              <div className="px-2 py-2">
-                <p className="text-xs font-medium mb-1">Community support</p>
-                <p className="text-[10px] text-muted-foreground mb-2">Our Discord community can help with code-related issues.</p>
-                <Link
-                  href="https://cencori.com/discord"
-                  target="_blank"
-                  className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline"
-                >
-                  Join us on Discord
-                </Link>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
         </div>
       </header>

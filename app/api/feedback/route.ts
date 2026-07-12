@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabaseServer";
 import { NextResponse } from "next/server";
+import { SendByte } from "@sendbyte/node";
 
 export async function POST(req: Request) {
   try {
@@ -32,6 +33,22 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Error saving feedback:", error);
       return NextResponse.json({ error: "Failed to save feedback" }, { status: 500 });
+    }
+
+    // Send email notification
+    const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY;
+    if (SENDBYTE_API_KEY) {
+      try {
+        const sendbyte = new SendByte(SENDBYTE_API_KEY);
+        await sendbyte.emails.send({
+          from: "Cencori Feedback <feedback@send.cencori.com>",
+          to: "bola@cencori.com",
+          subject: `[Feedback] ${type === "positive" ? "👍" : type === "negative" ? "👎" : "💬"} from ${session.user.email}`,
+          html: `<p><strong>Type:</strong> ${type || "general"}</p><p><strong>From:</strong> ${session.user.email}</p><p><strong>Message:</strong></p><p>${content}</p>`,
+        });
+      } catch (emailErr) {
+        console.error("Failed to send feedback email:", emailErr);
+      }
     }
 
     return NextResponse.json({ success: true, feedback: data });
