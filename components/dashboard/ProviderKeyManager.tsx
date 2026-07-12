@@ -106,7 +106,18 @@ export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
-            if (!res.ok) throw new Error("Failed to save key");
+            if (!res.ok) {
+                // Surface the server's actual reason — a generic message hides
+                // whether it's auth, permissions, validation, or a server bug.
+                const body = await res.json().catch(() => null) as { error?: unknown; message?: string } | null;
+                const serverError =
+                    typeof body?.error === 'string' ? body.error
+                    : body?.message
+                    || (typeof body?.error === 'object' && body?.error && 'message' in body.error
+                        ? String((body.error as { message?: unknown }).message)
+                        : `HTTP ${res.status}`);
+                throw new Error(serverError);
+            }
             return res.json();
         },
         onSuccess: () => {
@@ -114,7 +125,8 @@ export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
             toast.success("Provider key saved");
             resetDialog();
         },
-        onError: () => toast.error("Failed to save provider key"),
+        onError: (error) =>
+            toast.error(`Failed to save provider key: ${error instanceof Error ? error.message : 'unknown error'}`),
     });
 
     // Delete key mutation
