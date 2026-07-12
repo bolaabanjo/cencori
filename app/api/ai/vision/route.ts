@@ -26,6 +26,8 @@ import {
     UNIVERSAL_VISION_FORMATS,
     VisionValidationError,
 } from '@/lib/vision/analyze';
+import { ProviderError } from '@/lib/providers/errors';
+import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -126,6 +128,32 @@ export async function POST(req: NextRequest) {
             });
             return addGatewayHeaders(
                 NextResponse.json({ error: error.code, message: error.message, ...error.details }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        // Typed provider failures (quota exhausted, bad key, provider outage)
+        // map to honest statuses — a provider 429 must never surface as a
+        // Cencori 500.
+        if (error instanceof ProviderError) {
+            const failure = mapProviderErrorToHttpResponse(error);
+            await logGatewayRequest(ctx, {
+                endpoint: 'vision',
+                model: 'unknown',
+                provider: failure.provider || 'unknown',
+                status: 'error',
+                errorMessage: failure.message,
+            });
+            return addGatewayHeaders(
+                NextResponse.json(
+                    {
+                        error: failure.error,
+                        message: failure.message,
+                        provider: failure.provider,
+                        ...(failure.retryAfter != null ? { retry_after: failure.retryAfter } : {}),
+                    },
+                    { status: failure.status }
+                ),
                 { requestId: ctx.requestId }
             );
         }

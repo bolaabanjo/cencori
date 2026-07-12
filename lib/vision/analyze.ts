@@ -14,6 +14,12 @@ import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
 import { getPricingFromDB } from '@/lib/providers/pricing';
 import type { GatewayContext } from '@/lib/gateway-middleware';
+import {
+    normalizeProviderError,
+    InvalidRequestError,
+    ContentFilterError,
+    ModelNotFoundError,
+} from '@/lib/providers/errors';
 
 export const MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024;
 
@@ -96,6 +102,10 @@ export interface VisionAnalyzeResult {
         cencoriChargeUsd: number;
         markupPercentage: number;
     };
+    /** Set when the requested provider failed and another one served the request */
+    usedFallback?: boolean;
+    originalModel?: string;
+    originalProvider?: VisionProvider;
 }
 
 // ── Model registry ─────────────────────────────────────────────
@@ -508,11 +518,24 @@ async function* streamGoogle(
 
 // ── Streaming entry point ──────────────────────────────────────
 
+function makeVisionStreamGenerator(
+    provider: VisionProvider,
+    apiKey: string,
+    apiModel: string,
+    prompt: string,
+    imgs: NormalizedImage[],
+    opts: { maxTokens?: number; temperature?: number }
+) {
+    return provider === 'openai' ? streamOpenAI(apiKey, apiModel, prompt, imgs, opts)
+        : provider === 'anthropic' ? streamAnthropic(apiKey, apiModel, prompt, imgs, opts)
+        : streamGoogle(apiKey, apiModel, prompt, imgs, opts);
+}
+
 export async function* streamVision(
     ctx: GatewayContext,
     request: VisionAnalyzeRequest
 ): AsyncGenerator<VisionStreamChunk> {
-    const model = resolveModel(request.model);
+    let model = resolveModel(request.model);
     const apiKey = await getProviderKey(ctx, model.provider);
     if (!apiKey) {
         throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
@@ -523,21 +546,68 @@ export async function* streamVision(
     const prompt = request.prompt ?? (imgs.length > 1 ? 'Analyze these images together.' : 'Describe this image in detail.');
     const opts = { maxTokens: request.maxTokens, temperature: request.temperature };
 
-    const generator =
-        model.provider === 'openai' ? streamOpenAI(apiKey, model.apiModel, prompt, imgs, opts) :
-        model.provider === 'anthropic' ? streamAnthropic(apiKey, model.apiModel, prompt, imgs, opts) :
-        streamGoogle(apiKey, model.apiModel, prompt, imgs, opts);
+    // Failover window: only before the first chunk is emitted. Once bytes
+    // have flowed to the client we can't switch providers mid-answer.
+    let generator = makeVisionStreamGenerator(
+        model.provider, apiKey, model.apiModel, prompt, imgs, opts
+    );
+    let iterator = generator[Symbol.asyncIterator]();
+    let first: IteratorResult<Awaited<ReturnType<typeof iterator.next>>['value']>;
+
+    try {
+        first = await iterator.next();
+    } catch (primaryError) {
+        if (!isFailoverWorthy(primaryError, model.provider)) {
+            throw normalizeProviderError(model.provider, primaryError);
+        }
+
+        console.warn(
+            `[Vision] Stream ${model.provider}/${model.apiModel} failed, attempting failover:`,
+            primaryError instanceof Error ? primaryError.message : primaryError
+        );
+
+        let recovered = false;
+        for (const candidate of VISION_FALLBACK_CANDIDATES) {
+            if (candidate.provider === model.provider) continue;
+            const fallbackKey = await getProviderKey(ctx, candidate.provider);
+            if (!fallbackKey) continue;
+
+            const fallbackModel = resolveModel(candidate.modelKey);
+            try {
+                for (const img of imgs) validateImageForProvider(img, candidate.provider);
+                generator = makeVisionStreamGenerator(
+                    candidate.provider, fallbackKey, fallbackModel.apiModel, prompt, imgs, opts
+                );
+                iterator = generator[Symbol.asyncIterator]();
+                first = await iterator.next();
+                model = fallbackModel;
+                recovered = true;
+                break;
+            } catch (fallbackError) {
+                console.warn(
+                    `[Vision] Stream fallback ${candidate.provider}/${candidate.modelKey} also failed:`,
+                    fallbackError instanceof Error ? fallbackError.message : fallbackError
+                );
+            }
+        }
+
+        if (!recovered) {
+            throw normalizeProviderError(model.provider, primaryError);
+        }
+    }
 
     let promptTokens = 0;
     let completionTokens = 0;
 
-    for await (const chunk of generator) {
+    while (!first!.done) {
+        const chunk = first!.value;
         if ('done' in chunk) {
             promptTokens = chunk.promptTokens;
             completionTokens = chunk.completionTokens;
             break;
         }
         yield { delta: chunk.delta };
+        first = await iterator.next();
     }
 
     const pricing = await getPricingFromDB(model.provider, model.apiModel);
@@ -565,11 +635,53 @@ export async function* streamVision(
 
 // ── Main entry point ────────────────────────────────────────────
 
+// ── Vision failover ─────────────────────────────────────────────
+// When the requested provider fails at the account/service level (quota
+// exhausted, bad key, outage), retry on another vision-capable provider
+// with an available key instead of failing the customer's request.
+// Mirrors chat failover, which vision never had.
+
+const VISION_FALLBACK_CANDIDATES: Array<{ provider: VisionProvider; modelKey: string }> = [
+    { provider: 'google', modelKey: 'gemini-2.5-flash' },
+    { provider: 'openai', modelKey: 'gpt-4o-mini' },
+    { provider: 'anthropic', modelKey: 'claude-3-5-haiku-latest' },
+];
+
+/**
+ * Whether a provider failure is worth retrying on a different provider.
+ * Caller mistakes (bad image, filtered content, unknown model) fail
+ * everywhere — don't burn a second provider call on them.
+ */
+function isFailoverWorthy(error: unknown, provider: string): boolean {
+    const normalized = normalizeProviderError(provider, error);
+    return !(
+        normalized instanceof InvalidRequestError
+        || normalized instanceof ContentFilterError
+        || normalized instanceof ModelNotFoundError
+    );
+}
+
+type VisionCallOpts = { maxTokens?: number; temperature?: number; jsonMode?: boolean };
+type VisionCallResult = { analysis: string; promptTokens: number; completionTokens: number };
+
+async function callVisionProvider(
+    provider: VisionProvider,
+    apiKey: string,
+    apiModel: string,
+    prompt: string,
+    imgs: NormalizedImage[],
+    opts: VisionCallOpts
+): Promise<VisionCallResult> {
+    if (provider === 'openai') return analyzeOpenAI(apiKey, apiModel, prompt, imgs, opts);
+    if (provider === 'anthropic') return analyzeAnthropic(apiKey, apiModel, prompt, imgs, opts);
+    return analyzeGoogle(apiKey, apiModel, prompt, imgs, opts);
+}
+
 export async function analyzeVision(
     ctx: GatewayContext,
     request: VisionAnalyzeRequest
 ): Promise<VisionAnalyzeResult> {
-    const model = resolveModel(request.model);
+    let model = resolveModel(request.model);
     const apiKey = await getProviderKey(ctx, model.provider);
     if (!apiKey) {
         throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
@@ -584,13 +696,59 @@ export async function analyzeVision(
         jsonMode: request.responseFormat === 'json',
     };
 
-    let result: { analysis: string; promptTokens: number; completionTokens: number };
-    if (model.provider === 'openai') {
-        result = await analyzeOpenAI(apiKey, model.apiModel, prompt, imgs, opts);
-    } else if (model.provider === 'anthropic') {
-        result = await analyzeAnthropic(apiKey, model.apiModel, prompt, imgs, opts);
-    } else {
-        result = await analyzeGoogle(apiKey, model.apiModel, prompt, imgs, opts);
+    let result: VisionCallResult;
+    let usedFallback = false;
+    const originalModel = model;
+
+    try {
+        result = await callVisionProvider(model.provider, apiKey, model.apiModel, prompt, imgs, opts);
+    } catch (primaryError) {
+        if (!isFailoverWorthy(primaryError, model.provider)) {
+            throw normalizeProviderError(model.provider, primaryError);
+        }
+
+        console.warn(
+            `[Vision] ${model.provider}/${model.apiModel} failed, attempting failover:`,
+            primaryError instanceof Error ? primaryError.message : primaryError
+        );
+
+        let recovered: { result: VisionCallResult; candidate: ModelInfo & { key: string } } | null = null;
+        for (const candidate of VISION_FALLBACK_CANDIDATES) {
+            if (candidate.provider === model.provider) continue;
+
+            const fallbackKey = await getProviderKey(ctx, candidate.provider);
+            if (!fallbackKey) continue;
+
+            const fallbackModel = resolveModel(candidate.modelKey);
+            try {
+                for (const img of imgs) validateImageForProvider(img, candidate.provider);
+                const fallbackResult = await callVisionProvider(
+                    candidate.provider,
+                    fallbackKey,
+                    fallbackModel.apiModel,
+                    prompt,
+                    imgs,
+                    opts
+                );
+                recovered = { result: fallbackResult, candidate: fallbackModel };
+                break;
+            } catch (fallbackError) {
+                console.warn(
+                    `[Vision] Fallback ${candidate.provider}/${candidate.modelKey} also failed:`,
+                    fallbackError instanceof Error ? fallbackError.message : fallbackError
+                );
+            }
+        }
+
+        if (!recovered) {
+            // Typed error so routes can map to an honest status (429/401/503)
+            // instead of a blanket 500.
+            throw normalizeProviderError(model.provider, primaryError);
+        }
+
+        result = recovered.result;
+        model = recovered.candidate;
+        usedFallback = true;
     }
 
     const pricing = await getPricingFromDB(model.provider, model.apiModel);
@@ -613,6 +771,13 @@ export async function analyzeVision(
             cencoriChargeUsd: cencoriCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
         },
+        ...(usedFallback
+            ? {
+                  usedFallback: true,
+                  originalModel: originalModel.key,
+                  originalProvider: originalModel.provider,
+              }
+            : {}),
     };
 }
 
