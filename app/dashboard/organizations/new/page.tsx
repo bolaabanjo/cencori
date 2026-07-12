@@ -396,7 +396,7 @@ export default function NewOrganizationPage() {
   // Success state — get you started
   if (success && createdOrg) {
     const orgName = form.getValues("name") || "Your organization";
-    const goToDashboard = () => router.push(`/dashboard/organizations/${createdOrg.slug}/projects`);
+    const goToDashboard = () => router.push(`/dashboard/organizations/${createdOrg.slug}/onboarding`);
 
     return (
       <MotionConfig reducedMotion="user">
