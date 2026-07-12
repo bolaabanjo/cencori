@@ -39,6 +39,7 @@ import { useTheme } from "next-themes";
 import posthog from "posthog-js";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const CommandPalette = dynamic(
   () => import("@/components/dashboard/CommandPalette").then((mod) => mod.CommandPalette),
@@ -86,7 +87,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router]);
 
   // Keep shell visible while auth state resolves to reduce perceived lag.
-  if (loading) return <div className="min-h-screen bg-background" aria-busy="true" />;
+  if (loading) return (
+    <div className="min-h-screen bg-background p-4 md:p-6" aria-busy="true">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-4 w-32" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-7 w-7 rounded-full" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-3 rounded-md bg-zinc-100 dark:bg-zinc-800/60">
+              <div className="flex items-center gap-2.5">
+                <Skeleton className="h-7 w-7 rounded" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3.5 w-20" />
+                  <Skeleton className="h-2.5 w-16" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   // Fix type issue: ensure 'user' is typed
   type UserType = {
@@ -185,6 +212,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   const orgSlug = getOrgSlug();
   const projectSlug = getProjectSlug();
   const isPlayground = pathname.includes("/playground");
+  const isOnboardingFlow = pathname.includes("/organizations/new");
 
   const currentOrg = organizations.find((org) => org.slug === orgSlug);
   const currentProject = projects.find((proj) => proj.slug === projectSlug && proj.orgSlug === orgSlug);
@@ -239,11 +267,12 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   return (
     <div
       className={cn(
-        "bg-background transition-colors",
+        "bg-background transition-colors font-inter",
         isPlayground ? "flex h-svh flex-col overflow-hidden" : "min-h-screen"
       )}
     >
-      <header className="fixed top-0 left-0 right-0 z-50 h-12 border-b border-border/40 bg-background px-4 md:px-6 flex items-center justify-between">
+      {!isOnboardingFlow && (
+      <header className="fixed top-0 left-0 right-0 z-50 h-12 border-b border-border/40 bg-background px-4 md:px-6 flex items-center justify-between font-mono">
         <div className="flex items-center gap-2">
           <Link href="/dashboard/organizations" className="flex items-center">
             <Logo variant="mark" className="h-4" />
@@ -285,7 +314,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                           />
                         </SelectPrimitive.Icon>
                       </SelectPrimitive.Trigger>
-                      <SelectContent className="w-56 p-1">
+                      <SelectContent className="w-56 p-1 font-mono">
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
@@ -347,7 +376,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                             />
                           </SelectPrimitive.Icon>
                         </SelectPrimitive.Trigger>
-                        <SelectContent className="w-56 p-1">
+                        <SelectContent className="w-56 p-1 font-mono">
                           <div className="px-1.5 py-1">
                             <div className="relative">
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
@@ -488,13 +517,13 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                 Feedback
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 p-3">
+            <DropdownMenuContent align="end" className="w-80 p-3 font-mono">
               <div className="space-y-3">
                 <textarea
                   placeholder="My idea for improving Cencori is..."
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
-                  className="w-full h-24 text-xs bg-secondary/50 border border-border/40 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring/20"
+                  className="w-full h-24 text-xs font-inter bg-secondary/50 border border-border/40 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring/20"
                 />
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -539,7 +568,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                 <HelpCircle className="h-4 w-4 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 p-2">
+            <DropdownMenuContent align="end" className="w-64 p-2 font-mono">
               <div className="px-2 py-1.5">
                 <p className="text-xs font-medium">Need help with your project?</p>
                 <p className="text-[11px] text-muted-foreground">Start with our docs or community.</p>
@@ -599,7 +628,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                 )}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-66 p-1" align="end" forceMount>
+            <DropdownMenuContent className="w-66 p-1 font-mono" align="end" forceMount>
               <div className="px-2 py-1.5 border-b border-border/40 mb-1">
                 <p className="text-xs font-medium truncate dark:text-white text-black">
                   {user.email}
@@ -638,8 +667,9 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
               <DropdownMenuItem
                 className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
                 onClick={async () => {
+                  sessionStorage.removeItem("cencori:org-project-cache");
                   await supabase.auth.signOut();
-                  posthog.reset(); // clear identified user on logout
+                  posthog.reset();
                   router.push("/login");
                 }}
               >
@@ -649,15 +679,20 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
           </DropdownMenu>
         </div>
       </header>
+      )}
 
       {/* Mobile Navigation Bar - only visible on mobile screens */}
-      <MobileNav onMenuClick={toggle} projectSlug={projectSlug} user={user} avatar={displayAvatar} />
+      {!isOnboardingFlow && (
+        <MobileNav onMenuClick={toggle} projectSlug={projectSlug} user={user} avatar={displayAvatar} />
+      )}
 
       <main
         className={cn(
           isPlayground
             ? "flex min-h-0 flex-1 flex-col overflow-hidden pt-0 lg:pt-12 pb-0 px-4 md:px-6"
-            : "p-4 md:p-6 pt-20 lg:pt-14"
+            : isOnboardingFlow
+              ? "p-4 md:p-6"
+              : "p-4 md:p-6 pt-20 lg:pt-14"
         )}
       >
         {children}

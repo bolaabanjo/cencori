@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { siteConfig } from "@/config/site";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -29,13 +28,6 @@ function useOrganizations() {
   return useQuery({
     queryKey: ["organizations"],
     queryFn: async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        router.push(siteConfig.links.signInUrl);
-        throw new Error("Not authenticated");
-      }
-
       const { data: orgsData, error: fetchError } = await supabase
         .from("organizations")
         .select("id, name, slug, description, subscription_tier, plan_id, organization_plans(name), projects(count)");
@@ -49,7 +41,7 @@ function useOrganizations() {
 
       return orgsData as OrganizationData[];
     },
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 5 * 60 * 1000,
   });
 }
 

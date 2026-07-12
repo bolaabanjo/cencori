@@ -72,9 +72,6 @@ function useOrgSettings(orgSlug: string) {
   return useQuery({
     queryKey: ["orgSettings", orgSlug],
     queryFn: async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Not authenticated");
-
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
         .select("id, name, slug, description, plan_id, organization_plans(name)")
@@ -93,7 +90,7 @@ function useOrgSettings(orgSlug: string) {
         projects: (projectsData || []) as ProjectData[],
       };
     },
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 5 * 60 * 1000,
   });
 }
 

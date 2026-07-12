@@ -135,9 +135,6 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
   return useQuery({
     queryKey: ["projectDetails", orgSlug, projectSlug],
     queryFn: async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Not authenticated");
-
       const { data: organization } = await supabase
         .from("organizations")
         .select("id")

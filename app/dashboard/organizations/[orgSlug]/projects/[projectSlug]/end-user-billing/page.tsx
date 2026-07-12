@@ -339,8 +339,6 @@ function useProjectId(orgSlug: string, projectSlug: string) {
   return useQuery({
     queryKey: ["projectId", orgSlug, projectSlug],
     queryFn: async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("Not authenticated");
       const { data: org } = await supabase.from("organizations").select("id").eq("slug", orgSlug).single();
       if (!org) throw new Error("Organization not found");
       const { data: project } = await supabase.from("projects").select("id").eq("slug", projectSlug).eq("organization_id", org.id).single();
