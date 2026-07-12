@@ -21,90 +21,47 @@ export interface TierFeatures {
   sso: boolean;
 }
 
+const ALL_FEATURES_ENABLED: TierFeatures = {
+  security: true,
+  piiMasking: true,
+  customDataRules: true,
+  outputScanning: true,
+  securityIncidents: true,
+  auditTrails: true,
+  failover: true,
+  customProviders: true,
+  semanticCache: true,
+  requestLogs: true,
+  analyticsDashboard: true,
+  advancedAnalytics: true,
+  costTracking: true,
+  geoAnalytics: true,
+  failoverAnalytics: true,
+  promptRegistry: true,
+  webhooks: true,
+  sso: true,
+};
+
+// ─────────────────────────────────────────────────────────────────
+// TEMPORARILY UNGATED (2026-07-12, founder decision): every tier gets
+// every feature. The gating misfired repeatedly (request logs, analytics,
+// provider keys/BYOK) and read as platform breakage to customers.
+//
+// Re-gating plan: flip features back per-tier ONE AT A TIME, deliberately,
+// with the FeatureUpgradeWall UX (components/billing/FeatureUpgradeWall.tsx)
+// wired on every affected page first. The intended future matrix is
+// preserved in git history (see this file before this commit).
+//
+// Still enforced (depth limits, not existence gates):
+//   - MEMORY_QUOTA (below) — memory count per project
+//   - LOG_RETENTION_RANGE / clampTimeRange (below) — history depth by tier
+//   - monthly request limits + spend caps (gateway-middleware)
+// ─────────────────────────────────────────────────────────────────
 export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
-  free: {
-    security: false,
-    piiMasking: false,
-    customDataRules: false,
-    outputScanning: false,
-    securityIncidents: false,
-    auditTrails: false,
-    failover: false,
-    customProviders: false,
-    semanticCache: false,
-    // Logs, basic analytics, and cost visibility are free: they're how a
-    // free user sees the product working (and how they debug). Monetization
-    // comes from retention (see LOG_RETENTION_RANGE) and advanced analytics.
-    requestLogs: true,
-    analyticsDashboard: true,
-    advancedAnalytics: false,
-    costTracking: true,
-    geoAnalytics: false,
-    failoverAnalytics: false,
-    promptRegistry: false,
-    webhooks: false,
-    sso: false,
-  },
-  pro: {
-    security: true,
-    piiMasking: true,
-    customDataRules: true,
-    outputScanning: true,
-    securityIncidents: true,
-    auditTrails: true,
-    failover: true,
-    customProviders: false,
-    semanticCache: true,
-    requestLogs: true,
-    analyticsDashboard: true,
-    advancedAnalytics: true,
-    costTracking: true,
-    geoAnalytics: false,
-    failoverAnalytics: true,
-    promptRegistry: true,
-    webhooks: false,
-    sso: false,
-  },
-  team: {
-    security: true,
-    piiMasking: true,
-    customDataRules: true,
-    outputScanning: true,
-    securityIncidents: true,
-    auditTrails: true,
-    failover: true,
-    customProviders: true,
-    semanticCache: true,
-    requestLogs: true,
-    analyticsDashboard: true,
-    advancedAnalytics: true,
-    costTracking: true,
-    geoAnalytics: true,
-    failoverAnalytics: true,
-    promptRegistry: true,
-    webhooks: true,
-    sso: false,
-  },
-  enterprise: {
-    security: true,
-    piiMasking: true,
-    customDataRules: true,
-    outputScanning: true,
-    securityIncidents: true,
-    auditTrails: true,
-    failover: true,
-    customProviders: true,
-    semanticCache: true,
-    requestLogs: true,
-    analyticsDashboard: true,
-    advancedAnalytics: true,
-    costTracking: true,
-    geoAnalytics: true,
-    failoverAnalytics: true,
-    promptRegistry: true,
-    webhooks: true,
-    sso: true,
-  },
+  free: ALL_FEATURES_ENABLED,
+  pro: ALL_FEATURES_ENABLED,
+  team: ALL_FEATURES_ENABLED,
+  enterprise: ALL_FEATURES_ENABLED,
 };
 
 export function getFeaturesForTier(tier: SubscriptionTier): TierFeatures {
