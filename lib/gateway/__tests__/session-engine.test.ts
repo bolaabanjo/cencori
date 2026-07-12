@@ -47,6 +47,7 @@ function makeGateways() {
             from: vi.fn(() => ({
                 select: vi.fn().mockReturnThis(),
                 eq: vi.fn().mockReturnThis(),
+                in: vi.fn().mockReturnThis(),
                 insert: vi.fn().mockResolvedValue({ error: null }),
                 order: vi.fn().mockReturnThis(),
                 limit: vi.fn().mockReturnThis(),

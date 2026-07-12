@@ -242,17 +242,18 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   }, [project]);
 
   // Fetch webhooks with caching
-  const { data: webhooks = [] } = useQuery<WebhookData[]>({
+  const { data: webhooksData } = useQuery<WebhookData[]>({
     queryKey: ["webhooks", project?.id],
     queryFn: async () => {
       const response = await fetch(`/api/projects/${project!.id}/webhooks`);
       if (!response.ok) throw new Error("Failed to fetch webhooks");
-      const data = await response.json();
-      return data.webhooks || [];
+      const result = await response.json();
+      return Array.isArray(result.webhooks) ? result.webhooks : [];
     },
     enabled: !!project?.id,
-    staleTime: 30 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
+  const webhooks: WebhookData[] = webhooksData ?? [];
 
   // Fetch provider health with caching
   const { data: providers = [], isLoading: providersLoading, refetch: refetchProviders } = useQuery<ProviderHealth[]>({
