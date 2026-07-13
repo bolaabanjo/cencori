@@ -1,0 +1,172 @@
+---
+title: "Memory"
+description: "Give any chat a memory. Retrieve what you know about a user before each reply, persist new facts after — with PII redaction and per-org isolation built in."
+section: "Endpoints"
+order: 8
+---
+
+Memory is not a separate product — it's a property of a request. Add a `memory` field to a chat completion and the gateway retrieves relevant facts about the user before the model call and persists new ones after. Everything else you already get from Cencori — BYOK, PII redaction, audit logs, spend caps — composes for free, because memory goes through the same pipeline.
+
+**A new chat is not a memory reset. It's a fresh conversation with a model that already knows the user.**
+
+## The two-line integration
+
+```typescript
+const response = await cencori.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'What did we agree about pricing?' }],
+  memory: { userId: session.user.id },
+});
+
+console.log(response.choices[0].message.content);
+console.log(response.memory?.retrieved); // facts injected into this reply
+```
+
+When `memory` is present, retrieval and writeback both default to **on**. Omit the field for a stateless chat.
+
+## The `memory` field
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `userId` | string | — | End-user this memory belongs to. Scope defaults to `user`. |
+| `sessionId` | string | — | Pass with `scope: "session"` for ephemeral, per-chat memory. |
+| `scope` | `"session" \| "user"` | `"user"` | `session` clears on session end (Redis); `user` persists across sessions, devices, and new chats (Postgres + pgvector). |
+| `retrieve` | boolean | `true` | Pull top-K relevant memories and inject them ahead of the user turn. |
+| `write` | boolean | `true` | After the reply, extract facts from the exchange and persist them. |
+| `topK` | number | `5` | How many memories to inject. |
+| `threshold` | number | `0.7` | Minimum similarity for a memory to be injected. |
+| `namespace` | string | — | Sub-scope partition. Maps cleanly to per-project sidebars for multi-project users. |
+| `extract` | object | — | Override fact extraction: `{ model, prompt, minImportance }`. |
+
+The response carries a `memory` block:
+
+```json
+{
+  "choices": [ ... ],
+  "memory": {
+    "retrieved": [{ "id": "mem_xxx", "score": 0.82, "content": "Prefers TypeScript" }],
+    "written": [],
+    "write_status": "pending"
+  }
+}
+```
+
+Writeback runs asynchronously after the response, so `written` is empty and `write_status` is `pending` on the same request — the facts are available on the next turn. The streaming response also sets an `X-Cencori-Memory-Retrieved` header with the injected count.
+
+## Direct memory endpoints
+
+For managing memories outside a chat — settings pages, GDPR panels, manual seeding.
+
+| Path | Purpose |
+|------|---------|
+| `POST /v1/memory/write` | Write a single scoped memory (raw content, no extraction) |
+| `POST /v1/memory/remember` | Extract durable facts from a `{ user, assistant }` exchange and store them |
+| `POST /v1/memory/search` | Semantic search over a user's memories |
+| `GET /v1/memory/list` | Paginate a user's memories |
+| `DELETE /v1/memory/:id` | Forget a memory — a hard delete, not an annotation |
+
+```typescript
+// Seed a fact
+await cencori.memory.write({
+  userId: session.user.id,
+  content: 'Prefers dark mode. Uses TypeScript primarily.',
+});
+
+// Search
+const { results } = await cencori.memory.searchUser({
+  userId: session.user.id,
+  query: 'ui preferences',
+  topK: 3,
+});
+
+// Forget
+await cencori.memory.forget(results[0].id);
+```
+
+## Use with any provider — `recall` + `remember`
+
+You don't have to route inference through Cencori to use memory. Keep your existing OpenAI / Anthropic / Bedrock / LangChain setup exactly as-is and bolt memory on beside it with two helpers:
+
+```typescript
+import { Cencori } from 'cencori';
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+// 1. Recall — returns an inject-ready system string ('' if nothing yet)
+const context = await cencori.memory.recall(userId, userMessage);
+
+// 2. Your existing model call — untouched
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [
+    ...(context ? [{ role: 'system', content: context }] : []),
+    { role: 'user', content: userMessage },
+  ],
+});
+const reply = completion.choices[0].message.content;
+
+// 3. Remember — we extract the durable facts from the exchange and store them
+await cencori.memory.remember(userId, { user: userMessage, assistant: reply });
+```
+
+`remember` runs the same fact extraction the gateway uses (customizable via `extract`), redacts before writing, and enforces org isolation and quota — all without any inference going through Cencori. `recall` is a thin wrapper over search that formats results the same way the gateway injects them.
+
+Under the hood these map to `POST /v1/memory/remember` and `POST /v1/memory/search`. Embeddings use your project's OpenAI key if configured (BYOK), or Cencori's managed key otherwise — so zero provider setup is required to start.
+
+## React — memory-aware chat
+
+`cencori/react` ships a drop-in `<Chat>` component. Pass `memory` and the conversation is stateful across sessions:
+
+```tsx
+import { Chat } from 'cencori/react';
+
+<Chat
+  model="gpt-4o"
+  apiKey={process.env.NEXT_PUBLIC_CENCORI_KEY!}
+  memory={{ userId: session.user.id }}
+/>
+```
+
+It streams by default and shows a subtle "recalled N memories" indicator so users know the model remembers them.
+
+### The `useMemory` hook
+
+For custom UI — a "what we remember about you" panel with right-to-be-forgotten:
+
+```tsx
+import { useMemory } from 'cencori/react';
+
+function MemorySettings({ userId }: { userId: string }) {
+  const { memories, forget, exportAll, loading } = useMemory({
+    userId,
+    apiKey: process.env.NEXT_PUBLIC_CENCORI_KEY,
+  });
+
+  if (loading) return <p>Loading…</p>;
+
+  return (
+    <div>
+      <h2>What we remember about you</h2>
+      {memories.map((m) => (
+        <div key={m.id}>
+          <span>{m.content}</span>
+          <button onClick={() => forget(m.id)}>Forget</button>
+        </div>
+      ))}
+      <button onClick={exportAll}>Download my data</button>
+    </div>
+  );
+}
+```
+
+`useMemory` returns `{ memories, loading, error, refresh, write, search, forget, exportAll }`.
+
+## Governance
+
+- **PII redaction runs before writeback.** The raw value never persists — the gateway's PII pipeline tokenizes SSNs, redacts names, etc. on any string headed for storage.
+- **Hard boundary at the organization.** Under no code path can a memory written by one org be read by another. Enforced in SQL and property-tested against the live database.
+- **Forget is real deletion.** `DELETE /v1/memory/:id` removes the row and its embedding.
+- **Opt-in per request.** No `memory` field means no memory. Nothing is stored unless you ask for it.
+
+## Limits
+
+Memory is metered by count per project (each memory has a 10KB content soft cap). Free projects get 1,000 memories with 30-day session / 90-day user retention. At 100% the gateway returns `429 memory_quota_exceeded` on **writes only** — reads keep working, so your product never silently forgets its users.

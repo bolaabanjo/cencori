@@ -1,20 +1,31 @@
 /**
- * Memory embeddings — OpenAI text-embedding-3-small (1536-dim), matching the
- * gateway_memories.embedding column. BYOK: the project's own OpenAI key from
- * provider_keys wins; the managed platform key is the fallback.
+ * Memory embeddings — 1536-dim, matching the gateway_memories.embedding column.
  *
- * (The semantic cache uses a separate Gemini 768-dim stack — intentionally
- * not shared; the dimensions are incompatible.)
+ * Managed default: Google `gemini-embedding-001` at outputDimensionality=1536
+ * (free tier, no OpenAI dependency). BYOK: a project's own active OpenAI key
+ * still wins and uses text-embedding-3-small (also 1536, so vectors stay
+ * comparable within a project). Both paths yield the same dimensionality.
+ *
+ * A project must not switch providers mid-life — OpenAI-space and Gemini-space
+ * vectors are not comparable. New projects have no memories, so the managed
+ * Gemini default is a clean baseline.
+ *
+ * (The semantic cache uses a separate Gemini 768-dim stack — not shared.)
  */
 
 import OpenAI from 'openai';
+import { GoogleGenerativeAI, type EmbedContentRequest } from '@google/generative-ai';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { decryptApiKey } from '@/lib/encryption';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { getGoogleApiKey } from '@/lib/providers/google-env';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
+// BYOK OpenAI path (kept for projects that bring their own OpenAI key).
 export const MEMORY_EMBEDDING_MODEL = 'text-embedding-3-small';
+// Managed default — free, 1536-dim via Matryoshka output dimensionality.
+export const MEMORY_EMBEDDING_MODEL_MANAGED = 'gemini-embedding-001';
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 
 export interface MemoryEmbeddingResult {
@@ -23,6 +34,8 @@ export interface MemoryEmbeddingResult {
     providerCostUsd: number;
     cencoriChargeUsd: number;
     markupPercentage: number;
+    /** Which model actually produced the vectors ('openai' BYOK or managed Gemini). */
+    model: string;
 }
 
 /**
@@ -38,8 +51,7 @@ export async function embedForMemory(
 ): Promise<MemoryEmbeddingResult> {
     const inputs = Array.isArray(input) ? input : [input];
 
-    // BYOK first, managed key as fallback (same pattern as /api/memory/store).
-    let openaiKey: string | null = null;
+    // BYOK OpenAI wins if the project brought one; otherwise managed Gemini.
     const { data: providerKey } = await supabase
         .from('provider_keys')
         .select('encrypted_key, is_active')
@@ -49,15 +61,50 @@ export async function embedForMemory(
         .single();
 
     if (providerKey?.encrypted_key) {
-        openaiKey = decryptApiKey(providerKey.encrypted_key, organizationId);
-    } else {
-        openaiKey = process.env.OPENAI_API_KEY ?? null;
+        const openaiKey = decryptApiKey(providerKey.encrypted_key, organizationId);
+        return embedWithOpenAI(openaiKey, inputs);
     }
 
-    if (!openaiKey) {
-        throw new Error('No OpenAI API key configured for memory embeddings');
+    return embedWithGemini(inputs);
+}
+
+/** Managed path — Google gemini-embedding-001 at 1536 dims. Free tier. */
+async function embedWithGemini(inputs: string[]): Promise<MemoryEmbeddingResult> {
+    const key = getGoogleApiKey();
+    if (!key) {
+        throw new Error('No Google API key configured for memory embeddings');
     }
 
+    const genAI = new GoogleGenerativeAI(key);
+    const model = genAI.getGenerativeModel({ model: MEMORY_EMBEDDING_MODEL_MANAGED });
+
+    const embeddings: number[][] = [];
+    let totalTokens = 0;
+    for (const text of inputs) {
+        // outputDimensionality is supported by the API (Matryoshka) but missing
+        // from the v0.24.1 SDK types — widen the request type to pass it.
+        const request: EmbedContentRequest & { outputDimensionality?: number } = {
+            content: { role: 'user', parts: [{ text }] },
+            outputDimensionality: MEMORY_EMBEDDING_DIMENSIONS,
+        };
+        const result = await model.embedContent(request);
+        embeddings.push(result.embedding.values);
+        totalTokens += Math.ceil(text.length / 4);
+    }
+
+    // Free tier — no provider cost billed for managed embeddings today.
+    return {
+        embeddings,
+        totalTokens,
+        providerCostUsd: 0,
+        cencoriChargeUsd: 0,
+        markupPercentage: 0,
+        model: MEMORY_EMBEDDING_MODEL_MANAGED,
+    };
+}
+
+/** BYOK path — OpenAI text-embedding-3-small (1536 dims). */
+async function embedWithOpenAI(openaiKey: string, inputs: string[]): Promise<MemoryEmbeddingResult> {
     const client = new OpenAI({ apiKey: openaiKey });
     const response = await client.embeddings.create({
         model: MEMORY_EMBEDDING_MODEL,
@@ -78,5 +125,6 @@ export async function embedForMemory(
         providerCostUsd,
         cencoriChargeUsd,
         markupPercentage: pricing.cencoriMarkupPercentage,
+        model: MEMORY_EMBEDDING_MODEL,
     };
 }

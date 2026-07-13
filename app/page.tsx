@@ -1,27 +1,15 @@
-"use client";
+import { LandingPage } from "@/components/landing/LandingPage";
 
-import Navbar from "@/components/landing/Navbar";
-import { Hero } from "@/components/landing/Hero";
-import { SocialProof } from "@/components/landing/SocialProof";
-import { GatewayWedge } from "@/components/landing/GatewayWedge";
-import { LatestPosts } from "@/components/landing/LatestPosts";
-import { BottomCTA } from "@/components/landing/BottomCTA";
-import { Footer } from "@/components/landing/Footer";
-
-export default function HomePage() {
-  return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-      <Navbar homeUrl="/" />
-
-      <main>
-        <Hero />
-        <SocialProof />
-        <GatewayWedge />
-        <LatestPosts />
-        <BottomCTA />
-      </main>
-
-      <Footer />
-    </div>
-  );
+/**
+ * Root page.
+ *
+ * Always renders the marketing landing — logged-out and logged-in visitors
+ * alike. Existing users need to be able to reach the marketing surface
+ * (product launches, changelog, `/enterprise`, `/memory`, etc.). The
+ * top-nav "Sign in" button swaps to "Dashboard" when signed in, which
+ * routes to `/dashboard` and resolves to the last-visited org from the
+ * `cencori:last-org` cookie.
+ */
+export default function RootPage() {
+    return <LandingPage />;
 }

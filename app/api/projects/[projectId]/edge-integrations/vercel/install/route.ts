@@ -6,10 +6,10 @@ import { createVercelInstallState, hasVercelInstallStateSecret } from '@/lib/ver
 
 function buildEdgePath(orgSlug: string | null, projectSlug: string | null): string {
     if (!orgSlug || !projectSlug) {
-        return '/dashboard/organizations';
+        return '/dashboard';
     }
 
-    return `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/edge`;
+    return `/${orgSlug}/${projectSlug}/edge`;
 }
 
 function buildInstallUrl(state: string): string | null {

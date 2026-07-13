@@ -145,7 +145,7 @@ async function main() {
     const { SendByte } = await import('@sendbyte/node');
     const sendbyte = new SendByte(apiKey);
     const baseUrl = getBaseUrl();
-    const preferencesUrl = `${baseUrl}/dashboard/organizations`;
+    const preferencesUrl = `${baseUrl}/dashboard`;
 
     // Record the campaign for observability
     const { data: sendRecord } = await admin

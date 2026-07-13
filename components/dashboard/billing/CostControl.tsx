@@ -35,7 +35,7 @@ export function CostControl({ orgSlug, projects }: CostControlProps) {
                 </div>
                 {firstProject ? (
                     <Button asChild variant="outline" className="h-7 text-xs">
-                        <Link href={`/dashboard/organizations/${orgSlug}/projects/${firstProject.slug}/settings`}>
+                        <Link href={`/${orgSlug}/${firstProject.slug}/settings`}>
                             Configure Alerts
                         </Link>
                     </Button>
@@ -81,7 +81,7 @@ export function CostControl({ orgSlug, projects }: CostControlProps) {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <Button asChild variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Link href={`/dashboard/organizations/${orgSlug}/projects/${project.slug}/settings`}>
+                                        <Link href={`/${orgSlug}/${project.slug}/settings`}>
                                             <ChevronRight size={14} className="text-muted-foreground" />
                                         </Link>
                                     </Button>

@@ -44,6 +44,12 @@ export type TurnExecuteParams = {
         promptTokens: number; completionTokens: number; totalTokens: number;
         providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number;
     }) => void;
+    /**
+     * Called once with the assistant's full text after a turn completes
+     * successfully (not on pause/failure). The turns route uses this to
+     * schedule gateway memory writeback via waitUntil.
+     */
+    onCompletion?: (fullText: string) => void;
 };
 
 export type TurnExecuteResult =
@@ -138,13 +144,14 @@ function makeStream(params: {
     logSuccess: (m: { provider: string; model: string; status: 'success' | 'success_fallback' | 'error'; promptTokens: number; completionTokens: number; totalTokens: number; providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number; errorMessage?: string }) => void;
     incrementUsage: (c: number) => void;
     recordEndUserUsage?: (u: { promptTokens: number; completionTokens: number; totalTokens: number; providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number }) => void;
+    onCompletion?: (fullText: string) => void;
 }): NextResponse {
     const {
         supabase, gatewayCtx, sessionId, turnNumber, resolved,
         messages, functionTools, forceSchemaResult, schemaToolName, tool_choice,
         temperature, max_output_tokens, pauseOnToolCalls, needsApprovalToolNames, collectedBuiltinToolOutputs,
         instructions, inputText,
-        tier, logSuccess, incrementUsage, recordEndUserUsage,
+        tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
     } = params;
 
     const stream = new ReadableStream({
@@ -254,6 +261,10 @@ function makeStream(params: {
 
                         void maybeCreateCheckpoint(supabase, sessionId, turnNumber, messages, fullText);
 
+                        // Gateway memory writeback (async, post-redaction) — the
+                        // turns route wires this to runChatMemoryWriteback.
+                        onCompletion?.(fullText);
+
                         controller.close();
                     }
                 }
@@ -324,7 +335,7 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
         supabase, gatewayCtx, sessionId, turnNumber, model,
         instructions, tools, tool_choice, temperature, max_output_tokens,
         response_format, inputMessages, inputText,
-        pauseOnToolCalls, tier, logSuccess, incrementUsage, recordEndUserUsage,
+        pauseOnToolCalls, tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
     } = params;
 
     try {
@@ -373,7 +384,7 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
             needsApprovalToolNames,
             collectedBuiltinToolOutputs: [...pre.toolOutputs],
             instructions, inputText,
-            tier, logSuccess, incrementUsage, recordEndUserUsage,
+            tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
         });
 
         return { ok: true, response };

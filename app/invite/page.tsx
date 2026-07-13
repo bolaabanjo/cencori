@@ -162,7 +162,7 @@ function InvitePageContent() {
                         You've successfully joined {inviteDetails?.organizationName || "the organization"}.
                     </p>
                     <Button asChild>
-                        <Link href={orgSlug ? `/dashboard/organizations/${orgSlug}` : "/dashboard"}>
+                        <Link href={orgSlug ? `/${orgSlug}` : "/dashboard"}>
                             Go to Organization
                         </Link>
                     </Button>

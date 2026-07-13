@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
                 model: config?.model || "gpt-4o-mini",
             };
         }),
-        dashboard_url: `https://cencori.com/dashboard/organizations/${org.slug}/projects/${project.slug}`,
+        dashboard_url: `https://cencori.com/${org.slug}/${project.slug}`,
     });
 }
 

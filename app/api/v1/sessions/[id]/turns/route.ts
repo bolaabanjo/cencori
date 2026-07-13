@@ -20,6 +20,17 @@ import type { SubscriptionTier } from "@/lib/entitlements";
 import { resolveAgentContext } from "@/lib/gateway/agent-context";
 import { executeSessionTurn, expireStaleSessions } from "@/lib/gateway/session-engine";
 import type { TurnRequestBody } from "@/lib/gateway/session-types";
+import { waitUntil } from "@vercel/functions";
+import {
+    buildMemorySystemBlock,
+    getProjectMemorySettings,
+    parseMemoryDirective,
+    retrieveMemories,
+    runChatMemoryWriteback,
+    type MemoryDirective,
+    type MemorySettings,
+    type RetrievedMemory,
+} from "@/lib/memory";
 
 const normalizeGatewayModelId = (modelId: string): string => {
     const strippedModel = modelId.startsWith("cencori/")
@@ -274,6 +285,39 @@ export async function POST(
                 return [];
             });
 
+        // ── Memory directive (API opt-in: presence of `memory` enables it) ──
+        // Mirrors the chat-completions door so a session turn can recall
+        // user-scoped facts and persist new ones — the same memory that
+        // powers /v1/chat/completions, now on the Sessions (and Arcie) path.
+        let memoryDirective: MemoryDirective | null = null;
+        let memorySettings: MemorySettings | null = null;
+
+        if (body.memory !== undefined) {
+            memorySettings = await getProjectMemorySettings(adminClient, activeGatewayCtx.projectId);
+            if (!memorySettings.enabled) {
+                return respondError(403, "Memory is disabled for this project.", "memory_disabled");
+            }
+            const parsedDirective = parseMemoryDirective(body.memory);
+            if (!parsedDirective.ok) {
+                return respondError(400, parsedDirective.error, "invalid_memory_directive");
+            }
+            memoryDirective = parsedDirective.directive;
+        }
+
+        // Retrieval runs in parallel with the input pipeline; fail-open ([]).
+        const lastUserMessageText =
+            [...inputMessages].reverse().find((m) => m.role === "user")?.content ?? "";
+        const memoryPromise: Promise<RetrievedMemory[]> =
+            memoryDirective?.retrieve
+                ? retrieveMemories({
+                    supabase: adminClient,
+                    organizationId: activeGatewayCtx.organizationId,
+                    projectId: activeGatewayCtx.projectId,
+                    directive: memoryDirective,
+                    queryText: lastUserMessageText,
+                })
+                : Promise.resolve([]);
+
         const inputPipeline = await runGatewayInputPipeline({
             supabase: adminClient,
             projectId: gatewayCtx.projectId,
@@ -290,6 +334,42 @@ export async function POST(
                 : toOpenAiErrorBody(inputPipeline);
             return respond(NextResponse.json(errorBody, { status: inputPipeline.status }), inputPipeline.code, inputPipeline.message);
         }
+
+        // ── Memory injection ──
+        // Stored facts were redacted at write time; insert them as a system
+        // block ahead of the current turn's input (after any leading system
+        // messages) so the engine positions them right before the user turn.
+        const guardedInput = inputPipeline.messages;
+        const retrievedMemories = await memoryPromise;
+        if (retrievedMemories.length > 0) {
+            const memoryMessage: UnifiedMessage = {
+                role: "system",
+                content: buildMemorySystemBlock(retrievedMemories),
+            };
+            let insertAt = 0;
+            while (insertAt < guardedInput.length && guardedInput[insertAt].role === "system") {
+                insertAt++;
+            }
+            guardedInput.splice(insertAt, 0, memoryMessage);
+        }
+
+        // ── Memory writeback (async — runs after the turn completes) ──
+        const scheduleMemoryWriteback = (assistantText: string) => {
+            if (memoryDirective?.write && memorySettings && assistantText) {
+                const directive = memoryDirective;
+                const settings = memorySettings;
+                waitUntil(
+                    runChatMemoryWriteback({
+                        supabase: adminClient,
+                        gatewayCtx: activeGatewayCtx,
+                        directive,
+                        settings,
+                        userText: inputPipeline.inputText,
+                        assistantText,
+                    })
+                );
+            }
+        };
 
         // Inject agent-configured built-in tools into the request
         const tools = [...(body.tools || [])];
@@ -315,8 +395,9 @@ export async function POST(
             temperature: body.temperature,
             max_output_tokens: body.max_output_tokens,
             response_format: body.response_format,
-            inputMessages: inputPipeline.messages,
+            inputMessages: guardedInput,
             inputText: inputPipeline.inputText,
+            onCompletion: scheduleMemoryWriteback,
             pauseOnToolCalls: body.pause_on_tool_calls ?? false,
             endUserId,
             tier: (gatewayCtx.tier || "free") as SubscriptionTier,
@@ -348,6 +429,17 @@ export async function POST(
                 NextResponse.json(execResult.body, { status: execResult.status }),
                 "session_turn_failed",
                 (execResult.body as { error?: { message?: string } }).error?.message || "Turn execution failed",
+            );
+        }
+
+        if (memoryDirective) {
+            execResult.response.headers.set(
+                "X-Cencori-Memory-Retrieved",
+                String(retrievedMemories.length),
+            );
+            execResult.response.headers.set(
+                "X-Cencori-Memory-Write",
+                memoryDirective.write ? "async" : "disabled",
             );
         }
 

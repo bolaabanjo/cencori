@@ -73,7 +73,9 @@ export interface MemorySettings {
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     enabled: true,
-    extractionModel: 'gpt-4o-mini',
+    // Non-OpenAI by default so the whole memory pipeline (extraction +
+    // embeddings) runs without an OpenAI key. Overridable per project/request.
+    extractionModel: 'gemini-2.5-flash',
     extractionPrompt: null,
     minImportance: 0.5,
     maxMemoriesPerExchange: 5,

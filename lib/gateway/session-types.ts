@@ -1,4 +1,5 @@
 import type { ResponsesRequest } from '@/lib/gateway/v1-responses-execute';
+import type { MemoryDirectiveInput } from '@/lib/memory';
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'failed';
 
@@ -65,6 +66,8 @@ export interface TurnRequestBody {
     parallel_tool_calls?: boolean;
     truncation?: 'auto' | 'disabled';
     pause_on_tool_calls?: boolean;
+    /** Gateway memory directive — presence opts the turn into memory (retrieve + write). */
+    memory?: MemoryDirectiveInput;
 }
 
 export interface SessionResponse {

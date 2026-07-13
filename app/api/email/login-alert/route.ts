@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = getBaseUrl();
     const token = generateUserUnsubscribeToken(user.id);
     const unsubscribeUrl = buildUserUnsubscribeUrl(baseUrl, user.id, token);
-    const preferencesUrl = `${baseUrl}/dashboard/settings`;
+    const preferencesUrl = `${baseUrl}/account/settings`;
 
     const firstName = (meta.full_name as string | undefined)?.split(/\s+/)[0] || normalizedEmail.split('@')[0];
 

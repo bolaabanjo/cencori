@@ -287,7 +287,7 @@ export default function Navbar({
     const actions = providedActions || (isAuthenticated ? [
         {
             text: "Dashboard",
-            href: "/dashboard/organizations",
+            href: "/dashboard",
             isButton: true,
             variant: "default",
         },
@@ -464,11 +464,11 @@ export default function Navbar({
                                                 </p>
                                             </div>
                                             <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/profile")}>
                                                 <CircleUserRound className="mr-2 h-3.5 w-3.5" />
                                                 Profile
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/settings")}>
                                                 <Settings className="mr-2 h-3.5 w-3.5" />
                                                 Settings
                                             </DropdownMenuItem>
@@ -490,7 +490,7 @@ export default function Navbar({
                                                 System
                                             </DropdownMenuItem>
                                             <div className="my-1 border-t border-border/40" />
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/organizations")}>
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard")}>
                                                 Dashboard
                                             </DropdownMenuItem>
                                             <DropdownMenuItem

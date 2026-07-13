@@ -50,7 +50,7 @@ async function main() {
     const { firstName, resolved } = await lookupRecipientName(recipient);
 
     const unsubscribeUrl = 'https://cencori.com/account/email-preferences';
-    const preferencesUrl = 'https://cencori.com/dashboard/organizations';
+    const preferencesUrl = 'https://cencori.com/dashboard';
 
     const { launchTemplate } = await import('../lib/email-templates');
     const { SendByte } = await import('@sendbyte/node');

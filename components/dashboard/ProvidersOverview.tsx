@@ -46,7 +46,7 @@ export function ProvidersOverview({ orgSlug }: ProvidersOverviewProps) {
                             <CardTitle>AI Providers</CardTitle>
                             <CardDescription>Multi-model support enabled</CardDescription>
                         </div>
-                        <Link href={`/dashboard/organizations/${orgSlug}/providers`}>
+                        <Link href={`/${orgSlug}/~/providers`}>
                             <Settings className="h-5 w-5 text-muted-foreground hover:text-foreground cursor-pointer" />
                         </Link>
                     </div>
@@ -81,7 +81,7 @@ export function ProvidersOverview({ orgSlug }: ProvidersOverviewProps) {
                         </div>
                     )}
 
-                    <Link href={`/dashboard/organizations/${orgSlug}/providers`} className="block pt-2">
+                    <Link href={`/${orgSlug}/~/providers`} className="block pt-2">
                         <div className="text-sm text-primary hover:underline cursor-pointer">
                             Manage providers →
                         </div>

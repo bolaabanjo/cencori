@@ -76,7 +76,7 @@ export async function POST(
     try {
         const { createConnectAccount } = await import("@/lib/stripe-connect");
         const body = await req.json();
-        const returnUrl = body.return_url || `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/organizations/${orgSlug}/billing/stripe-connect`;
+        const returnUrl = body.return_url || `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/${orgSlug}/billing/stripe-connect`;
         const refreshUrl = body.refresh_url || returnUrl;
 
         const { accountId, onboardingUrl } = await createConnectAccount(

@@ -87,7 +87,7 @@ export function SharedChatUI({ messages, title, createdAt }: SharedChatUIProps) 
     const authenticatedActions = [
         {
             text: "Dashboard",
-            href: "/dashboard/organizations",
+            href: "/dashboard",
             isButton: true,
             variant: "default",
         },

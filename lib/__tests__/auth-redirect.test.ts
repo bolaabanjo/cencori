@@ -23,11 +23,11 @@ describe("resolveAuthRedirectTargets", () => {
     test("blocks external redirects and falls back safely", () => {
         const result = resolveAuthRedirectTargets("https://evil.example.com/phish", {
             currentOrigin: "https://cencori.com",
-            defaultPath: "/dashboard/organizations",
+            defaultPath: "/dashboard",
         });
 
-        expect(result.oauthRedirectTo).toBe("https://cencori.com/dashboard/organizations");
-        expect(result.navigationTarget).toBe("/dashboard/organizations");
+        expect(result.oauthRedirectTo).toBe("https://cencori.com/dashboard");
+        expect(result.navigationTarget).toBe("/dashboard");
     });
 
     test("defaults to dashboard when redirect is missing", () => {
@@ -35,8 +35,8 @@ describe("resolveAuthRedirectTargets", () => {
             currentOrigin: "https://cencori.com",
         });
 
-        expect(result.oauthRedirectTo).toBe("https://cencori.com/dashboard/organizations");
-        expect(result.navigationTarget).toBe("/dashboard/organizations");
+        expect(result.oauthRedirectTo).toBe("https://cencori.com/dashboard");
+        expect(result.navigationTarget).toBe("/dashboard");
     });
 });
 

@@ -1,0 +1,13 @@
+{
+  "name": "cencori-memory-chatbot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A chatbot that remembers users across sessions, using Cencori gateway memory",
+  "scripts": {
+    "start": "node memory-chat.js"
+  },
+  "dependencies": {
+    "cencori": "^1.4.0",
+    "dotenv": "^16.0.0"
+  }
+}

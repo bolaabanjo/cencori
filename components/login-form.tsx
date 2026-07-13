@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { resolveAuthRedirectTargets } from "@/lib/auth-redirect";
 import { clearSignupWelcomeEmailPending, markSignupWelcomeEmailPending } from "@/lib/auth-welcome";
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 
 function isNetworkError(err: unknown): boolean {
   if (!(err instanceof TypeError)) return false;
@@ -34,6 +36,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [ssoInfo, setSsoInfo] = useState<{ sso: boolean; enforce?: boolean; organization?: string; domain?: string } | null>(null);
   const [checkingSSO, setCheckingSSO] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const checkSSO = async (email: string) => {
     const domain = email.split("@")[1];
@@ -110,7 +113,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         return;
       }
       const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
-        defaultPath: "/dashboard/organizations",
+        defaultPath: "/dashboard",
       });
       if (data?.session) {
         navigateAfterAuth(navigationTarget);
@@ -130,7 +133,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     setLoading(true);
     try {
       const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
-        defaultPath: "/dashboard/organizations",
+        defaultPath: "/dashboard",
       });
 
       markSignupWelcomeEmailPending();
@@ -152,6 +155,11 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
 
   return (
     <form className={cn("flex flex-col gap-6", className)} onSubmit={handleSubmit} {...props}>
+      <div className="flex justify-center mb-2">
+        <Link href="/" className="flex items-center gap-2 font-medium">
+          <Logo variant="wordmark" className="h-6" />
+        </Link>
+      </div>
       <div>
         <h1 className="text-lg font-medium">Login</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -215,7 +223,17 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
                   Forgot your password?
                 </a>
               </div>
-              <Input id="password" name="password" type="password" />
+              <div className="relative">
+                <Input id="password" name="password" type={showPassword ? "text" : "password"} className="pr-10" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <Button type="submit" disabled={loading}>

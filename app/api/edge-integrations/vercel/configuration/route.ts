@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const baseUrl = getAppBaseUrl(req);
 
     if (!configurationId) {
-        return NextResponse.redirect(new URL('/dashboard/organizations?vercel=missing_configuration_id', baseUrl));
+        return NextResponse.redirect(new URL('/dashboard', baseUrl));
     }
 
     try {
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         const integration = integrations[0];
 
         if (!integration) {
-            return NextResponse.redirect(new URL('/dashboard/organizations?vercel=configuration_not_found', baseUrl));
+            return NextResponse.redirect(new URL('/dashboard?vercel=configuration_not_found', baseUrl));
         }
 
         const supabaseAdmin = createAdminClient();
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
             .maybeSingle();
 
         if (projectError || !project?.slug || !project.organization_id) {
-            return NextResponse.redirect(new URL('/dashboard/organizations?vercel=configuration_not_found', baseUrl));
+            return NextResponse.redirect(new URL('/dashboard?vercel=configuration_not_found', baseUrl));
         }
 
         const { data: organization, error: organizationError } = await supabaseAdmin
@@ -45,11 +45,11 @@ export async function GET(req: NextRequest) {
             .maybeSingle();
 
         if (organizationError || !organization?.slug) {
-            return NextResponse.redirect(new URL('/dashboard/organizations?vercel=configuration_not_found', baseUrl));
+            return NextResponse.redirect(new URL('/dashboard?vercel=configuration_not_found', baseUrl));
         }
 
         const redirectUrl = new URL(
-            `/dashboard/organizations/${organization.slug}/projects/${project.slug}/edge`,
+            `/${organization.slug}/${project.slug}/edge`,
             baseUrl
         );
         redirectUrl.searchParams.set('vercel', 'configuration_opened');
@@ -58,6 +58,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.redirect(redirectUrl);
     } catch (error) {
         console.error('[Vercel Configuration] Failed to resolve configuration URL:', error);
-        return NextResponse.redirect(new URL('/dashboard/organizations?vercel=configuration_error', baseUrl));
+        return NextResponse.redirect(new URL('/dashboard?vercel=configuration_error', baseUrl));
     }
 }

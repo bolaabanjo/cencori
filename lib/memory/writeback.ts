@@ -118,6 +118,99 @@ export async function writeMemories(params: WriteMemoriesParams): Promise<WriteM
     };
 }
 
+export interface RememberExchangeResult {
+    written: WrittenMemory[];
+    extracted: number;
+    quotaExceeded: boolean;
+    costUsd: number;
+    model: string;
+}
+
+/**
+ * Extract facts from a single {user, assistant} exchange and persist them per
+ * the directive's scope — the synchronous, result-returning core behind the
+ * `POST /v1/memory/remember` endpoint (the SDK's `memory.remember` helper).
+ *
+ * Unlike runChatMemoryWriteback this returns what it wrote and does NOT log or
+ * bill — the caller (which has the request/response lifecycle) does that.
+ */
+export async function rememberExchange(params: {
+    supabase: SupabaseAdmin;
+    organizationId: string;
+    projectId: string;
+    tier: SubscriptionTier;
+    directive: MemoryDirective;
+    settings: MemorySettings;
+    userText: string;
+    assistantText: string;
+    requestId?: string;
+}): Promise<RememberExchangeResult> {
+    const { supabase, organizationId, projectId, tier, directive, settings, userText, assistantText, requestId } = params;
+
+    const extraction = await extractFacts({
+        supabase,
+        projectId,
+        organizationId,
+        tier,
+        settings,
+        extractOverride: directive.extract,
+        userText,
+        assistantText,
+        requestId,
+    });
+
+    if (extraction.facts.length === 0) {
+        return { written: [], extracted: 0, quotaExceeded: false, costUsd: extraction.costUsd, model: extraction.model };
+    }
+
+    if (directive.scope === 'session') {
+        const items: { content: string; importance: number }[] = [];
+        for (const fact of extraction.facts) {
+            const result = await redactFact(supabase, projectId, fact.content);
+            if (result.blocked) continue;
+            items.push({ content: result.content, importance: fact.importance });
+        }
+        await appendSessionMemories(
+            organizationId,
+            projectId,
+            directive.scopeKey,
+            items,
+            settings.sessionTtlSeconds
+        );
+        return {
+            written: items.map(i => ({ id: 'mem_session', content: i.content, importance: i.importance })),
+            extracted: extraction.facts.length,
+            quotaExceeded: false,
+            costUsd: extraction.costUsd,
+            model: extraction.model,
+        };
+    }
+
+    const result = await writeMemories({
+        supabase,
+        organizationId,
+        projectId,
+        tier,
+        scope: directive.scope,
+        scopeKey: directive.scopeKey,
+        namespace: directive.namespace,
+        facts: extraction.facts,
+        metadata: {
+            extractedFrom: 'chat',
+            modelUsed: extraction.model,
+            sourceRequestId: requestId,
+        },
+    });
+
+    return {
+        written: result.written,
+        extracted: extraction.facts.length,
+        quotaExceeded: result.quotaExceeded,
+        costUsd: extraction.costUsd + result.embeddingCostUsd,
+        model: extraction.model,
+    };
+}
+
 /**
  * Post-chat writeback orchestrator — the function handed to waitUntil().
  * Extracts facts from the exchange, then persists per the directive's scope.

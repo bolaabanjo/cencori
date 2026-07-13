@@ -3,6 +3,102 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { RESERVED_ORG_SLUGS } from "@/lib/reserved-slugs";
+
+const LAST_ORG_COOKIE = "cencori:last-org";
+const LAST_ORG_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+/**
+ * If `pathname` starts with what looks like an org slug (first segment
+ * isn't a static-route reserved word and doesn't look like a file), return
+ * that slug. Otherwise return null.
+ */
+function extractOrgSlugFromPath(pathname: string): string | null {
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.length === 0) return null;
+    const first = segments[0].toLowerCase();
+    if (RESERVED_ORG_SLUGS.has(first)) return null;
+    if (first.includes(".")) return null;
+    return first;
+}
+
+/**
+ * Rewrite the legacy /dashboard/organizations/* prod URL shape to the new
+ * top-level shape. Returns the new pathname, or null if the path shouldn't
+ * be rewritten.
+ *
+ * AI Gateway sub-routes moved: prompts/providers/custom-providers/cache/
+ * playground used to live at the project root; they now live under
+ * ai-gateway/. `models` moved from project-level to org-level.
+ */
+const AI_GATEWAY_PROJECT_ROUTES = new Set([
+    "prompts",
+    "providers",
+    "custom-providers",
+    "cache",
+    "playground",
+]);
+
+function rewriteLegacyOrganizationsPath(pathname: string): string | null {
+    // Strip leading slash, split, and drop empty segments.
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.length < 2 || segments[0] !== "dashboard" || segments[1] !== "organizations") {
+        return null;
+    }
+
+    // /dashboard/organizations — flat org list.
+    if (segments.length === 2) return "/dashboard";
+
+    // /dashboard/organizations/new — was org creation flow.
+    if (segments.length === 3 && segments[2] === "new") return "/onboarding";
+
+    const orgSlug = segments[2];
+
+    // /dashboard/organizations/{orgSlug}
+    if (segments.length === 3) return `/${orgSlug}`;
+
+    const afterOrg = segments[3];
+
+    // /dashboard/organizations/{orgSlug}/{non-projects sub} — org-scoped page.
+    if (afterOrg !== "projects") {
+        const subPath = segments.slice(3).join("/");
+        return `/${orgSlug}/~/${subPath}`;
+    }
+
+    // afterOrg === "projects" from here.
+    // /dashboard/organizations/{orgSlug}/projects
+    if (segments.length === 4) return `/${orgSlug}/~/projects`;
+
+    const afterProjects = segments[4];
+
+    // /dashboard/organizations/{orgSlug}/projects/{new|import}[/rest]
+    if (afterProjects === "new" || afterProjects === "import") {
+        const rest = segments.slice(4).join("/");
+        return `/${orgSlug}/~/projects/${rest}`;
+    }
+
+    // /dashboard/organizations/{orgSlug}/projects/{projectSlug}[/rest]
+    const projectSlug = afterProjects;
+    const projectRest = segments.slice(5);
+
+    // Bare project overview.
+    if (projectRest.length === 0) return `/${orgSlug}/${projectSlug}`;
+
+    const projectSubRoute = projectRest[0];
+
+    // Models moved from project-level to org-level.
+    if (projectSubRoute === "models") {
+        return `/${orgSlug}/~/ai-gateway/models`;
+    }
+
+    // AI Gateway routes were at project root; now nested under ai-gateway/.
+    if (AI_GATEWAY_PROJECT_ROUTES.has(projectSubRoute)) {
+        return `/${orgSlug}/${projectSlug}/ai-gateway/${projectRest.join("/")}`;
+    }
+
+    // Everything else passes through unchanged.
+    return `/${orgSlug}/${projectSlug}/${projectRest.join("/")}`;
+}
 
 // Supabase config
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -229,6 +325,68 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Legacy prod compat (pre-URL-polish) — /dashboard/organizations/* was the
+  // shape that shipped to production before the redesign. Every external
+  // bookmark, transactional email, or third-party integration lands here.
+  //
+  //   /dashboard/organizations                                    -> /dashboard
+  //   /dashboard/organizations/new                                -> /onboarding
+  //   /dashboard/organizations/{org}                              -> /{org}
+  //   /dashboard/organizations/{org}/{sub}                        -> /{org}/~/{sub}
+  //   /dashboard/organizations/{org}/projects                     -> /{org}/~/projects
+  //   /dashboard/organizations/{org}/projects/new                 -> /{org}/~/projects/new
+  //   /dashboard/organizations/{org}/projects/import/*            -> /{org}/~/projects/import/*
+  //   /dashboard/organizations/{org}/projects/{proj}              -> /{org}/{proj}
+  //   /dashboard/organizations/{org}/projects/{proj}/{sub}        -> /{org}/{proj}/{sub}
+  //   /dashboard/organizations/{org}/projects/{proj}/prompts/*    -> /{org}/{proj}/ai-gateway/prompts/*
+  //   /dashboard/organizations/{org}/projects/{proj}/providers    -> /{org}/{proj}/ai-gateway/providers
+  //   /dashboard/organizations/{org}/projects/{proj}/custom-providers -> /{org}/{proj}/ai-gateway/custom-providers
+  //   /dashboard/organizations/{org}/projects/{proj}/cache        -> /{org}/{proj}/ai-gateway/cache
+  //   /dashboard/organizations/{org}/projects/{proj}/playground   -> /{org}/{proj}/ai-gateway/playground
+  //   /dashboard/organizations/{org}/projects/{proj}/models       -> /{org}/~/ai-gateway/models
+  if (!isFile && !isScanSubdomain && pathname.startsWith("/dashboard/organizations")) {
+    const rewritten = rewriteLegacyOrganizationsPath(pathname);
+    if (rewritten) {
+      const url = request.nextUrl.clone();
+      url.pathname = rewritten;
+      return applySecurityHeaders(NextResponse.redirect(url, 308));
+    }
+  }
+
+  // URL polish (2026-07) — legacy /dashboard/* URLs redirect to the new shape.
+  //   /dashboard/{orgSlug}/*        -> /{orgSlug}/*
+  //   /dashboard/profile            -> /account/profile
+  //   /dashboard/settings           -> /account/settings
+  //   /dashboard/connected-accounts -> /account/connected-accounts
+  //   /dashboard/security           -> /account/security
+  // Preserved: /dashboard, /dashboard/agent-setup
+  if (!isFile && !isScanSubdomain && pathname.startsWith("/dashboard/")) {
+    const segments = pathname.split("/").filter(Boolean);
+    // segments[0] === "dashboard"; segments[1] is the first segment after.
+    if (segments.length >= 2) {
+      const firstAfter = segments[1];
+      const KEEP_UNDER_DASHBOARD = new Set(["agent-setup"]);
+      const ACCOUNT_ROUTES = new Set([
+        "profile",
+        "settings",
+        "connected-accounts",
+        "security",
+      ]);
+      if (!KEEP_UNDER_DASHBOARD.has(firstAfter)) {
+        const redirectUrl = request.nextUrl.clone();
+        if (ACCOUNT_ROUTES.has(firstAfter)) {
+          const rest = segments.slice(2).join("/");
+          redirectUrl.pathname =
+            "/account/" + firstAfter + (rest ? "/" + rest : "");
+        } else {
+          // Everything else is treated as an org slug at the root.
+          redirectUrl.pathname = "/" + segments.slice(1).join("/");
+        }
+        return applySecurityHeaders(NextResponse.redirect(redirectUrl, 308));
+      }
+    }
+  }
+
   if (!isFile) {
     // Handle pitch subdomain
     if (domain === "pitch.cencori.com" || domain === "pitch.localhost") {
@@ -365,6 +523,24 @@ export async function proxy(request: NextRequest) {
           ),
         );
       }
+    }
+  }
+
+  // Track last-visited org for the / redirect on the next login. Only set on
+  // non-redirect responses so /dashboard/{org}/* → /{org}/* compat doesn't
+  // stamp a cookie on the redirect itself (the follow-up /{org}/* will).
+  // Membership isn't verified here; the read side re-checks it.
+  if (!isFile && response.status < 300) {
+    const orgSlug = extractOrgSlugFromPath(pathname);
+    if (orgSlug) {
+      response.cookies.set({
+        name: LAST_ORG_COOKIE,
+        value: orgSlug,
+        path: "/",
+        maxAge: LAST_ORG_MAX_AGE,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
     }
   }
 

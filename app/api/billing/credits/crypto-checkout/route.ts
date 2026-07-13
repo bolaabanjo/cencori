@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
         email: customerEmail,
         firstName: org.name,
       },
-      successUrl: `${appBaseUrl}/dashboard/organizations/${org.slug}/billing?success=true&topup=true`,
+      successUrl: `${appBaseUrl}/dashboard/${org.slug}/billing?success=true&topup=true`,
       webhookUrl: `${appBaseUrl}/api/billing/coincircuit-webhook`,
       metadata: {
         purchase_type: 'credits_topup',

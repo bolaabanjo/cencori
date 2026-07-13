@@ -1043,7 +1043,7 @@ export function PlaygroundChat({
                                     </p>
                                     <div className="flex items-center gap-3">
                                         <Button asChild size="sm" className="h-8 text-xs">
-                                            <Link href="/dashboard/organizations">Open Dashboard</Link>
+                                            <Link href="/dashboard">Open Dashboard</Link>
                                         </Button>
                                         <Button
                                             variant="outline"

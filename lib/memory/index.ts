@@ -39,4 +39,5 @@ export type { MemoryQuotaStatus } from './quota';
 export { buildMemorySystemBlock, retrieveMemories } from './retrieval';
 export { redactFact } from './redact';
 export { DEFAULT_EXTRACTION_PROMPT, extractFacts, parseExtractionOutput } from './extraction';
-export { runChatMemoryWriteback, writeMemories } from './writeback';
+export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';
+export type { RememberExchangeResult } from './writeback';
