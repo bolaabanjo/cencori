@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, use } from "react";
 import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, MotionConfig } from "framer-motion";
@@ -200,6 +200,7 @@ export default function OnboardingPage({ params }: PageProps) {
   const { orgSlug } = use(params);
   const router = useRouter();
   const { refetchData } = useOrganizationProject();
+  const queryClient = useQueryClient();
 
   const { data: organization, isLoading: orgLoading, error: orgError } = useOrganization(orgSlug);
 
@@ -313,6 +314,9 @@ export default function OnboardingPage({ params }: PageProps) {
     }
 
     await refetchData();
+    // Invalidate the projects-list React Query cache so /~/projects
+    // shows the newly-created project instead of the pre-creation empty state.
+    await queryClient.invalidateQueries({ queryKey: ["orgProjects", orgSlug] });
     setProject(newProject);
     setCreating(false);
     setStep(2);

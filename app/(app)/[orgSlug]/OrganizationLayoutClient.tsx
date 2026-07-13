@@ -170,7 +170,7 @@ export default function OrganizationLayoutClient({
     const projectSubItems = [
         { href: isInsideProject ? `${basePath}/ai-gateway/prompts` : `${orgBase}/~/ai-gateway/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-4 !w-4" />, label: "Prompts" },
         { href: isInsideProject ? `${basePath}/ai-gateway/providers` : `${orgBase}/~/ai-gateway/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-4 !w-4" />, label: "BYOK" },
-        { href: `${orgBase}/~/ai-gateway/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-4 !w-4" />, label: "Models" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/models` : `${orgBase}/~/ai-gateway/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-4 !w-4" />, label: "Models" },
         { href: isInsideProject ? `${basePath}/ai-gateway/custom-providers` : `${orgBase}/~/ai-gateway/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-4 !w-4" />, label: "Custom Providers" },
         { href: isInsideProject ? `${basePath}/ai-gateway/cache` : `${orgBase}/~/ai-gateway/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-4 !w-4" />, label: "Cache" },
         { href: isInsideProject ? `${basePath}/ai-gateway/playground` : `${orgBase}/~/ai-gateway/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-4 !w-4" />, label: "Playground" },

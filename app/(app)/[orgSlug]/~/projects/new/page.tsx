@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation";
 import React, { useState, use } from "react";
 import { useForm } from "react-hook-form";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { slugify } from "@/lib/utils";
@@ -98,6 +98,7 @@ export default function NewProjectPage({ params }: PageProps) {
   // Fetch org with caching - INSTANT ON REVISIT!
   const { data: organization, isLoading: orgLoading, error: orgError } = useOrganization(orgSlug);
   const { refetchData } = useOrganizationProject();
+  const queryClient = useQueryClient();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -183,8 +184,10 @@ export default function NewProjectPage({ params }: PageProps) {
       toast.error("Failed to create project. " + error.message);
     } else {
       toast.success("Project created successfully!");
-      // Refresh breadcrumb data
+      // Refresh breadcrumb data + invalidate projects-list cache so the
+      // new project shows up immediately on /{org}/~/projects.
       await refetchData();
+      await queryClient.invalidateQueries({ queryKey: ["orgProjects", orgSlug] });
       router.push(`/${orgSlug}/${newSlug}`);
     }
     setLoading(false);

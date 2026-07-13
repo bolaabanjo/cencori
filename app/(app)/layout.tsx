@@ -7,7 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
-import { CreditCard, Command, Menu, ChevronsUpDown, PlusCircle, Search } from "lucide-react";
+import { CreditCard, Command, Menu, ChevronsUpDown, PlusCircle, Search, Check } from "lucide-react";
 import { GradientAvatar } from "@outpacelabs/avatars";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -20,14 +20,11 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectSeparator,
-  SelectValue,
-  SelectPrimitive,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { OrganizationProjectProvider, useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import { MobileSheetProvider, useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { MobileNav } from "@/components/dashboard/MobileNav";
@@ -300,35 +297,19 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
               {orgSlug && (
                 <React.Fragment>
                   <BreadcrumbItem>
-                    <Select
-                      value={currentOrg?.slug || "all"}
-                      onValueChange={(slug) => {
-                        if (slug === "all") {
-                          router.push("/dashboard");
-                        } else {
-                          router.push(`/${slug}/projects`);
-                        }
-                      }}
-                    >
-                      <SelectPrimitive.Trigger
-                        className="flex h-7 cursor-pointer items-center gap-1.5 px-2 py-1 text-xs font-medium text-foreground hover:bg-secondary/50 rounded-md transition-colors"
-                      >
-                        <SelectValue placeholder="Organizations">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex h-7 cursor-pointer items-center gap-1.5 px-2 py-1 text-xs font-medium text-foreground hover:bg-secondary/50 rounded-md transition-colors">
                           {currentOrg?.name || "Organizations"}
-                        </SelectValue>
-                        {currentOrg?.subscription_tier && (
-                          <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider rounded-full bg-primary/10 text-primary border border-primary/20">
-                            {currentOrg.subscription_tier}
-                          </span>
-                        )}
-                        <SelectPrimitive.Icon asChild>
-                          <ChevronsUpDown
-                            size={12}
-                            className="text-muted-foreground/60"
-                          />
-                        </SelectPrimitive.Icon>
-                      </SelectPrimitive.Trigger>
-                      <SelectContent className="w-56 p-1 font-mono">
+                          {currentOrg?.subscription_tier && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider rounded-full bg-primary/10 text-primary border border-primary/20">
+                              {currentOrg.subscription_tier}
+                            </span>
+                          )}
+                          <ChevronsUpDown size={12} className="text-muted-foreground/60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
@@ -341,23 +322,23 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                         </div>
                         <div className="h-auto w-full rounded-md overflow-y-auto max-h-40">
                           {organizations.map((org) => (
-                            <SelectItem key={org.id} value={org.slug} className="cursor-pointer text-xs py-1.5">
+                            <DropdownMenuItem key={org.id} className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${org.slug}/projects`)}>
                               {org.name}
-                            </SelectItem>
+                              {org.slug === currentOrg?.slug && <Check className="h-3 w-3" />}
+                            </DropdownMenuItem>
                           ))}
                         </div>
-                        <SelectSeparator className="my-1" />
-                        <SelectGroup>
-                          <SelectItem value="all" className="cursor-pointer text-xs py-1.5">
-                            All Organizations
-                          </SelectItem>
-                        </SelectGroup>
-                        <SelectSeparator className="my-1" />
-                        <Link href="/onboarding" className="flex items-center gap-1.5 cursor-pointer px-2 py-1.5 text-xs outline-hidden select-none hover:bg-accent rounded-sm transition-colors">
+                        <div className="my-1 border-t border-border/40" />
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push("/dashboard")}>
+                          All Organizations
+                        </DropdownMenuItem>
+                        <div className="my-1 border-t border-border/40" />
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push("/onboarding")}>
                           New Organization
-                        </Link>
-                      </SelectContent>
-                    </Select>
+                          <PlusCircle className="h-3 w-3" />
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </BreadcrumbItem>
                 </React.Fragment>
               )}
@@ -366,71 +347,45 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                 <React.Fragment>
                   <BreadcrumbSeparator className="text-muted-foreground/50 text-xs">/</BreadcrumbSeparator>
                   <BreadcrumbItem>
-                    {projectSlug ? (
-                      <Select
-                        value={currentProject?.slug || "all"}
-                        onValueChange={(slug) => {
-                          if (slug === "all") {
-                            router.push(`/${orgSlug}/~/projects`);
-                          } else {
-                            router.push(`/${orgSlug}/${slug}`);
-                          }
-                        }}
-                      >
-                        <SelectPrimitive.Trigger
-                          className="flex h-7 cursor-pointer items-center gap-1 px-2 py-1 text-xs font-medium text-foreground hover:bg-secondary/50 rounded-md transition-colors"
-                        >
-                          <SelectValue placeholder="Projects">
-                            {currentProject?.name || "Projects"}
-                          </SelectValue>
-                          <SelectPrimitive.Icon asChild>
-                            <ChevronsUpDown
-                              size={12}
-                              className="text-muted-foreground/60"
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex h-7 cursor-pointer items-center gap-1 px-2 py-1 text-xs font-medium text-foreground hover:bg-secondary/50 rounded-md transition-colors">
+                          {currentProject?.name || "Projects"}
+                          <ChevronsUpDown size={12} className="text-muted-foreground/60" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
+                        <div className="px-1.5 py-1">
+                          <div className="relative">
+                            <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
+                            <Input
+                              type="search"
+                              placeholder="Search projects..."
+                              className="h-6 w-full rounded bg-background pl-6 text-[11px] border-border/40"
                             />
-                          </SelectPrimitive.Icon>
-                        </SelectPrimitive.Trigger>
-                        <SelectContent className="w-56 p-1 font-mono">
-                          <div className="px-1.5 py-1">
-                            <div className="relative">
-                              <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
-                              <Input
-                                type="search"
-                                placeholder="Search projects..."
-                                className="h-6 w-full rounded bg-background pl-6 text-[11px] border-border/40"
-                              />
-                            </div>
                           </div>
-                          <div className="h-auto w-full rounded-md overflow-y-auto max-h-40">
-                            {projects.filter(p => p.orgSlug === orgSlug).map((proj) => (
-                              <SelectItem key={proj.id} value={proj.slug} className="cursor-pointer text-xs py-1.5">
-                                {proj.name}
-                              </SelectItem>
-                            ))}
-                          </div>
-                          <SelectSeparator className="my-1" />
-                          <SelectGroup>
-                            <SelectItem value="all" className="cursor-pointer text-xs py-1.5">
-                              All Projects
-                            </SelectItem>
-                          </SelectGroup>
-                          <SelectSeparator className="my-1" />
-                          <Link href={`/${orgSlug}/~/projects/new`} className="flex items-center gap-1.5 cursor-pointer px-2 py-1.5 text-xs outline-hidden select-none hover:bg-accent rounded-sm transition-colors">
-                            <PlusCircle className="h-3 w-3" />
-                            New Project
-                          </Link>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <BreadcrumbLink asChild>
-                        <Link href={`/${orgSlug}/~/projects`}>
-                          {currentProject?.name || projectSlug}
-                        </Link>
-                      </BreadcrumbLink>
-                    )}
+                        </div>
+                        <div className="h-auto w-full rounded-md overflow-y-auto max-h-40">
+                          {projects.filter(p => p.orgSlug === orgSlug).map((proj) => (
+                            <DropdownMenuItem key={proj.id} className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${orgSlug}/${proj.slug}`)}>
+                              {proj.name}
+                              {proj.slug === currentProject?.slug && <Check className="h-3 w-3" />}
+                            </DropdownMenuItem>
+                          ))}
+                        </div>
+                        <div className="my-1 border-t border-border/40" />
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/projects`)}>
+                          All Projects
+                        </DropdownMenuItem>
+                        <div className="my-1 border-t border-border/40" />
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${orgSlug}/projects/new`)}>
+                          New Project
+                          <PlusCircle className="h-3 w-3" />
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </BreadcrumbItem>
                 </React.Fragment>
-
               )}
 
               {pathname.includes("/organizations/new") && (
