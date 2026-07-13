@@ -312,31 +312,37 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                       <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
-                            <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
+                            <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
                             <Input
                               type="search"
                               placeholder="Search organizations..."
-                              className="h-6 w-full rounded bg-background pl-6 text-[11px] border-border/40"
+                              className="h-9 w-full rounded bg-background pl-8 text-xs border-border/40"
                             />
                           </div>
                         </div>
                         <div className="h-auto w-full rounded-md overflow-y-auto max-h-40">
                           {organizations.map((org) => (
-                            <DropdownMenuItem key={org.id} className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${org.slug}/projects`)}>
+                            <DropdownMenuItem key={org.id} className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${org.slug}/~/projects`)}>
                               {org.name}
                               {org.slug === currentOrg?.slug && <Check className="h-3 w-3" />}
                             </DropdownMenuItem>
                           ))}
                         </div>
-                        <div className="my-1 border-t border-border/40" />
+                        <div className="my-2 border-t border-border/40" />
+                        <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">More</p>
                         <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push("/dashboard")}>
                           All Organizations
                         </DropdownMenuItem>
                         <div className="my-1 border-t border-border/40" />
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push("/onboarding")}>
-                          New Organization
-                          <PlusCircle className="h-3 w-3" />
-                        </DropdownMenuItem>
+                        <div className="px-2 py-1.5">
+                          <button
+                            onClick={() => router.push("/onboarding")}
+                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-white text-xs font-semibold text-black hover:bg-zinc-100 transition-colors cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                          >
+                            <PlusCircle className="h-3 w-3" />
+                            New Organization
+                          </button>
+                        </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </BreadcrumbItem>
@@ -357,11 +363,11 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                       <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
-                            <Search className="absolute left-2 top-1.5 h-3 w-3 text-muted-foreground" />
+                            <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
                             <Input
                               type="search"
                               placeholder="Search projects..."
-                              className="h-6 w-full rounded bg-background pl-6 text-[11px] border-border/40"
+                              className="h-9 w-full rounded bg-background pl-8 text-xs border-border/40"
                             />
                           </div>
                         </div>
@@ -373,15 +379,21 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                             </DropdownMenuItem>
                           ))}
                         </div>
-                        <div className="my-1 border-t border-border/40" />
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/projects`)}>
+                        <div className="my-2 border-t border-border/40" />
+                        <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">More</p>
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/~/projects`)}>
                           All Projects
                         </DropdownMenuItem>
                         <div className="my-1 border-t border-border/40" />
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between rounded-sm" onClick={() => router.push(`/${orgSlug}/projects/new`)}>
-                          New Project
-                          <PlusCircle className="h-3 w-3" />
-                        </DropdownMenuItem>
+                        <div className="px-2 py-1.5">
+                          <button
+                            onClick={() => router.push(`/${orgSlug}/projects/new`)}
+                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-white text-xs font-semibold text-black hover:bg-zinc-100 transition-colors cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                          >
+                            <PlusCircle className="h-3 w-3" />
+                            New Project
+                          </button>
+                        </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </BreadcrumbItem>
