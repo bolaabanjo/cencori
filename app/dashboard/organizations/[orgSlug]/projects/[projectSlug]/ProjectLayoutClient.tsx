@@ -333,7 +333,7 @@ export default function ProjectLayoutClient({
 
     return (
         <SidebarProvider
-            defaultOpen={false}
+            defaultOpen={true}
             className={isPlayground ? "min-h-0 flex-1 overflow-hidden" : undefined}
             style={isPlayground ? { minHeight: "0px" } : undefined}
         >
