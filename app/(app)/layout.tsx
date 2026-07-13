@@ -45,10 +45,34 @@ const UpdateToast = dynamic(
 );
 
 
+// A tiny cache in sessionStorage so remounts (e.g. Chrome flushing an idle
+// tab and reviving on refocus) don't flash the auth skeleton while
+// getSession() re-resolves. We still verify the session on every mount —
+// this cache only controls whether the skeleton renders.
+const AUTH_CACHE_KEY = "cencori:has-session";
+function hasCachedAuth(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(AUTH_CACHE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function setCachedAuth(value: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) sessionStorage.setItem(AUTH_CACHE_KEY, "1");
+    else sessionStorage.removeItem(AUTH_CACHE_KEY);
+  } catch { /* storage full */ }
+}
+
 // Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  // Skip the skeleton if we already know the user was authenticated in this
+  // browser session. The verify-on-mount check still runs — if the session
+  // has actually been invalidated, we'll redirect to /login.
+  const [loading, setLoading] = useState(() => !hasCachedAuth());
   const [user, setUser] = useState<unknown | null>(null);
 
   useEffect(() => {
@@ -56,11 +80,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     async function check() {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session?.user) {
+        setCachedAuth(false);
         router.replace("/login");
         return;
       }
 
       const sessionUser = session.user;
+      setCachedAuth(true);
 
       if (mounted) {
         setUser(sessionUser);
@@ -76,8 +102,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     }
     check();
+
+    // Keep the has-session cache in sync with Supabase's auth events so a
+    // logout in another tab (or here) clears the fast-path skeleton skip.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
+      if (event === "SIGNED_OUT") {
+        setCachedAuth(false);
+        router.replace("/login");
+      } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        setCachedAuth(true);
+      }
+    });
+
     return () => {
       mounted = false;
+      subscription.unsubscribe();
     };
   }, [router]);
 
