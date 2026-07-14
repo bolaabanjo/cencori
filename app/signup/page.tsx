@@ -1,16 +1,13 @@
-"use client";
-
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import { SignupForm } from "@/components/signup-form";
 import Link from "next/link";
 
-function SignupPageContent({ redirectParam }: { redirectParam: string | null }) {
+function SignupPageContent() {
   return (
     <div className="h-dvh overflow-hidden flex flex-col p-4 md:p-6">
       <div className="flex-1 flex items-center justify-center">
         <div className="w-full max-w-sm">
-          <SignupForm redirectParam={redirectParam} />
+          <SignupForm />
         </div>
       </div>
       <div className="shrink-0 text-center pb-2">
@@ -32,12 +29,7 @@ function SignupPageContent({ redirectParam }: { redirectParam: string | null }) 
 export default function SignupPage() {
   return (
     <Suspense fallback={<div className="h-dvh flex items-center justify-center">Loading...</div>}>
-      <SignupPageContentWrapper />
+      <SignupPageContent />
     </Suspense>
   );
-}
-
-function SignupPageContentWrapper() {
-  const searchParams = useSearchParams();
-  return <SignupPageContent redirectParam={searchParams.get("redirect")} />;
 }

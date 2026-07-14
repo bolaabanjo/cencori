@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,12 @@ function friendlyError(err: unknown): string {
   return "Unexpected error";
 }
 
-type LoginFormProps = React.ComponentProps<"form"> & { redirectParam?: string | null };
+type LoginFormProps = React.ComponentProps<"form">;
 
-export function LoginForm({ className, redirectParam, ...props }: LoginFormProps) {
+export function LoginForm({ className, ...props }: LoginFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectParam = searchParams.get("redirect");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ssoInfo, setSsoInfo] = useState<{ sso: boolean; enforce?: boolean; organization?: string; domain?: string } | null>(null);
@@ -110,7 +112,7 @@ export function LoginForm({ className, redirectParam, ...props }: LoginFormProps
         setLoading(false);
         return;
       }
-      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam ?? null, {
+      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
       if (data?.session) {
@@ -130,7 +132,7 @@ export function LoginForm({ className, redirectParam, ...props }: LoginFormProps
     setError(null);
     setLoading(true);
     try {
-      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam ?? null, {
+      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
 
