@@ -66,6 +66,10 @@ const AzureIcon = ({ size }: { size: number }) => (
     </svg>
 );
 
+const MaximoIcon = ({ size }: { size: number }) => (
+    <img src="/partners/max.jpeg" alt="Maximo AI" width={size} height={size} className="rounded-sm object-cover" style={{ width: size, height: size }} />
+);
+
 // ─── Provider icon mapping ──────────────────────────────────────────────────
 
 const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
@@ -101,6 +105,7 @@ const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
     alibaba: (s) => <Alibaba.Color size={s} />,
     baidu: (s) => <Baidu.Color size={s} />,
     zai: (s) => <ZAI size={s} />,
+    maximo: (s) => <MaximoIcon size={s} />,
 };
 
 function ProviderIcon({ providerId, size = 16 }: { providerId: string; size?: number }) {
