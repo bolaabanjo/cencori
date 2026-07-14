@@ -107,8 +107,8 @@ export function UserMenu() {
                     <ThemeSwitcher />
                 </div>
                 <div className="my-1 border-t border-border/40" />
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/dashboard")}>
-                    Dashboard
+                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/")}>
+                    Homepage
                     <span className="size-3.5 shrink-0">
                         <Logo variant="mark" className="h-full w-full" />
                     </span>

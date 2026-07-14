@@ -633,7 +633,7 @@ export function CommandPalette({
           id: "status",
           label: "System Status",
           icon: <SignalIcon className="h-3.5 w-3.5" />,
-          action: () => openExternal("https://status.cencori.com"),
+          action: () => window.open("/status", "_self"),
           keywords: ["uptime", "health", "incidents"],
         },
         {

@@ -30,7 +30,7 @@ export default function AccountLayout({
                         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     >
                         <ChevronLeft className="h-3 w-3" />
-                        Back to Dashboard
+                        Back
                     </button>
                 </div>
                 <h2 className="text-sm font-medium mb-4">Account</h2>

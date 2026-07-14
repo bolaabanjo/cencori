@@ -452,7 +452,7 @@ export default function ProjectDetailsPage({
           {/* Stats Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {/* Requests Card */}
-            <div className="rounded-xl border border-border/40 bg-card pt-5 px-5 pb-2">
+            <div className="border border-border/40 bg-card pt-5 px-5 pb-2">
               <div className="mb-2">
                 <span className="text-sm font-medium">Requests</span>
               </div>
@@ -494,7 +494,7 @@ export default function ProjectDetailsPage({
             </div>
 
             {/* Cost Card */}
-            <div className="rounded-xl border border-border/40 bg-card pt-5 px-5 pb-2">
+            <div className="border border-border/40 bg-card pt-5 px-5 pb-2">
               <div className="mb-2">
                 <span className="text-sm font-medium">Cost</span>
               </div>
@@ -536,7 +536,7 @@ export default function ProjectDetailsPage({
             </div>
 
             {/* Latency Card */}
-            <div className="rounded-xl border border-border/40 bg-card pt-5 px-5 pb-2">
+            <div className="border border-border/40 bg-card pt-5 px-5 pb-2">
               <div className="mb-2">
                 <span className="text-sm font-medium">Performance</span>
               </div>
@@ -578,7 +578,7 @@ export default function ProjectDetailsPage({
             </div>
 
             {/* Tokens Card */}
-            <div className="rounded-xl border border-border/40 bg-card pt-5 px-5 pb-2">
+            <div className="border border-border/40 bg-card pt-5 px-5 pb-2">
               <div className="mb-2">
                 <span className="text-sm font-medium">Tokens</span>
               </div>
