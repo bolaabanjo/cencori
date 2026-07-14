@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, usePathname, useRouter, useParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { useQuery } from "@tanstack/react-query";
 import {
     Sidebar,
     SidebarContent,
@@ -105,6 +105,7 @@ export default function OrganizationLayoutClient({
         },
         enabled: !!organization?.id,
         staleTime: 15 * 60 * 1000,
+        placeholderData: (prev: { slug: string }[] | undefined) => prev,
     });
 
     // URL shape after the polish is /{orgSlug}/{projectSlug OR ~}/*.
@@ -136,6 +137,11 @@ export default function OrganizationLayoutClient({
     const prefetchRoute = (href: string) => {
         router.prefetch(href);
     };
+
+    const queryClient = useQueryClient();
+    useEffect(() => {
+        queryClient.prefetchQuery({ queryKey: ["orgLayout", orgSlug] });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (error) {
         notFound();
@@ -400,7 +406,9 @@ export default function OrganizationLayoutClient({
 
             <main className="flex w-full flex-1 flex-col overflow-hidden">
                 <UsageLimitBanner orgId={organization.id} orgSlug={organization.slug} />
-                {children}
+                <div key={pathname} className="animate-fade-in" style={{ animationDuration: "150ms" }}>
+                    {children}
+                </div>
             </main>
         </SidebarProvider>
     );
