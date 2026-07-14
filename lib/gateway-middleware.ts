@@ -502,7 +502,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                         error: 'Credit balance exhausted',
                         message: 'Your organization has run out of credits. Top up to continue.',
                         balance: 0,
-                        top_up_url: '/dashboard',
+                        top_up_url: '/billing',
                     },
                     { status: 403 }
                 ),

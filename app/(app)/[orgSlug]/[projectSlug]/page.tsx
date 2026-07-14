@@ -453,163 +453,163 @@ export default function ProjectDetailsPage({
           <div className="border border-border/40 bg-card mb-6">
             <div className="grid grid-cols-1 md:grid-cols-2">
               {/* Requests Card */}
-              <div className="pt-5 px-5 pb-2">
-                <div className="mb-2">
-                  <span className="text-sm font-medium">Requests</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-1">API Calls</p>
-                <p className="text-3xl font-semibold mb-1">{stats.aiRequests.value}</p>
-                <p className="text-xs text-muted-foreground mb-3">{stats.aiRequests.change}</p>
-                <div className="h-36">
-                  {statsLoading ? (
-                    <Skeleton className="h-36 w-full" />
-                  ) : chartData.length > 0 ? (
-                    <ChartContainer
-                      config={{ requests: { label: "Requests", color: "hsl(24 80% 50%)" } }}
-                      className="h-full w-full"
-                    >
-                      <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                        <XAxis
-                          dataKey="date"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                          tickMargin={8}
-                          interval="preserveStartEnd"
-                        />
-                        <ChartTooltip
-                          cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                          content={<ChartTooltipContent hideLabel />}
-                        />
-                        <Bar
-                          dataKey="count"
-                          fill="var(--color-requests)"
-                          radius={[3, 3, 0, 0]}
-                        />
-                      </BarChart>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                  )}
-                </div>
+              <div className="border-b md:border-b-0 md:border-r border-border/40 pt-5 px-5 pb-2">
+              <div className="mb-2">
+                <span className="text-sm font-medium">Requests</span>
               </div>
-
-              {/* Cost Card */}
-              <div className="pt-5 px-5 pb-2 border-t md:border-t-0 md:border-l border-border/40">
-                <div className="mb-2">
-                  <span className="text-sm font-medium">Cost</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-1">Total Spend</p>
-                <p className="text-3xl font-semibold mb-1">{stats.aiCost.value}</p>
-                <p className="text-xs text-muted-foreground mb-3">{stats.aiCost.change}</p>
-                <div className="h-36">
-                  {statsLoading ? (
-                    <Skeleton className="h-36 w-full" />
-                  ) : chartData.length > 0 ? (
-                    <ChartContainer
-                      config={{ cost: { label: "Cost", color: "hsl(142 76% 36%)" } }}
-                      className="h-full w-full"
-                    >
-                      <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                        <XAxis
-                          dataKey="date"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                          tickMargin={8}
-                          interval="preserveStartEnd"
-                        />
-                        <ChartTooltip
-                          cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                          content={<ChartTooltipContent hideLabel formatter={(value) => `$${Number(value).toFixed(6)}`} />}
-                        />
-                        <Bar
-                          dataKey="cost"
-                          fill="var(--color-cost)"
-                          radius={[3, 3, 0, 0]}
-                        />
-                      </BarChart>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                  )}
-                </div>
+              <p className="text-xs text-muted-foreground mb-1">API Calls</p>
+              <p className="text-3xl font-semibold mb-1">{stats.aiRequests.value}</p>
+              <p className="text-xs text-muted-foreground mb-3">{stats.aiRequests.change}</p>
+              <div className="h-36">
+                {statsLoading ? (
+                  <Skeleton className="h-36 w-full rounded-lg" />
+                ) : chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{ requests: { label: "Requests", color: "hsl(24 80% 50%)" } }}
+                    className="h-full w-full"
+                  >
+                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
+                        content={<ChartTooltipContent hideLabel />}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="var(--color-requests)"
+                        radius={[3, 3, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
+                )}
               </div>
+            </div>
 
-              {/* Latency Card */}
-              <div className="pt-5 px-5 pb-2 border-t border-border/40">
-                <div className="mb-2">
-                  <span className="text-sm font-medium">Performance</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-1">Avg Latency</p>
-                <p className="text-3xl font-semibold mb-1">{stats.avgLatency.value}</p>
-                <p className="text-xs text-muted-foreground mb-3">{stats.avgLatency.change}</p>
-                <div className="h-36">
-                  {statsLoading ? (
-                    <Skeleton className="h-36 w-full" />
-                  ) : chartData.length > 0 ? (
-                    <ChartContainer
-                      config={{ latency: { label: "Latency", color: "hsl(244 59% 59%)" } }}
-                      className="h-full w-full"
-                    >
-                      <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                        <XAxis
-                          dataKey="date"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                          tickMargin={8}
-                          interval="preserveStartEnd"
-                        />
-                        <ChartTooltip
-                          cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                          content={<ChartTooltipContent hideLabel />}
-                        />
-                        <Bar
-                          dataKey="count"
-                          fill="var(--color-latency)"
-                          radius={[3, 3, 0, 0]}
-                        />
-                      </BarChart>
-                    </ChartContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                  )}
-                </div>
+            {/* Cost Card */}
+            <div className="border-b md:border-b-0 border-border/40 pt-5 px-5 pb-2">
+              <div className="mb-2">
+                <span className="text-sm font-medium">Cost</span>
               </div>
+              <p className="text-xs text-muted-foreground mb-1">Total Spend</p>
+              <p className="text-3xl font-semibold mb-1">{stats.aiCost.value}</p>
+              <p className="text-xs text-muted-foreground mb-3">{stats.aiCost.change}</p>
+              <div className="h-36">
+                {statsLoading ? (
+                  <Skeleton className="h-36 w-full rounded-lg" />
+                ) : chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{ cost: { label: "Cost", color: "hsl(142 76% 36%)" } }}
+                    className="h-full w-full"
+                  >
+                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
+                        content={<ChartTooltipContent hideLabel formatter={(value) => `$${Number(value).toFixed(6)}`} />}
+                      />
+                      <Bar
+                        dataKey="cost"
+                        fill="var(--color-cost)"
+                        radius={[3, 3, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
+                )}
+              </div>
+            </div>
 
-              {/* Tokens Card */}
-              <div className="pt-5 px-5 pb-2 border-t md:border-l border-border/40">
-                <div className="mb-2">
-                  <span className="text-sm font-medium">Tokens</span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-1">Total Usage</p>
-                <p className="text-3xl font-semibold mb-1">{stats.tokens.value}</p>
-                <p className="text-xs text-muted-foreground mb-3">{stats.tokens.change}</p>
-                <div className="h-36">
-                  {statsLoading ? (
-                    <Skeleton className="h-36 w-full" />
-                  ) : chartData.length > 0 ? (
-                    <ChartContainer
-                      config={{
-                        promptTokens: { label: "Input", color: "hsl(280 65% 60%)" },
-                        completionTokens: { label: "Output", color: "hsl(330 65% 55%)" },
-                      }}
-                      className="h-full w-full"
-                    >
-                      <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                        <XAxis
-                          dataKey="date"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                          tickMargin={8}
-                          interval="preserveStartEnd"
-                        />
-                        <ChartTooltip
-                          cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                          content={<ChartTooltipContent />}
-                        />
+            {/* Latency Card */}
+            <div className="border-b md:border-b-0 md:border-r md:border-t border-border/40 pt-5 px-5 pb-2">
+              <div className="mb-2">
+                <span className="text-sm font-medium">Performance</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-1">Avg Latency</p>
+              <p className="text-3xl font-semibold mb-1">{stats.avgLatency.value}</p>
+              <p className="text-xs text-muted-foreground mb-3">{stats.avgLatency.change}</p>
+              <div className="h-36">
+                {statsLoading ? (
+                  <Skeleton className="h-36 w-full rounded-lg" />
+                ) : chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{ latency: { label: "Latency", color: "hsl(244 59% 59%)" } }}
+                    className="h-full w-full"
+                  >
+                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
+                        content={<ChartTooltipContent hideLabel />}
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="var(--color-latency)"
+                        radius={[3, 3, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
+                )}
+              </div>
+            </div>
+
+            {/* Tokens Card */}
+            <div className="md:border-t border-border/40 pt-5 px-5 pb-2">
+              <div className="mb-2">
+                <span className="text-sm font-medium">Tokens</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-1">Total Usage</p>
+              <p className="text-3xl font-semibold mb-1">{stats.tokens.value}</p>
+              <p className="text-xs text-muted-foreground mb-3">{stats.tokens.change}</p>
+              <div className="h-36">
+                {statsLoading ? (
+                  <Skeleton className="h-36 w-full rounded-lg" />
+                ) : chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{
+                      promptTokens: { label: "Input", color: "hsl(280 65% 60%)" },
+                      completionTokens: { label: "Output", color: "hsl(330 65% 55%)" },
+                    }}
+                    className="h-full w-full"
+                  >
+                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
+                        content={<ChartTooltipContent />}
+                      />
                       <Bar
                         dataKey="promptTokens"
                         stackId="tokens"
@@ -631,7 +631,8 @@ export default function ProjectDetailsPage({
             </div>
 
           </div>
-        </>
+        </div>
+      </>
     </div>
   );
 }

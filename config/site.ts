@@ -44,7 +44,7 @@ export const siteConfig = {
       shipped: "/shipped",
       privacyPolicy: "/privacy-policy",
     },
-    status: "https://status.cencori.com",
+    status: "/status",
   },
 };
 
