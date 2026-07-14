@@ -474,7 +474,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
       <main
         className={cn(
           isPlayground
-            ? "flex min-h-0 flex-1 flex-col overflow-hidden pt-0 lg:pt-12 pb-0 px-4 md:px-6"
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden pt-0 lg:pt-12 pb-0"
             : isOnboardingFlow
               ? "p-4 md:p-6"
               : "p-4 md:p-6 pt-20 lg:pt-14"
