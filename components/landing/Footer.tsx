@@ -103,7 +103,7 @@ export const Footer = () => {
                             <li><Link href="/design" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Design System</Link></li>
                             <li><Link href="/brand" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Brand Assets</Link></li>
                             <li><Link href="/blog" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Blog</Link></li>
-                            <li><Link href="/status" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Status</Link></li>
+                            <li><a href={siteConfig.links.status} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Status</a></li>
                         </ul>
                     </div>
 

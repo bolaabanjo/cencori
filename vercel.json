@@ -87,6 +87,26 @@
                 }
             ],
             "destination": "/pitch"
+        },
+        {
+            "source": "/:path*",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "status.cencori.com"
+                }
+            ],
+            "destination": "/status/:path*"
+        },
+        {
+            "source": "/",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "status.cencori.com"
+                }
+            ],
+            "destination": "/status"
         }
     ],
     "redirects": [
