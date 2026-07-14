@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,12 +29,10 @@ function friendlyError(err: unknown): string {
   return "Unexpected error";
 }
 
-type SignupFormProps = React.ComponentProps<"form">;
+type SignupFormProps = React.ComponentProps<"form"> & { redirectParam?: string | null };
 
-export function SignupForm({ className, ...props }: SignupFormProps) {
+export function SignupForm({ className, redirectParam, ...props }: SignupFormProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectParam = searchParams.get("redirect");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -80,7 +78,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      const { oauthRedirectTo, navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
+      const { oauthRedirectTo, navigationTarget } = resolveAuthRedirectTargets(redirectParam ?? null, {
         defaultPath: "/dashboard",
       });
 
@@ -118,7 +116,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setError(null);
     setLoading(true);
     try {
-      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
+      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam ?? null, {
         defaultPath: "/dashboard",
       });
 

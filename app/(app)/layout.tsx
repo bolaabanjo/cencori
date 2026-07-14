@@ -355,13 +355,13 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                         </div>
                         <div className="my-2 border-t border-border/40" />
                         <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">More</p>
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/projects`)}>
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/~/projects`)}>
                           All Projects
                         </DropdownMenuItem>
                         <div className="my-1 border-t border-border/40" />
                         <div className="px-2 py-1.5">
                           <button
-                            onClick={() => router.push(`/${orgSlug}/projects/new`)}
+                            onClick={() => router.push(`/${orgSlug}/~/projects/new`)}
                             className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
                           >
                             <PlusCircle className="h-3 w-3" />
