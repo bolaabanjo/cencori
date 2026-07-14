@@ -417,11 +417,6 @@ export default function ProjectDetailsPage({
 
   return (
     <div className="w-full max-w-5xl mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <p className="text-xl font-semibold">Hey, {firstName || "there"}!</p>
-      </div>
-
       {/* Getting Started Section */}
       <GettingStartedSection
         orgSlug={orgSlug}

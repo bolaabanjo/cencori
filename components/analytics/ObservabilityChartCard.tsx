@@ -108,7 +108,7 @@ function ChartTooltipContent({ active, payload, label }: { active?: boolean; pay
 
 export function ObservabilityChartCardSkeleton({ className }: { className?: string }) {
     return (
-        <div className={cn('rounded-xl border border-border/30 bg-card p-4 flex flex-col', className)}>
+        <div className={cn('bg-card p-4 flex flex-col', className)}>
             <div className="flex items-center justify-between mb-3">
                 <Skeleton className="h-3.5 w-24" />
                 <Skeleton className="h-5 w-16 rounded-md" />
@@ -157,7 +157,7 @@ export function ObservabilityChartCard({
 
     return (
         <div className={cn(
-            'group rounded-xl border border-border/30 bg-card flex flex-col overflow-hidden transition-colors hover:border-border/50',
+            'bg-card flex flex-col overflow-hidden transition-colors',
             className
         )}>
             {/* Header: title + primary value */}

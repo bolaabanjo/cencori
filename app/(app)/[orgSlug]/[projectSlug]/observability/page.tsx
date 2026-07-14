@@ -389,17 +389,21 @@ export default function ObservabilityPage({ params }: PageProps) {
                     {section === 'overview' && (
                         <>
                             {/* AI Charts grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5">
+                            <div className="border border-border/40 bg-card mb-2.5">
+                                <div className="grid grid-cols-1 md:grid-cols-2">
                                 {!overview ? (
                                     <>
-                                        <ObservabilityChartCardSkeleton />
-                                        <ObservabilityChartCardSkeleton />
-                                        <ObservabilityChartCardSkeleton />
-                                        <ObservabilityChartCardSkeleton />
+                                        <ObservabilityChartCardSkeleton className="border-b md:border-r border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="border-b border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="border-b md:border-r border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="border-b border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="border-b md:border-b-0 md:border-r border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="border-border/40" />
                                     </>
                                 ) : (
                                     <>
                                         <ObservabilityChartCard
+                                            className="border-b md:border-r border-border/40"
                                             title="AI Requests"
                                             href={`/${orgSlug}/${projectSlug}/logs`}
                                             series={[
@@ -426,6 +430,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
+                                            className="border-b border-border/40"
                                             title="Cost"
                                             series={[
                                                 {
@@ -439,6 +444,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
+                                            className="border-b md:border-r border-border/40"
                                             title="Success Rate"
                                             series={[
                                                 {
@@ -455,6 +461,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
+                                            className="border-b border-border/40"
                                             title="Latency"
                                             series={[
                                                 {
@@ -468,6 +475,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
+                                            className="border-b md:border-b-0 md:border-r border-border/40"
                                             title="Tokens"
                                             series={[
                                                 {
@@ -481,6 +489,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
+                                            className="border-border/40"
                                             title="Security"
                                             href={`/${orgSlug}/${projectSlug}/security`}
                                             series={[
@@ -502,12 +511,15 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         />
                                     </>
                                 )}
+                                </div>
                             </div>
 
                             {/* HTTP section — only show when there's actual HTTP data */}
                             {httpSummary.total > 0 && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-2.5">
+                                <div className="border border-border/40 bg-card mt-2.5">
+                                <div className="grid grid-cols-1 md:grid-cols-2">
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r md:border-b-0 border-border/40"
                                         title="HTTP Traffic"
                                         type="bar"
                                         series={[
@@ -528,6 +540,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-border/40"
                                         title="HTTP Success Rate"
                                         series={[
                                             {
@@ -540,6 +553,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             },
                                         ]}
                                     />
+                                </div>
                                 </div>
                             )}
                         </>
@@ -560,8 +574,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                             </div>
 
                             {overview && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-4">
+                                <div className="border border-border/40 bg-card mb-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2">
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r border-border/40"
                                         title="Requests"
                                         series={[
                                             {
@@ -587,6 +603,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b border-border/40"
                                         title="Tokens"
                                         series={[
                                             {
@@ -600,6 +617,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r md:border-b-0 border-border/40"
                                         title="Cost"
                                         series={[
                                             {
@@ -613,6 +631,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-b-0 border-border/40"
                                         title="Latency"
                                         series={[
                                             {
@@ -626,13 +645,16 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                 </div>
+                                </div>
                             )}
 
                             {overview && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                                    <ModelUsageChart data={overview.breakdown.model_usage} />
-                                    <CostByProviderChart data={overview.breakdown.cost_by_provider} />
-                                    <LatencyHistogram data={overview.breakdown.latency_percentiles} />
+                                <div className="border border-border/40 bg-card">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+                                    <div className="border-b md:border-r md:border-b-0 border-border/40"><ModelUsageChart data={overview.breakdown.model_usage} /></div>
+                                    <div className="border-b md:border-r md:border-b-0 border-border/40"><CostByProviderChart data={overview.breakdown.cost_by_provider} /></div>
+                                    <div><LatencyHistogram data={overview.breakdown.latency_percentiles} /></div>
+                                </div>
                                 </div>
                             )}
                         </>
@@ -654,8 +676,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                             </div>
 
                             {httpSummary.total > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div className="border border-border/40 bg-card">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r border-border/40"
                                         title="Requests"
                                         type="bar"
                                         series={[
@@ -670,6 +694,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b border-border/40"
                                         title="Success Rate"
                                         series={[
                                             {
@@ -683,6 +708,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r md:border-b-0 border-border/40"
                                         title="Errors"
                                         series={[
                                             {
@@ -696,6 +722,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-b-0 border-border/40"
                                         title="Rate Limited"
                                         series={[
                                             {
@@ -709,9 +736,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                 </div>
+                                </div>
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="rounded-xl border border-border/30 bg-card px-5 py-4">
+                                    <div className="border border-border/30 bg-card px-5 py-4">
                                         <p className="text-sm font-medium mb-1">Connect Vercel to see HTTP traffic</p>
                                         <p className="text-xs text-muted-foreground/60 max-w-[480px] mb-4">
                                             Install the Vercel integration to automatically stream every request to your observability dashboard — no SDK or code changes needed.
@@ -724,19 +752,26 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         </Button>
                                     </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                                        {[
-                                            { label: 'Request Volume', desc: 'Total requests, methods, and paths across all routes' },
-                                            { label: 'Success Rate', desc: '2xx/3xx vs 4xx/5xx breakdown over time' },
-                                            { label: 'Error Tracking', desc: 'Spot failing endpoints and status code spikes' },
-                                            { label: 'Rate Limiting', desc: '429 responses and throttle patterns per route' },
-                                        ].map(card => (
-                                            <div key={card.label} className="rounded-xl border border-dashed border-border/30 bg-card/50 px-4 py-3.5">
-                                                <p className="text-xs font-medium text-muted-foreground/70 mb-1">{card.label}</p>
-                                                <p className="text-[10px] text-muted-foreground/40 leading-relaxed">{card.desc}</p>
-                                            </div>
-                                        ))}
+                                    <div className="border border-border/40 bg-card">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-0">
+                                        <div className="border-b md:border-b-0 md:border-r border-border/40 bg-card px-4 py-3.5">
+                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Request Volume</p>
+                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">Total requests, methods, and paths across all routes</p>
+                                        </div>
+                                        <div className="border-b md:border-b-0 md:border-r border-border/40 bg-card px-4 py-3.5">
+                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Success Rate</p>
+                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">2xx/3xx vs 4xx/5xx breakdown over time</p>
+                                        </div>
+                                        <div className="md:border-r border-border/40 bg-card px-4 py-3.5">
+                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Error Tracking</p>
+                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">Spot failing endpoints and status code spikes</p>
+                                        </div>
+                                        <div className="bg-card px-4 py-3.5">
+                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Rate Limiting</p>
+                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">429 responses and throttle patterns per route</p>
+                                        </div>
                                     </div>
+                                </div>
                                 </div>
                             )}
                         </>
@@ -759,8 +794,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                             </div>
 
                             {overview && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div className="border border-border/40 bg-card">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r border-border/40"
                                         title="AI Success Rate"
                                         series={[
                                             {
@@ -777,6 +814,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b border-border/40"
                                         title="Average Latency"
                                         series={[
                                             {
@@ -790,6 +828,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-r md:border-b-0 border-border/40"
                                         title="HTTP Errors"
                                         series={[
                                             {
@@ -803,6 +842,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
+                                        className="border-b md:border-b-0 border-border/40"
                                         title="HTTP Throttles"
                                         series={[
                                             {
@@ -816,6 +856,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                 </div>
+                                </div>
                             )}
                         </>
                     )}
@@ -827,57 +868,63 @@ export default function ObservabilityPage({ params }: PageProps) {
                                 <p className="text-xs text-muted-foreground mt-0.5">Incident severity, filtered patterns, and safety-related request behavior.</p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-6">
-                                <ObservabilityChartCard
-                                    title="Security Incidents"
-                                    series={[
-                                        {
-                                            key: 'incidents',
-                                            label: 'Incidents',
-                                            color: 'hsl(280, 65%, 60%)',
-                                            data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered + p.blocked_output })),
-                                            total: overview.overview.total_incidents,
-                                        },
-                                    ]}
-                                />
-                                <ObservabilityChartCard
-                                    title="Critical Severity"
-                                    series={[
-                                        {
-                                            key: 'critical',
-                                            label: 'Critical',
-                                            color: 'hsl(0, 84%, 60%)',
-                                            data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered + p.blocked_output })),
-                                            total: overview.breakdown.incidents_by_severity.critical,
-                                        },
-                                    ]}
-                                />
-                                <ObservabilityChartCard
-                                    title="High Priority"
-                                    series={[
-                                        {
-                                            key: 'high',
-                                            label: 'High',
-                                            color: 'hsl(24, 96%, 53%)',
-                                            data: overview.breakdown.incidents_by_severity.high > 0
-                                                ? trends.map(p => ({ timestamp: p.timestamp, value: p.filtered }))
-                                                : [],
-                                            total: overview.breakdown.incidents_by_severity.high,
-                                        },
-                                    ]}
-                                />
-                                <ObservabilityChartCard
-                                    title="Blocked Output"
-                                    series={[
-                                        {
-                                            key: 'blocked',
-                                            label: 'Blocked',
-                                            color: 'hsl(0, 84%, 60%)',
-                                            data: trends.map(p => ({ timestamp: p.timestamp, value: p.blocked_output || 0 })),
-                                            total: trends.reduce((sum, p) => sum + (p.blocked_output || 0), 0),
-                                        },
-                                    ]}
-                                />
+                            <div className="border border-border/40 bg-card mb-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                                    <ObservabilityChartCard
+                                        className="border-b md:border-r border-border/40"
+                                        title="Security Incidents"
+                                        series={[
+                                            {
+                                                key: 'incidents',
+                                                label: 'Incidents',
+                                                color: 'hsl(280, 65%, 60%)',
+                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered + p.blocked_output })),
+                                                total: overview.overview.total_incidents,
+                                            },
+                                        ]}
+                                    />
+                                    <ObservabilityChartCard
+                                        className="border-b border-border/40"
+                                        title="Critical Severity"
+                                        series={[
+                                            {
+                                                key: 'critical',
+                                                label: 'Critical',
+                                                color: 'hsl(0, 84%, 60%)',
+                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered + p.blocked_output })),
+                                                total: overview.breakdown.incidents_by_severity.critical,
+                                            },
+                                        ]}
+                                    />
+                                    <ObservabilityChartCard
+                                        className="border-b md:border-r md:border-b-0 border-border/40"
+                                        title="High Priority"
+                                        series={[
+                                            {
+                                                key: 'high',
+                                                label: 'High',
+                                                color: 'hsl(24, 96%, 53%)',
+                                                data: overview.breakdown.incidents_by_severity.high > 0
+                                                    ? trends.map(p => ({ timestamp: p.timestamp, value: p.filtered }))
+                                                    : [],
+                                                total: overview.breakdown.incidents_by_severity.high,
+                                            },
+                                        ]}
+                                    />
+                                    <ObservabilityChartCard
+                                        className="border-b md:border-b-0 border-border/40"
+                                        title="Blocked Output"
+                                        series={[
+                                            {
+                                                key: 'blocked',
+                                                label: 'Blocked',
+                                                color: 'hsl(0, 84%, 60%)',
+                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.blocked_output || 0 })),
+                                                total: trends.reduce((sum, p) => sum + (p.blocked_output || 0), 0),
+                                            },
+                                        ]}
+                                    />
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-2">

@@ -32,7 +32,7 @@ export function LatencyHistogram({ data }: LatencyHistogramProps) {
     const hasData = percentiles.some(p => p.value > 0);
 
     return (
-        <div className="rounded-xl border border-border/30 bg-card p-4">
+        <div className="bg-card p-4">
             <div className="mb-3">
                 <p className="text-xs font-medium text-muted-foreground">Latency Distribution</p>
                 <p className="text-lg font-semibold tabular-nums tracking-tight mt-0.5">
