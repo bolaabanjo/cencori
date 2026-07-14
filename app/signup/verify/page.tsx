@@ -189,15 +189,17 @@ function VerifyContent() {
             </div>
             <h1 className="text-xl font-medium">Your email has been verified</h1>
           </div>
-          <p className="text-base text-muted-foreground mt-8">Moving you to your workspace…</p>
-          <p className="text-xs text-muted-foreground/60 mt-6">
-            By continuing, you agree to our{" "}
-            <Link href="/legal/terms" className="underline hover:text-foreground transition-colors">Terms</Link>{" "}
-            and{" "}
-            <Link href="/legal/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>.
-            <br />
-            &copy; {new Date().getFullYear()} Cencori Inc. All rights reserved.
-          </p>
+          <div className="text-base text-muted-foreground mt-8">
+            <p>Moving you to your workspace…</p>
+            <p className="mt-1.5 text-xs text-muted-foreground/60">
+              By continuing, you agree to our{" "}
+              <Link href="/legal/terms" className="underline hover:text-foreground transition-colors">Terms</Link>{" "}
+              and{" "}
+              <Link href="/legal/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>.
+              <br />
+              &copy; {new Date().getFullYear()} Cencori Inc. All rights reserved.
+            </p>
+          </div>
         </div>
       </div>
     );

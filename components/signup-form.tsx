@@ -147,10 +147,10 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     >
       <div className="flex justify-center mb-2">
         <Link href="/" className="flex items-center gap-2 font-medium">
-          <Logo variant="wordmark" className="h-6" />
+          <Logo variant="mark" className="h-6" />
         </Link>
       </div>
-      <div>
+      <div className="text-center">
         <h1 className="text-lg font-medium">Create an account</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Enter your details below to get started
