@@ -147,8 +147,6 @@ export default function OrganizationLayoutClient({
         notFound();
     }
 
-    if (!organization) return null;
-
     // Layout groups (top → bottom):
     //   1. overviewItem                  — Projects (org level) or Overview (project level)
     //   2. projectItems                  — Observability, Logs
@@ -405,7 +403,7 @@ export default function OrganizationLayoutClient({
             </Sheet>
 
             <main className="flex w-full flex-1 flex-col overflow-hidden">
-                <UsageLimitBanner orgId={organization.id} orgSlug={organization.slug} />
+                {organization && <UsageLimitBanner orgId={organization.id} orgSlug={organization.slug} />}
                 <div key={pathname} className="animate-fade-in" style={{ animationDuration: "150ms" }}>
                     {children}
                 </div>
