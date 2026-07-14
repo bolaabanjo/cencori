@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { notFound, usePathname } from "next/navigation";
+import { notFound, usePathname, useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -60,8 +60,6 @@ interface OrganizationData {
     monthly_request_limit: number;
 }
 
-type LayoutParams = { orgSlug: string } | Promise<{ orgSlug: string }>;
-
 function useOrganization(orgSlug: string) {
     return useQuery({
         queryKey: ["orgLayout", orgSlug],
@@ -78,19 +76,17 @@ function useOrganization(orgSlug: string) {
 
             return orgData as OrganizationData;
         },
-        staleTime: 5 * 60 * 1000,
+        staleTime: 15 * 60 * 1000,
     });
 }
 
 export default function OrganizationLayoutClient({
     children,
-    params,
 }: {
     children: React.ReactNode;
-    params: LayoutParams;
 }) {
-    const resolved = params instanceof Promise ? React.use(params) : params;
-    const { orgSlug } = resolved;
+    const params = useParams<{ orgSlug: string }>();
+    const { orgSlug } = params;
     const pathname = usePathname();
     const { isOpen, setIsOpen } = useMobileSheet();
 
@@ -108,13 +104,14 @@ export default function OrganizationLayoutClient({
             return data || [];
         },
         enabled: !!organization?.id,
-        staleTime: 5 * 60 * 1000,
+        staleTime: 15 * 60 * 1000,
     });
 
     // URL shape after the polish is /{orgSlug}/{projectSlug OR ~}/*.
     // Everything at segments[1] except "~" is a project slug — every
     // org-scoped route lives under /{orgSlug}/~/*.
-    const segments = pathname.split("/").filter(Boolean);
+    const router = useRouter();
+    const segments = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
     const orgSubSegment = segments[1];
     const isInsideProject = !!orgSubSegment && orgSubSegment !== "~";
     const projectSlug = isInsideProject ? orgSubSegment : (projects?.[0]?.slug || null);
@@ -124,11 +121,7 @@ export default function OrganizationLayoutClient({
     const orgBase = `/${orgSlug}`;
     const basePath = projectSlug ? `${orgBase}/${projectSlug}` : null;
 
-    const isActive = (path: string) => {
-        // Overview-style hrefs are prefixes of their children (Project Overview
-        // is a prefix of every project sub-page; AI Gateway Overview is a
-        // prefix of every AI Gateway sub-page). Force exact-match for these
-        // so they don't light up alongside the real active item.
+    const isActive = useCallback((path: string) => {
         const exactMatchOnly =
             path === basePath ||
             path === orgBase ||
@@ -138,7 +131,11 @@ export default function OrganizationLayoutClient({
         if (pathname === path) return true;
         if (pathname.startsWith(path + "/")) return true;
         return false;
-    };
+    }, [basePath, orgBase, pathname]);
+
+    const prefetchRoute = useCallback((href: string) => {
+        router.prefetch(href);
+    }, [router]);
 
     if (error) {
         notFound();
@@ -154,13 +151,13 @@ export default function OrganizationLayoutClient({
     //   5. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
     //   6. bottomItems                   — Webhooks, Settings
 
-    const overviewItem = {
+    const overviewItem = useMemo(() => ({
         href: isInsideProject ? `${basePath}` : `${orgBase}/~/projects`,
         icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />,
         label: isInsideProject ? "Overview" : "Projects",
-    };
+    }), [isInsideProject, basePath, orgBase]);
 
-    const projectItems = [
+    const projectItems = useMemo(() => [
         {
             href: isInsideProject ? `${basePath}/observability` : `${orgBase}/~/observability`,
             icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-5 !w-5" />,
@@ -171,9 +168,9 @@ export default function OrganizationLayoutClient({
             icon: <HugeiconsIcon icon={Activity03Icon} className="!h-5 !w-5" />,
             label: "Logs",
         },
-    ];
+    ], [isInsideProject, basePath, orgBase]);
 
-    const projectSubItems = [
+    const projectSubItems = useMemo(() => [
         { href: isInsideProject ? `${basePath}/ai-gateway` : `${orgBase}/~/ai-gateway`, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />, label: "Overview" },
         { href: isInsideProject ? `${basePath}/ai-gateway/prompts` : `${orgBase}/~/ai-gateway/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-5 !w-5" />, label: "Prompts" },
         { href: isInsideProject ? `${basePath}/ai-gateway/providers` : `${orgBase}/~/ai-gateway/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-5 !w-5" />, label: "BYOK" },
@@ -181,26 +178,26 @@ export default function OrganizationLayoutClient({
         { href: isInsideProject ? `${basePath}/ai-gateway/custom-providers` : `${orgBase}/~/ai-gateway/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-5 !w-5" />, label: "Custom Providers" },
         { href: isInsideProject ? `${basePath}/ai-gateway/cache` : `${orgBase}/~/ai-gateway/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-5 !w-5" />, label: "Cache" },
         { href: isInsideProject ? `${basePath}/ai-gateway/playground` : `${orgBase}/~/ai-gateway/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-5 !w-5" />, label: "Playground" },
-    ];
+    ], [isInsideProject, basePath, orgBase]);
 
-    const projectSecondaryItems = [
+    const projectSecondaryItems = useMemo(() => [
         { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
         { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
         { href: isInsideProject ? `${basePath}/end-user-billing` : `${orgBase}/~/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "End-User Billing" },
-    ];
+    ], [isInsideProject, basePath, orgBase]);
 
-    const orgItems = [
+    const orgItems = useMemo(() => [
         { href: `${orgBase}/~/billing`, icon: <HugeiconsIcon icon={DollarCircleIcon} className="!h-5 !w-5" />, label: "Billing" },
         { href: `${orgBase}/~/usage`, icon: <HugeiconsIcon icon={Chart01Icon} className="!h-5 !w-5" />, label: "Usage" },
         { href: `${orgBase}/~/integrations`, icon: <HugeiconsIcon icon={Plug01Icon} className="!h-5 !w-5" />, label: "Integrations" },
         { href: `${orgBase}/~/teams`, icon: <HugeiconsIcon icon={UserMultipleIcon} className="!h-5 !w-5" />, label: "Teams" },
         { href: `${orgBase}/~/audit-log`, icon: <HugeiconsIcon icon={DocumentValidationIcon} className="!h-5 !w-5" />, label: "Audit Log" },
-    ];
+    ], [orgBase]);
 
-    const bottomItems = [
+    const bottomItems = useMemo(() => [
         { href: isInsideProject ? `${basePath}/webhooks` : `${orgBase}/~/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-5 !w-5" />, label: "Webhooks" },
         { href: isInsideProject ? `${basePath}/settings` : `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={Settings02Icon} className="!h-5 !w-5" />, label: "Settings" },
-    ];
+    ], [isInsideProject, basePath, orgBase]);
 
     return (
         <SidebarProvider defaultOpen>
@@ -224,7 +221,7 @@ export default function OrganizationLayoutClient({
                                         {projectSubItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true}>
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
                                                     </Link>
@@ -237,7 +234,7 @@ export default function OrganizationLayoutClient({
                                         {/* 1. Projects / Overview */}
                                         <SidebarMenuItem>
                                             <SidebarMenuButton asChild tooltip={overviewItem.label} isActive={isActive(overviewItem.href)} size="sm">
-                                                <Link href={overviewItem.href} prefetch={true}>
+                                                <Link href={overviewItem.href} prefetch={true} onMouseEnter={() => prefetchRoute(overviewItem.href)}>
                                                     {overviewItem.icon}
                                                     <span className="text-sm">{overviewItem.label}</span>
                                                 </Link>
@@ -247,7 +244,7 @@ export default function OrganizationLayoutClient({
                                         {projectItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true}>
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
                                                     </Link>
@@ -270,7 +267,7 @@ export default function OrganizationLayoutClient({
                                         {projectSecondaryItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true}>
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
                                                     </Link>
@@ -282,7 +279,7 @@ export default function OrganizationLayoutClient({
                                         {orgItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true}>
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
                                                     </Link>
@@ -294,7 +291,7 @@ export default function OrganizationLayoutClient({
                                         {bottomItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true}>
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
                                                     </Link>

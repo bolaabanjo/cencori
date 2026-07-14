@@ -35,13 +35,11 @@ export async function generateMetadata({
 
 export default function OrganizationLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: LayoutParams;
 }) {
   return (
-    <OrganizationLayoutClient params={params}>
+    <OrganizationLayoutClient>
       {children}
     </OrganizationLayoutClient>
   );

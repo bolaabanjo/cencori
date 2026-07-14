@@ -1,7 +1,7 @@
 // app/dashboard/layout.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -200,35 +200,30 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const getOrgSlug = () => {
-    // Root and /dashboard, /dashboard/... are org-list surfaces or the
-    // agent-setup route — no org context in the breadcrumb.
+  const getOrgSlug = useMemo(() => {
     if (pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
       return null;
     }
     if (pathname.startsWith("/account/") || pathname === "/account") {
       return null;
     }
-    // /{orgSlug}/... — first segment is the org slug.
     const match = pathname.match(/^\/([^/]+)/);
     return match ? match[1] : null;
-  };
+  }, [pathname]);
 
-  const getProjectSlug = () => {
-    const slug = getOrgSlug();
+  const getProjectSlug = useMemo(() => {
+    const slug = getOrgSlug;
     if (!slug) return null;
     const match = pathname.match(new RegExp(`^/${slug}/([^/]+)`));
     if (!match) return null;
     const second = match[1];
-    // Under /{orgSlug}/... only `~` shadows a project slug (all org
-    // routes were moved under /~/). Everything else is a project slug.
     const reserved = ['~'];
     if (reserved.includes(second)) return null;
     return second;
-  };
+  }, [pathname, getOrgSlug]);
 
-  const orgSlug = getOrgSlug();
-  const projectSlug = getProjectSlug();
+  const orgSlug = getOrgSlug;
+  const projectSlug = getProjectSlug;
   const isPlayground = pathname.includes("/playground");
   const isOnboardingFlow = pathname.includes("/onboarding");
 
@@ -260,7 +255,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
 
       return data as { credits_balance: number | string | null };
     },
-    staleTime: 30 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchInterval: 30 * 1000,
   });
 
