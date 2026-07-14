@@ -7,13 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { SignupWelcomeEmailBridge } from "@/components/auth/SignupWelcomeEmailBridge";
 import Script from "next/script";
-import {
-  Geist,
-  Inter,
-  Newsreader,
-  Playfair_Display,
-  JetBrains_Mono,
-} from "next/font/google";
+import { Geist, Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/cn";
 
 const inter = Inter({
@@ -35,22 +29,6 @@ const mono = JetBrains_Mono({
   variable: "--font-mono",
   display: "swap",
   fallback: ["ui-monospace", "monospace"],
-});
-
-const newsreader = Newsreader({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-newsreader",
-  display: "swap",
-  fallback: ["Georgia", "serif"],
-});
-
-const playfairDisplay = Playfair_Display({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-playfair",
-  display: "swap",
-  fallback: ["Georgia", "serif"],
 });
 
 // Aggressive keyword targeting
@@ -262,8 +240,6 @@ export default function RootLayout({
         geistSans.variable,
         inter.variable,
         mono.variable,
-        newsreader.variable,
-        playfairDisplay.variable,
       )}
     >
       <head>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Logo } from "@/components/logo";
 
 const PLANS = [
   {
@@ -184,6 +185,7 @@ function OnboardingContent() {
     <div className="flex h-dvh items-center justify-center bg-black p-4">
       <div className="w-full max-w-lg mx-auto">
         <div className="text-center mb-8">
+          <Logo variant="mark" className="h-6 mx-auto mb-5" />
           <h1 className="text-2xl font-semibold text-white">Glad to have you!</h1>
           <p className="text-zinc-400 mt-1 text-sm">Set up your organization to get started</p>
         </div>
@@ -240,6 +242,16 @@ function OnboardingContent() {
             ) : null}
             Continue
           </Button>
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            By continuing, you agree to the{" "}
+            <a href="/terms" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
+              Privacy Policy
+            </a>.
+          </p>
         </div>
       </div>
     </div>
