@@ -807,7 +807,7 @@ export function PlaygroundChat({
                 </div>
 
                 {/* Redesigned Glassmorphic Input Area */}
-                <div className="shrink-0 bg-transparent pt-2 pb-4 px-4">
+                <div className="shrink-0 bg-transparent pt-4 pb-16 px-4">
                     <div className="mx-auto w-full max-w-3xl">
                         <div className="relative flex flex-col rounded-2xl border border-border/40 bg-muted/10 backdrop-blur-md p-3 transition-all hover:border-border/60 hover:bg-muted/20 focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20">
                             {/* Textarea */}
