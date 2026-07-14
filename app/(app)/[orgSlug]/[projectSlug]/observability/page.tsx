@@ -398,7 +398,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         <ObservabilityChartCardSkeleton className="border-b md:border-r border-border/40" />
                                         <ObservabilityChartCardSkeleton className="border-b border-border/40" />
                                         <ObservabilityChartCardSkeleton className="border-b md:border-b-0 md:border-r border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="border-border/40" />
+                                        <ObservabilityChartCardSkeleton className="" />
                                     </>
                                 ) : (
                                     <>
@@ -489,7 +489,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilityChartCard
-                                            className="border-border/40"
+                                            className=""
                                             title="Security"
                                             href={`/${orgSlug}/${projectSlug}/security`}
                                             series={[
@@ -540,7 +540,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-border/40"
+                                        className=""
                                         title="HTTP Success Rate"
                                         series={[
                                             {
@@ -631,7 +631,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b md:border-b-0 border-border/40"
+                                        className=""
                                         title="Latency"
                                         series={[
                                             {
@@ -722,7 +722,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b md:border-b-0 border-border/40"
+                                        className=""
                                         title="Rate Limited"
                                         series={[
                                             {
@@ -842,7 +842,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b md:border-b-0 border-border/40"
+                                        className=""
                                         title="HTTP Throttles"
                                         series={[
                                             {
@@ -912,7 +912,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b md:border-b-0 border-border/40"
+                                        className=""
                                         title="Blocked Output"
                                         series={[
                                             {
