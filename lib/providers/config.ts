@@ -519,7 +519,7 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
     {
         id: 'maximo',
         name: 'Maximo AI',
-        icon: '/providers/maximo.svg',
+        icon: '/partners/max.jpeg',
         website: 'https://maximoai.co',
         docsUrl: 'https://maximoai.co/platform',
         keyPrefix: '',
