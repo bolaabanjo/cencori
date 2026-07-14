@@ -72,6 +72,10 @@ export const OPENAI_COMPATIBLE_ENDPOINTS: Record<string, { baseURL: string; name
         baseURL: 'https://api.cerebras.ai/v1',
         name: 'Cerebras',
     },
+    maximo: {
+        baseURL: 'https://api.maximoai.co/v1',
+        name: 'Maximo AI',
+    },
 };
 
 /**

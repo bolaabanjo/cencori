@@ -60,6 +60,7 @@ export function registerDefaultProviders(router: ProviderRouter): void {
         huggingface: 'HUGGINGFACE_API_KEY',
         zai: 'ZAI_API_KEY',
         cerebras: 'CEREBRAS_API_KEY',
+        maximo: 'MAXIMO_API_KEY',
     };
 
     for (const [provider, envVar] of Object.entries(openAICompatibleEnvVars)) {

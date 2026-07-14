@@ -31,6 +31,8 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'qwen/qwen3-32b': 'groq',
     'moonshotai/kimi-k2-instruct': 'groq',
     'allam-2-7b': 'groq',
+    // Maximo AI (defaults to openai)
+    'maximo-atlas-preview': 'maximo',
 };
 
 /**

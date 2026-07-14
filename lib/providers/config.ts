@@ -516,6 +516,17 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'ernie-3.5-8k', name: 'ERNIE 3.5 8K', type: ['chat'], contextWindow: 8000, description: 'Via Qianfan' },
         ],
     },
+    {
+        id: 'maximo',
+        name: 'Maximo AI',
+        icon: '/providers/maximo.svg',
+        website: 'https://maximoai.co',
+        docsUrl: 'https://maximoai.co/platform',
+        keyPrefix: '',
+        models: [
+            { id: 'maximo-atlas-preview', name: 'Maximo Atlas Preview', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Opus-class coding & agent model, free preview until Jul 21, $0.20/$1.00 after', free: true },
+        ],
+    },
 ];
 
 /**

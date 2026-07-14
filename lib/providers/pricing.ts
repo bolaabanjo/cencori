@@ -38,6 +38,8 @@ export async function getPricingFromDB(
         // Cerebras free tier
         'gpt-oss-120b',
         'zai-glm-4.7',
+        // Maximo AI free preview (until Jul 21, 2026)
+        'maximo-atlas-preview',
     ];
     
     // Intercept natively free models before any DB queries for 0-latency pricing
@@ -129,6 +131,11 @@ function getDefaultPricing(provider: string): ModelPricing {
             inputPer1KTokens: 0.00105,
             outputPer1KTokens: 0.0035,
             cencoriMarkupPercentage: 50,
+        },
+        maximo: {
+            inputPer1KTokens: 0.00020,
+            outputPer1KTokens: 0.00100,
+            cencoriMarkupPercentage: 0,
         },
         custom: {
             inputPer1KTokens: 0,
