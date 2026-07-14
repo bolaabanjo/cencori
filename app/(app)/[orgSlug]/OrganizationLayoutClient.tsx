@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, usePathname, useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -121,7 +121,7 @@ export default function OrganizationLayoutClient({
     const orgBase = `/${orgSlug}`;
     const basePath = projectSlug ? `${orgBase}/${projectSlug}` : null;
 
-    const isActive = useCallback((path: string) => {
+    const isActive = (path: string) => {
         const exactMatchOnly =
             path === basePath ||
             path === orgBase ||
@@ -131,11 +131,11 @@ export default function OrganizationLayoutClient({
         if (pathname === path) return true;
         if (pathname.startsWith(path + "/")) return true;
         return false;
-    }, [basePath, orgBase, pathname]);
+    };
 
-    const prefetchRoute = useCallback((href: string) => {
+    const prefetchRoute = (href: string) => {
         router.prefetch(href);
-    }, [router]);
+    };
 
     if (error) {
         notFound();
@@ -151,13 +151,13 @@ export default function OrganizationLayoutClient({
     //   5. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
     //   6. bottomItems                   — Webhooks, Settings
 
-    const overviewItem = useMemo(() => ({
+    const overviewItem = {
         href: isInsideProject ? `${basePath}` : `${orgBase}/~/projects`,
         icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />,
         label: isInsideProject ? "Overview" : "Projects",
-    }), [isInsideProject, basePath, orgBase]);
+    };
 
-    const projectItems = useMemo(() => [
+    const projectItems = [
         {
             href: isInsideProject ? `${basePath}/observability` : `${orgBase}/~/observability`,
             icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-5 !w-5" />,
@@ -168,9 +168,9 @@ export default function OrganizationLayoutClient({
             icon: <HugeiconsIcon icon={Activity03Icon} className="!h-5 !w-5" />,
             label: "Logs",
         },
-    ], [isInsideProject, basePath, orgBase]);
+    ];
 
-    const projectSubItems = useMemo(() => [
+    const projectSubItems = [
         { href: isInsideProject ? `${basePath}/ai-gateway` : `${orgBase}/~/ai-gateway`, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />, label: "Overview" },
         { href: isInsideProject ? `${basePath}/ai-gateway/prompts` : `${orgBase}/~/ai-gateway/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-5 !w-5" />, label: "Prompts" },
         { href: isInsideProject ? `${basePath}/ai-gateway/providers` : `${orgBase}/~/ai-gateway/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-5 !w-5" />, label: "BYOK" },
@@ -178,26 +178,26 @@ export default function OrganizationLayoutClient({
         { href: isInsideProject ? `${basePath}/ai-gateway/custom-providers` : `${orgBase}/~/ai-gateway/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-5 !w-5" />, label: "Custom Providers" },
         { href: isInsideProject ? `${basePath}/ai-gateway/cache` : `${orgBase}/~/ai-gateway/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-5 !w-5" />, label: "Cache" },
         { href: isInsideProject ? `${basePath}/ai-gateway/playground` : `${orgBase}/~/ai-gateway/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-5 !w-5" />, label: "Playground" },
-    ], [isInsideProject, basePath, orgBase]);
+    ];
 
-    const projectSecondaryItems = useMemo(() => [
+    const projectSecondaryItems = [
         { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
         { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
         { href: isInsideProject ? `${basePath}/end-user-billing` : `${orgBase}/~/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "End-User Billing" },
-    ], [isInsideProject, basePath, orgBase]);
+    ];
 
-    const orgItems = useMemo(() => [
+    const orgItems = [
         { href: `${orgBase}/~/billing`, icon: <HugeiconsIcon icon={DollarCircleIcon} className="!h-5 !w-5" />, label: "Billing" },
         { href: `${orgBase}/~/usage`, icon: <HugeiconsIcon icon={Chart01Icon} className="!h-5 !w-5" />, label: "Usage" },
         { href: `${orgBase}/~/integrations`, icon: <HugeiconsIcon icon={Plug01Icon} className="!h-5 !w-5" />, label: "Integrations" },
         { href: `${orgBase}/~/teams`, icon: <HugeiconsIcon icon={UserMultipleIcon} className="!h-5 !w-5" />, label: "Teams" },
         { href: `${orgBase}/~/audit-log`, icon: <HugeiconsIcon icon={DocumentValidationIcon} className="!h-5 !w-5" />, label: "Audit Log" },
-    ], [orgBase]);
+    ];
 
-    const bottomItems = useMemo(() => [
+    const bottomItems = [
         { href: isInsideProject ? `${basePath}/webhooks` : `${orgBase}/~/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-5 !w-5" />, label: "Webhooks" },
         { href: isInsideProject ? `${basePath}/settings` : `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={Settings02Icon} className="!h-5 !w-5" />, label: "Settings" },
-    ], [isInsideProject, basePath, orgBase]);
+    ];
 
     return (
         <SidebarProvider defaultOpen>
