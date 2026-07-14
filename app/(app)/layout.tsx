@@ -34,7 +34,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import posthog from "posthog-js";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const CommandPalette = dynamic(
   () => import("@/components/dashboard/CommandPalette").then((mod) => mod.CommandPalette),
@@ -88,34 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [router]);
 
-  // Keep shell visible while auth state resolves to reduce perceived lag.
-  if (loading) return (
-    <div className="min-h-screen bg-background p-4 md:p-6" aria-busy="true">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-4 w-32" />
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-6 w-20 rounded-full" />
-            <Skeleton className="h-6 w-24 rounded-full" />
-            <Skeleton className="h-7 w-7 rounded-full" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="p-3 rounded-md bg-zinc-100 dark:bg-zinc-800/60">
-              <div className="flex items-center gap-2.5">
-                <Skeleton className="h-7 w-7 rounded" />
-                <div className="flex-1 space-y-1">
-                  <Skeleton className="h-3.5 w-20" />
-                  <Skeleton className="h-2.5 w-16" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  if (loading) return null;
 
   // Fix type issue: ensure 'user' is typed
   type UserType = {
