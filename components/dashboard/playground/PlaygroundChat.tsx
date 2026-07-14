@@ -660,7 +660,7 @@ export function PlaygroundChat({
     const isMultiModel = selectedModels.length > 1;
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* Chat Body */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div
@@ -807,7 +807,7 @@ export function PlaygroundChat({
                 </div>
 
                 {/* Redesigned Glassmorphic Input Area */}
-                <div className="shrink-0 bg-transparent pt-4 pb-16 px-4">
+                <div className="shrink-0 bg-transparent pt-2 pb-4 px-4">
                     <div className="mx-auto w-full max-w-3xl">
                         <div className="relative flex flex-col rounded-2xl border border-border/40 bg-muted/10 backdrop-blur-md p-3 transition-all hover:border-border/60 hover:bg-muted/20 focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20">
                             {/* Textarea */}
@@ -1106,7 +1106,7 @@ export function PlaygroundChat({
                 type="button"
                 onClick={() => setConfigOpen((prev) => !prev)}
                 className={cn(
-                    "fixed right-4 top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex items-center justify-center h-9 w-9 rounded-full border shadow-md transition-all cursor-pointer",
+                    "absolute right-4 top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex items-center justify-center h-9 w-9 rounded-full border shadow-md transition-all cursor-pointer",
                     configOpen
                         ? "bg-foreground text-background border-foreground"
                         : "bg-background text-muted-foreground/70 border-border/40 hover:text-foreground hover:border-border/60"
@@ -1116,7 +1116,7 @@ export function PlaygroundChat({
                 <Settings className="h-4 w-4" />
             </button>
             {configOpen && (
-                <div className="fixed right-[calc(1rem+2.25rem+0.75rem)] top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex flex-col gap-2">
+                <div className="absolute right-[calc(1rem+2.25rem+0.75rem)] top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex flex-col gap-2">
                     {selectedModels.map((configModelId) => {
                         const configModelObj = getModelObj(configModelId);
                         const mc = modelConfig[configModelId] ?? defaultConfig;
