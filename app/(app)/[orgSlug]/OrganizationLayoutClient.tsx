@@ -33,7 +33,7 @@ import AiLockIcon from "@hugeicons/core-free-icons/AiLockIcon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import CreditCardAcceptIcon from "@hugeicons/core-free-icons/CreditCardAcceptIcon";
 import AirdropIcon from "@hugeicons/core-free-icons/AirdropIcon";
-import BrainCogIcon from "@hugeicons/core-free-icons/BrainCogIcon";
+import Settings02Icon from "@hugeicons/core-free-icons/Settings02Icon";
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
 import AiCloudIcon from "@hugeicons/core-free-icons/AiCloudIcon";
 import AiChipIcon from "@hugeicons/core-free-icons/AiChipIcon";
@@ -125,10 +125,16 @@ export default function OrganizationLayoutClient({
     const basePath = projectSlug ? `${orgBase}/${projectSlug}` : null;
 
     const isActive = (path: string) => {
-        // Root-level hrefs (project Overview at basePath, org root at orgBase)
-        // are prefixes of every sub-page, so they must match exactly to avoid
-        // lighting up alongside the real active item.
-        if (path === basePath || path === orgBase) return pathname === path;
+        // Overview-style hrefs are prefixes of their children (Project Overview
+        // is a prefix of every project sub-page; AI Gateway Overview is a
+        // prefix of every AI Gateway sub-page). Force exact-match for these
+        // so they don't light up alongside the real active item.
+        const exactMatchOnly =
+            path === basePath ||
+            path === orgBase ||
+            path === `${basePath}/ai-gateway` ||
+            path === `${orgBase}/~/ai-gateway`;
+        if (exactMatchOnly) return pathname === path;
         if (pathname === path) return true;
         if (pathname.startsWith(path + "/")) return true;
         return false;
@@ -150,49 +156,50 @@ export default function OrganizationLayoutClient({
 
     const overviewItem = {
         href: isInsideProject ? `${basePath}` : `${orgBase}/~/projects`,
-        icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-4 !w-4" />,
+        icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />,
         label: isInsideProject ? "Overview" : "Projects",
     };
 
     const projectItems = [
         {
             href: isInsideProject ? `${basePath}/observability` : `${orgBase}/~/observability`,
-            icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-4 !w-4" />,
+            icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-5 !w-5" />,
             label: "Observability",
         },
         {
             href: isInsideProject ? `${basePath}/logs` : `${orgBase}/~/logs`,
-            icon: <HugeiconsIcon icon={Activity03Icon} className="!h-4 !w-4" />,
+            icon: <HugeiconsIcon icon={Activity03Icon} className="!h-5 !w-5" />,
             label: "Logs",
         },
     ];
 
     const projectSubItems = [
-        { href: isInsideProject ? `${basePath}/ai-gateway/prompts` : `${orgBase}/~/ai-gateway/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-4 !w-4" />, label: "Prompts" },
-        { href: isInsideProject ? `${basePath}/ai-gateway/providers` : `${orgBase}/~/ai-gateway/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-4 !w-4" />, label: "BYOK" },
-        { href: isInsideProject ? `${basePath}/ai-gateway/models` : `${orgBase}/~/ai-gateway/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-4 !w-4" />, label: "Models" },
-        { href: isInsideProject ? `${basePath}/ai-gateway/custom-providers` : `${orgBase}/~/ai-gateway/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-4 !w-4" />, label: "Custom Providers" },
-        { href: isInsideProject ? `${basePath}/ai-gateway/cache` : `${orgBase}/~/ai-gateway/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-4 !w-4" />, label: "Cache" },
-        { href: isInsideProject ? `${basePath}/ai-gateway/playground` : `${orgBase}/~/ai-gateway/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-4 !w-4" />, label: "Playground" },
+        { href: isInsideProject ? `${basePath}/ai-gateway` : `${orgBase}/~/ai-gateway`, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />, label: "Overview" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/prompts` : `${orgBase}/~/ai-gateway/prompts`, icon: <HugeiconsIcon icon={AiChat01Icon} className="!h-5 !w-5" />, label: "Prompts" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/providers` : `${orgBase}/~/ai-gateway/providers`, icon: <HugeiconsIcon icon={AiCloudIcon} className="!h-5 !w-5" />, label: "BYOK" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/models` : `${orgBase}/~/ai-gateway/models`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-5 !w-5" />, label: "Models" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/custom-providers` : `${orgBase}/~/ai-gateway/custom-providers`, icon: <HugeiconsIcon icon={AiSettingIcon} className="!h-5 !w-5" />, label: "Custom Providers" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/cache` : `${orgBase}/~/ai-gateway/cache`, icon: <HugeiconsIcon icon={Blockchain03Icon} className="!h-5 !w-5" />, label: "Cache" },
+        { href: isInsideProject ? `${basePath}/ai-gateway/playground` : `${orgBase}/~/ai-gateway/playground`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-5 !w-5" />, label: "Playground" },
     ];
 
     const projectSecondaryItems = [
-        { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-4 !w-4" />, label: "Security" },
-        { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-4 !w-4" />, label: "Edge" },
-        { href: isInsideProject ? `${basePath}/end-user-billing` : `${orgBase}/~/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-4 !w-4" />, label: "End-User Billing" },
+        { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
+        { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
+        { href: isInsideProject ? `${basePath}/end-user-billing` : `${orgBase}/~/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "End-User Billing" },
     ];
 
     const orgItems = [
-        { href: `${orgBase}/~/billing`, icon: <HugeiconsIcon icon={DollarCircleIcon} className="!h-4 !w-4" />, label: "Billing" },
-        { href: `${orgBase}/~/usage`, icon: <HugeiconsIcon icon={Chart01Icon} className="!h-4 !w-4" />, label: "Usage" },
-        { href: `${orgBase}/~/integrations`, icon: <HugeiconsIcon icon={Plug01Icon} className="!h-4 !w-4" />, label: "Integrations" },
-        { href: `${orgBase}/~/teams`, icon: <HugeiconsIcon icon={UserMultipleIcon} className="!h-4 !w-4" />, label: "Teams" },
-        { href: `${orgBase}/~/audit-log`, icon: <HugeiconsIcon icon={DocumentValidationIcon} className="!h-4 !w-4" />, label: "Audit Log" },
+        { href: `${orgBase}/~/billing`, icon: <HugeiconsIcon icon={DollarCircleIcon} className="!h-5 !w-5" />, label: "Billing" },
+        { href: `${orgBase}/~/usage`, icon: <HugeiconsIcon icon={Chart01Icon} className="!h-5 !w-5" />, label: "Usage" },
+        { href: `${orgBase}/~/integrations`, icon: <HugeiconsIcon icon={Plug01Icon} className="!h-5 !w-5" />, label: "Integrations" },
+        { href: `${orgBase}/~/teams`, icon: <HugeiconsIcon icon={UserMultipleIcon} className="!h-5 !w-5" />, label: "Teams" },
+        { href: `${orgBase}/~/audit-log`, icon: <HugeiconsIcon icon={DocumentValidationIcon} className="!h-5 !w-5" />, label: "Audit Log" },
     ];
 
     const bottomItems = [
-        { href: isInsideProject ? `${basePath}/webhooks` : `${orgBase}/~/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-4 !w-4" />, label: "Webhooks" },
-        { href: isInsideProject ? `${basePath}/settings` : `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={BrainCogIcon} className="!h-4 !w-4" />, label: "Settings" },
+        { href: isInsideProject ? `${basePath}/webhooks` : `${orgBase}/~/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-5 !w-5" />, label: "Webhooks" },
+        { href: isInsideProject ? `${basePath}/settings` : `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={Settings02Icon} className="!h-5 !w-5" />, label: "Settings" },
     ];
 
     return (
@@ -210,8 +217,8 @@ export default function OrganizationLayoutClient({
                                                 size="sm"
                                                 className="gap-1 text-muted-foreground"
                                             >
-                                                <ChevronLeft className="!h-4 !w-4" />
-                                                <span className="text-xs">Back</span>
+                                                <ChevronLeft className="!h-5 !w-5" />
+                                                <span className="text-sm">Back</span>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
                                         {projectSubItems.map((item) => (
@@ -219,7 +226,7 @@ export default function OrganizationLayoutClient({
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
                                                     <Link href={item.href} prefetch={true}>
                                                         {item.icon}
-                                                        <span className="text-xs">{item.label}</span>
+                                                        <span className="text-sm">{item.label}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
@@ -232,7 +239,7 @@ export default function OrganizationLayoutClient({
                                             <SidebarMenuButton asChild tooltip={overviewItem.label} isActive={isActive(overviewItem.href)} size="sm">
                                                 <Link href={overviewItem.href} prefetch={true}>
                                                     {overviewItem.icon}
-                                                    <span className="text-xs">{overviewItem.label}</span>
+                                                    <span className="text-sm">{overviewItem.label}</span>
                                                 </Link>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -242,7 +249,7 @@ export default function OrganizationLayoutClient({
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
                                                     <Link href={item.href} prefetch={true}>
                                                         {item.icon}
-                                                        <span className="text-xs">{item.label}</span>
+                                                        <span className="text-sm">{item.label}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
@@ -254,8 +261,8 @@ export default function OrganizationLayoutClient({
                                                 size="sm"
                                                 className="gap-1"
                                             >
-                                                <HugeiconsIcon icon={DiscoverSquareIcon} className="!h-4 !w-4" />
-                                                <span className="text-xs">AI Gateway</span>
+                                                <HugeiconsIcon icon={DiscoverSquareIcon} className="!h-5 !w-5" />
+                                                <span className="text-sm">AI Gateway</span>
                                                 <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -265,7 +272,7 @@ export default function OrganizationLayoutClient({
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
                                                     <Link href={item.href} prefetch={true}>
                                                         {item.icon}
-                                                        <span className="text-xs">{item.label}</span>
+                                                        <span className="text-sm">{item.label}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
@@ -277,7 +284,7 @@ export default function OrganizationLayoutClient({
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
                                                     <Link href={item.href} prefetch={true}>
                                                         {item.icon}
-                                                        <span className="text-xs">{item.label}</span>
+                                                        <span className="text-sm">{item.label}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
@@ -289,7 +296,7 @@ export default function OrganizationLayoutClient({
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
                                                     <Link href={item.href} prefetch={true}>
                                                         {item.icon}
-                                                        <span className="text-xs">{item.label}</span>
+                                                        <span className="text-sm">{item.label}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
@@ -303,7 +310,7 @@ export default function OrganizationLayoutClient({
                         <Link
                             href="/docs"
                             target="_blank"
-                            className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
+                            className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                         >
                             <Book className="size-3.5 shrink-0" />
                             <span className="flex-1">Documentation</span>
@@ -313,32 +320,32 @@ export default function OrganizationLayoutClient({
                             <DropdownMenuTrigger asChild>
                                 <button
                                     type="button"
-                                    className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
+                                    className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                                 >
                                     <HelpCircle className="size-3.5 shrink-0" />
                                     <span className="flex-1">Help & Resources</span>
                                 </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee] max-h-none overflow-visible">
-                                <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee] max-h-none overflow-visible">
+                                <DropdownMenuItem asChild className="text-sm py-1.5 cursor-pointer">
                                     <Link href="/docs/troubleshooting" className="flex justify-between w-full items-center">
                                         Troubleshooting
                                         <Wrench className="h-3.5 w-3.5 shrink-0" />
                                     </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <DropdownMenuItem asChild className="text-sm py-1.5 cursor-pointer">
                                     <Link href="/changelog" className="flex justify-between w-full items-center">
                                         Changelog
                                         <FileText className="h-3.5 w-3.5 shrink-0" />
                                     </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <DropdownMenuItem asChild className="text-sm py-1.5 cursor-pointer">
                                     <Link href="https://status.cencori.com" target="_blank" className="flex justify-between w-full items-center">
                                         Cencori status
                                         <Activity className="h-3.5 w-3.5 shrink-0" />
                                     </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem asChild className="text-xs py-1.5 cursor-pointer">
+                                <DropdownMenuItem asChild className="text-sm py-1.5 cursor-pointer">
                                     <Link href="mailto:support@cencori.com" className="flex justify-between w-full items-center">
                                         Contact support
                                         <Mail className="h-3.5 w-3.5 shrink-0" />
@@ -346,7 +353,7 @@ export default function OrganizationLayoutClient({
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="my-1" />
                                 <div className="px-2 py-2">
-                                    <p className="text-xs font-medium mb-1">Community support</p>
+                                    <p className="text-sm font-medium mb-1">Community support</p>
                                     <p className="text-[10px] text-muted-foreground mb-2">Our Discord community can help with code-related issues.</p>
                                     <Link
                                         href="https://cencori.com/discord"
@@ -383,7 +390,7 @@ export default function OrganizationLayoutClient({
                                         <SidebarMenuButton asChild size="sm" onClick={() => setIsOpen(false)}>
                                             <Link href={item.href} prefetch={true}>
                                                 {item.icon}
-                                                <span className="text-xs">{item.label}</span>
+                                                <span className="text-sm">{item.label}</span>
                                             </Link>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>

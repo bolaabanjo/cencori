@@ -45,34 +45,9 @@ const UpdateToast = dynamic(
 );
 
 
-// A tiny cache in sessionStorage so remounts (e.g. Chrome flushing an idle
-// tab and reviving on refocus) don't flash the auth skeleton while
-// getSession() re-resolves. We still verify the session on every mount —
-// this cache only controls whether the skeleton renders.
-const AUTH_CACHE_KEY = "cencori:has-session";
-function hasCachedAuth(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return sessionStorage.getItem(AUTH_CACHE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-function setCachedAuth(value: boolean) {
-  if (typeof window === "undefined") return;
-  try {
-    if (value) sessionStorage.setItem(AUTH_CACHE_KEY, "1");
-    else sessionStorage.removeItem(AUTH_CACHE_KEY);
-  } catch { /* storage full */ }
-}
-
-// Optional header/nav links later
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  // Skip the skeleton if we already know the user was authenticated in this
-  // browser session. The verify-on-mount check still runs — if the session
-  // has actually been invalidated, we'll redirect to /login.
-  const [loading, setLoading] = useState(() => !hasCachedAuth());
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<unknown | null>(null);
 
   useEffect(() => {
@@ -80,13 +55,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     async function check() {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session?.user) {
-        setCachedAuth(false);
         router.replace("/login");
         return;
       }
 
       const sessionUser = session.user;
-      setCachedAuth(true);
 
       if (mounted) {
         setUser(sessionUser);
@@ -103,14 +76,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     check();
 
-    // Keep the has-session cache in sync with Supabase's auth events so a
-    // logout in another tab (or here) clears the fast-path skeleton skip.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
       if (event === "SIGNED_OUT") {
-        setCachedAuth(false);
         router.replace("/login");
-      } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        setCachedAuth(true);
       }
     });
 
@@ -348,7 +316,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                           <ChevronsUpDown size={12} className="text-muted-foreground/60" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
+                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
@@ -376,7 +344,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                         <div className="px-2 py-1.5">
                           <button
                             onClick={() => router.push("/onboarding")}
-                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-white text-xs font-semibold text-black hover:bg-zinc-100 transition-colors cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
                           >
                             <PlusCircle className="h-3 w-3" />
                             New Organization
@@ -399,7 +367,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                           <ChevronsUpDown size={12} className="text-muted-foreground/60" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
+                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
@@ -420,14 +388,14 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                         </div>
                         <div className="my-2 border-t border-border/40" />
                         <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">More</p>
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/~/projects`)}>
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer rounded-sm" onClick={() => router.push(`/${orgSlug}/projects`)}>
                           All Projects
                         </DropdownMenuItem>
                         <div className="my-1 border-t border-border/40" />
                         <div className="px-2 py-1.5">
                           <button
                             onClick={() => router.push(`/${orgSlug}/projects/new`)}
-                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-white text-xs font-semibold text-black hover:bg-zinc-100 transition-colors cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                            className="flex w-full items-center justify-center gap-1.5 h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
                           >
                             <PlusCircle className="h-3 w-3" />
                             New Project

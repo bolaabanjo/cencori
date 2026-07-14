@@ -317,6 +317,7 @@ function useProjectAndOrg(orgSlug: string, projectSlug: string) {
       };
     },
     staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -357,7 +358,8 @@ export default function ProjectDetailsPage({
     },
     enabled: !!project?.id,
     staleTime: 30 * 1000,
-    refetchInterval: 5 * 1000,
+    refetchInterval: 30 * 1000,
+    placeholderData: (prev) => prev,
   });
 
   const aiStats = statsData?.stats || null;

@@ -78,9 +78,9 @@ export function UserMenu() {
                     <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-66 p-1 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]" side="top" sideOffset={4} align="start" forceMount>
+            <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" side="top" sideOffset={4} align="start" forceMount>
                 <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
-                    <p className="text-xs font-semibold truncate dark:text-white text-black leading-tight">{fullName || email}</p>
+                    <p className="text-xs font-semibold truncate text-white leading-tight">{fullName || email}</p>
                     {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
                 </div>
                 <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
@@ -96,7 +96,7 @@ export function UserMenu() {
                 <div className="px-2 py-1.5">
                     <button
                         onClick={() => router.push("/dashboard")}
-                        className="flex w-full items-center justify-center h-8 rounded-md bg-white text-xs font-semibold text-black hover:bg-zinc-100 transition-colors cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                        className="flex w-full items-center justify-center h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
                     >
                         Upgrade to Pro
                     </button>
@@ -107,8 +107,8 @@ export function UserMenu() {
                     <ThemeSwitcher />
                 </div>
                 <div className="my-1 border-t border-border/40" />
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/")}>
-                    Homepage
+                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/dashboard")}>
+                    Dashboard
                     <span className="size-3.5 shrink-0">
                         <Logo variant="mark" className="h-full w-full" />
                     </span>

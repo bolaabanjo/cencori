@@ -26,7 +26,8 @@ import {
     WorkflowCircle01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronRight, Menu, Settings } from "lucide-react";
+import { ChevronRight, Menu, Settings, LogOut } from "lucide-react";
+import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import { ReactNode } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CircleUserRound } from "lucide-react";
@@ -126,17 +127,20 @@ function renderMenuIcon(icon: React.ComponentProps<typeof HugeiconsIcon>["icon"]
 const solutionsMenuColumns: NavLink[][] = [
     [
         { title: "Vibe Coders", href: "/solutions/vibe-coders", description: "Secure apps generated with AI.", icon: renderMenuIcon(CodeSquareIcon) },
-        { title: "Developers", href: "/solutions/developers", description: "Ship AI into existing products.", icon: renderMenuIcon(DeveloperIcon) },
         { title: "AI Builders", href: "/solutions/ai-builders", description: "Core infrastructure for AI teams.", icon: renderMenuIcon(AiBrain01Icon) },
         { title: "No-Code", href: "/solutions/no-code", description: "Safer workflows for no-code teams.", icon: renderMenuIcon(WorkflowCircle01Icon) },
+        { title: "Startups", href: "/solutions/startups", description: "Move fast without security debt.", icon: renderMenuIcon(RocketIcon) },
     ],
     [
-        { title: "Startups", href: "/solutions/startups", description: "Move fast without security debt.", icon: renderMenuIcon(RocketIcon) },
         { title: "Agencies", href: "/solutions/agencies", description: "Deliver client AI with guardrails.", icon: renderMenuIcon(Briefcase01Icon) },
-        { title: "Enterprise", href: "/enterprise", description: "The AI cloud for critical systems.", icon: renderMenuIcon(Building06Icon) },
+        { title: "Agencies", href: "/solutions/agencies", description: "Deliver client AI with guardrails.", icon: renderMenuIcon(Briefcase01Icon) },
         { title: "Fintech", href: "/solutions/fintech", description: "Controls for regulated finance apps.", icon: renderMenuIcon(ChartIcon) },
         { title: "Healthcare", href: "/solutions/healthcare", description: "Protect PHI in clinical workflows.", icon: renderMenuIcon(StethoscopeIcon) },
         { title: "Hackathons", href: "/solutions/hackathons", description: "Safe defaults for fast launches.", icon: renderMenuIcon(BulbIcon) },
+    ],
+    [
+        { title: "For Enterprises", href: "/enterprise", description: "Security, compliance, and scale for your organization.", icon: renderMenuIcon(Building06Icon) },
+        { title: "For Developers", href: "/developers", description: "Ship AI features faster with the tools you already know.", icon: renderMenuIcon(DeveloperIcon) },
     ],
 ];
 
@@ -241,8 +245,6 @@ export default function Navbar({
     name = "",
     homeUrl = siteConfig.url,
     mobileNavItems = [
-        { title: "For Developers", href: "/developers" },
-        { title: "For Enterprise", href: "/enterprise" },
         {
             title: "Products", sublinks: mobileProductLinks
         },
@@ -340,8 +342,6 @@ export default function Navbar({
     };
 
     const navItems: NavItem[] = [
-        { title: "For Developers", href: "/developers" },
-        { title: "For Enterprise", href: "/enterprise" },
         productsDropdown,
         solutionsDropdown,
         resourcesDropdown,
@@ -379,9 +379,9 @@ export default function Navbar({
                                                 <NavigationMenuContent className="rounded-xl border-border/40 shadow-none bg-background/95 backdrop-blur-xl">
                                                     {item.type === "mega" ? (
                                                         <div className="flex flex-col">
-                                                            <ul className={cn("grid gap-x-3 gap-y-1 p-2.5 md:w-[400px] lg:w-[500px] lg:grid-cols-2", item.listClassName)}>
+                                                            <ul className={cn("grid gap-x-3 gap-y-1 p-2.5 md:w-[400px] lg:w-[600px] lg:grid-cols-3", item.listClassName)}>
                                                                 {item.columns?.map((col, colIndex) => (
-                                                                    <div key={colIndex} className="space-y-0.5">
+                                                                    <div key={colIndex} className={cn("space-y-0.5", colIndex === item.columns!.length - 1 ? "border-l border-border/40 pl-4 self-start" : "")}>
                                                                         {col.map((link, linkIndex) => (
                                                                             <ListItem key={linkIndex} title={link.title} href={link.href} icon={link.icon}>
                                                                                 {link.description}
@@ -457,50 +457,46 @@ export default function Navbar({
                                                 )}
                                             </Avatar>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent className="w-66 p-1" align="end" forceMount>
-                                            <div className="px-2 py-1.5 border-b border-border/40 mb-1">
-                                                <p className="text-xs font-medium truncate">
-                                                    {userProfile?.name ?? "User"}
-                                                </p>
+                                        <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" align="end" forceMount>
+                                            <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
+                                                <p className="text-xs font-semibold truncate text-white leading-tight">{userProfile?.name || "User"}</p>
                                             </div>
-                                            <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/profile")}>
-                                                <CircleUserRound className="mr-2 h-3.5 w-3.5" />
+                                            <p className="px-2 py-1 text-[10px] text-muted-foreground/70 uppercase tracking-wider">Account</p>
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/profile")}>
                                                 Profile
+                                                <CircleUserRound className="h-3.5 w-3.5 ml-auto" />
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/settings")}>
-                                                <Settings className="mr-2 h-3.5 w-3.5" />
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/settings")}>
                                                 Settings
+                                                <Settings className="h-3.5 w-3.5 ml-auto" />
                                             </DropdownMenuItem>
                                             <div className="my-1 border-t border-border/40" />
-                                            <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Theme</p>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("light")}>
-                                                {theme === "light" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                                                {theme !== "light" && <span className="mr-2 h-1.5 w-1.5" />}
-                                                Light
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("dark")}>
-                                                {theme === "dark" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                                                {theme !== "dark" && <span className="mr-2 h-1.5 w-1.5" />}
-                                                Dark
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => setTheme("system")}>
-                                                {theme === "system" && <span className="mr-2 h-1.5 w-1.5 rounded-full bg-foreground" />}
-                                                {theme !== "system" && <span className="mr-2 h-1.5 w-1.5" />}
-                                                System
-                                            </DropdownMenuItem>
+                                            <div className="px-2 py-1.5">
+                                                <button
+                                                    onClick={() => router.push("/dashboard")}
+                                                    className="flex w-full items-center justify-center h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                                                >
+                                                    Upgrade to Pro
+                                                </button>
+                                            </div>
                                             <div className="my-1 border-t border-border/40" />
-                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard")}>
+                                            <div className="flex items-center justify-between px-2 py-1.5">
+                                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Theme</p>
+                                                <ThemeSwitcher />
+                                            </div>
+                                            <div className="my-1 border-t border-border/40" />
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/dashboard")}>
                                                 Dashboard
+                                                <span className="size-3.5 shrink-0">
+                                                    <Logo variant="mark" className="h-full w-full" />
+                                                </span>
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                                className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
-                                                onClick={async () => {
+                                            <DropdownMenuItem className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500 flex justify-between" onClick={async () => {
                                                     await supabase.auth.signOut();
                                                     router.push("/login");
-                                                }}
-                                            >
+                                                }}>
                                                 Log out
+                                                <LogOut className="h-3.5 w-3.5" />
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
