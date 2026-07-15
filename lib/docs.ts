@@ -163,7 +163,6 @@ export function getDocsNavigation(): NavSection[] {
         'Getting Started',
         'Platform',
         'AI',
-        'Endpoints',
         'Agents',
         'Security',
         'Integrations',

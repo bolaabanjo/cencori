@@ -1,8 +1,8 @@
 ---
-title: "Memory"
+title: "Memory API"
 description: "Give any chat a memory. Retrieve what you know about a user before each reply, persist new facts after — with PII redaction and per-org isolation built in."
-section: "Endpoints"
-order: 8
+section: "API Reference"
+order: 14
 ---
 
 Memory is not a separate product — it's a property of a request. Add a `memory` field to a chat completion and the gateway retrieves relevant facts about the user before the model call and persists new ones after. Everything else you already get from Cencori — BYOK, PII redaction, audit logs, spend caps — composes for free, because memory goes through the same pipeline.
