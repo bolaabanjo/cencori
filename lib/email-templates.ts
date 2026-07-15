@@ -234,7 +234,7 @@ export function renderTemplate(
 //     ],
 //     linksHeader: 'To get started:',
 //     links: [
-//       { label: 'Read the Vision API reference', url: 'https://cencori.com/docs/ai/endpoints/vision' },
+//       { label: 'Read the Vision API reference', url: 'https://cencori.com/docs/api/vision' },
 //       { label: 'Build a receipt scanner in ten minutes', url: 'https://cencori.com/docs/guides/build-a-receipt-scanner' },
 //     ],
 //     ctaText: 'Read the launch post',
