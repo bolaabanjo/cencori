@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronRight, Eye, EyeOff, Key, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AudioLines, Check, ChevronRight, Eye, EyeOff, Key, Loader2, Plus, Trash2, X } from "lucide-react";
 import { OpenAI, Anthropic, Google, Mistral, Cohere, Perplexity, OpenRouter, Groq, XAI, Together, Meta, HuggingFace, Qwen, DeepSeek, ZAI } from "@lobehub/icons";
 import { SUPPORTED_PROVIDERS, getModelsForProvider, getChatModelsForProvider, getImageModelsForProvider, type AIProviderConfig } from "@/lib/providers/config";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,12 @@ const PROVIDER_LOGOS: Record<string, React.ReactNode> = {
     qwen: <Qwen.Color size={20} />,
     deepseek: <DeepSeek.Color size={20} />,
     zai: <ZAI size={20} />,
+    // Voice providers (no brand icons in the icon set) — neutral voice glyph
+    deepgram: <AudioLines size={18} />,
+    cartesia: <AudioLines size={18} />,
+    spitch: <AudioLines size={18} />,
+    assemblyai: <AudioLines size={18} />,
+    elevenlabs: <AudioLines size={18} />,
 };
 
 function getProviderLogo(providerId: string, size: 'sm' | 'md' = 'md') {
@@ -381,8 +387,8 @@ export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
                             </div>
                         </div>
 
-                        {/* Model Selection */}
-                        {selectedProvider && (
+                        {/* Model Selection — hidden for voice providers, which have no default chat model */}
+                        {selectedProvider && getChatModelsForProvider(selectedProvider.id).length > 0 && (
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Default Model</Label>
                                 <Select value={selectedModel} onValueChange={setSelectedModel}>
