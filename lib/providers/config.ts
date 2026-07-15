@@ -529,6 +529,55 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'maximo-atlas-preview', name: 'Maximo Atlas Preview', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Opus-class coding & agent model, free preview until Jul 21, $0.20/$1.00 after', free: true },
         ],
     },
+    // ── Voice providers (BYOK) ──────────────────────────────────
+    // Models are chosen per-call on the Voice endpoints, so these carry no
+    // `models` list here — the entry exists so users can add a BYOK key and the
+    // gateway (lib/audio/*) uses it. See the Voice docs for the model catalog.
+    {
+        id: 'deepgram',
+        name: 'Deepgram',
+        icon: '/providers/voice.svg',
+        website: 'https://deepgram.com',
+        docsUrl: 'https://developers.deepgram.com',
+        keyPrefix: '',
+        models: [],
+    },
+    {
+        id: 'cartesia',
+        name: 'Cartesia',
+        icon: '/providers/voice.svg',
+        website: 'https://cartesia.ai',
+        docsUrl: 'https://docs.cartesia.ai',
+        keyPrefix: 'sk_car_',
+        models: [],
+    },
+    {
+        id: 'spitch',
+        name: 'Spitch',
+        icon: '/providers/voice.svg',
+        website: 'https://spitch.app',
+        docsUrl: 'https://docs.spi-tch.com',
+        keyPrefix: '',
+        models: [],
+    },
+    {
+        id: 'assemblyai',
+        name: 'AssemblyAI',
+        icon: '/providers/voice.svg',
+        website: 'https://assemblyai.com',
+        docsUrl: 'https://www.assemblyai.com/docs',
+        keyPrefix: '',
+        models: [],
+    },
+    {
+        id: 'elevenlabs',
+        name: 'ElevenLabs',
+        icon: '/providers/voice.svg',
+        website: 'https://elevenlabs.io',
+        docsUrl: 'https://elevenlabs.io/docs',
+        keyPrefix: '',
+        models: [],
+    },
 ];
 
 /**
