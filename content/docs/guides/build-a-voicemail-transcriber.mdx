@@ -1,0 +1,124 @@
+---
+title: "Build a Voice Note Transcriber"
+description: "Ship an endpoint that takes a voice note — including Yoruba, Hausa, or Igbo — and returns a clean transcript with speaker labels. About ten minutes."
+section: "Guides"
+order: 9
+---
+
+By the end of this guide you'll have an endpoint your users can send a voice note to and get back a clean transcript — with speaker labels, and in African languages if you need them. Perfect for WhatsApp voice notes, voicemails, or meeting recordings. About ten minutes if you already have a Next.js app.
+
+We'll use the Voice API's `transcribe` and `diarize` methods. The provider is inferred from the model, so switching between Deepgram (fast English), AssemblyAI (long-form + speakers), and Spitch (African languages) is a one-line change.
+
+## What you're building
+
+```json
+{
+  "text": "Hey, just following up on the invoice. Can you send it over today?",
+  "duration": 4.2,
+  "language": "en",
+  "provider": "deepgram",
+  "segments": [
+    { "speaker": "speaker_0", "text": "Hey, just following up on the invoice.", "start": 0.1, "end": 2.0 },
+    { "speaker": "speaker_1", "text": "Can you send it over today?", "start": 2.3, "end": 4.2 }
+  ]
+}
+```
+
+## Prerequisites
+
+- A Cencori project + API key (starts with `csk_...`)
+- `npm install cencori`
+
+## 1. The endpoint
+
+Create an API route that accepts an uploaded audio file and returns the transcript.
+
+```typescript
+// app/api/transcribe/route.ts
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY! });
+
+export async function POST(req: Request) {
+  const form = await req.formData();
+  const file = form.get('file') as File;
+  const language = (form.get('language') as string) || 'en';
+
+  const result = await cencori.voice.diarize({
+    audio: await file.arrayBuffer(),
+    filename: file.name,
+    model: 'assemblyai-universal', // long-form + speaker labels
+    language,
+  });
+
+  return Response.json(result);
+}
+```
+
+That's the whole backend. `diarize` turns on speaker labels and returns `verbose_json` with segments.
+
+## 2. Pick the right model
+
+The provider is inferred from `model`, so tuning for cost, speed, or language is a one-line swap:
+
+| Use case | Model | Why |
+|----------|-------|-----|
+| Fast English voice notes | `nova-3` | Cheapest, sub-second, word timestamps |
+| Long recordings, clear speakers | `assemblyai-universal` | Best long-form + diarization |
+| Yoruba / Hausa / Igbo | `spitch-stt` | Native African-language transcription |
+
+For a Nigerian WhatsApp bot handling voice notes in mixed languages, detect or ask the language and route accordingly:
+
+```typescript
+const model = ['yo', 'ha', 'ig'].includes(language) ? 'spitch-stt' : 'nova-3';
+
+const result = await cencori.voice.transcribe({
+  audio: await file.arrayBuffer(),
+  filename: file.name,
+  model,
+  language,
+});
+```
+
+## 3. A drop-in recorder (optional)
+
+If you want a mic recorder in your UI without writing one, use the React component — it records, uploads, and renders the transcript (with speaker labels) for you:
+
+```tsx
+import { VoiceRecorder } from 'cencori/react';
+
+export function NoteTaker() {
+  return (
+    <VoiceRecorder
+      endpoint="/api/transcribe"
+      model="assemblyai-universal"
+      diarize
+      onTranscript={(text) => console.log(text)}
+    />
+  );
+}
+```
+
+## 4. Reply with a voice note
+
+Close the loop — turn your text reply back into audio in the same language:
+
+```typescript
+const { audio } = await cencori.voice.speak({
+  input: 'Invoice sent — check your inbox.',
+  model: language === 'yo' ? 'spitch-tts' : 'aura-asteria-en',
+  language,
+});
+// send `audio` back as a WhatsApp voice note
+```
+
+## What you get for free
+
+Because it runs through the gateway, every transcription is:
+
+- **Billed and tracked** — per-minute cost logged to your dashboard with the provider used
+- **PII-redacted** — the input guard runs on the request
+- **BYOK-ready** — plug in your own Deepgram/AssemblyAI/Spitch keys per project
+- **Portable** — swap providers by changing the model, no code rewrite
+
+That's a production voice-note pipeline in a single file.

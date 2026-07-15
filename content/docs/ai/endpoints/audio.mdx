@@ -1,79 +1,170 @@
 ---
-title: "Audio Endpoint"
-description: "Speech-to-text transcription and text-to-speech generation."
+title: "Voice Endpoint"
+description: "Text-to-speech and speech-to-text across OpenAI, Deepgram, Cartesia, ElevenLabs, AssemblyAI, and Spitch — one API, provider inferred from the model."
 section: "Endpoints"
 order: 4
 ---
 
-Convert speech to text and text to speech using OpenAI's Whisper and TTS models.
+Turn text into speech and speech into text through a single billable, logged, PII-redacted gateway. Pick a model and the gateway routes to the right provider — OpenAI, Deepgram, Cartesia, ElevenLabs, AssemblyAI, or Spitch — with BYOK, spend caps, and cost tracking applied the same way as the rest of the platform.
 
-## Transcription (Speech-to-Text)
+## Endpoints
 
-```typescript
-const response = await cencori.ai.transcribe({
-  file: audioFile,  // File, Blob, or Buffer
-  model: 'whisper-1'
-});
+| Path | Purpose |
+|------|---------|
+| `POST /api/ai/audio/speech` | Text-to-speech (TTS) |
+| `POST /api/ai/audio/transcriptions` | Speech-to-text (STT) |
+| `GET /api/ai/audio/speech` | List TTS models |
+| `GET /api/ai/audio/transcriptions` | List STT models |
 
-console.log(response.text);
-```
-
-### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | File | Yes | Audio file |
-| `model` | string | Yes | 'whisper-1' |
-| `language` | string | No | Source language |
-| `prompt` | string | No | Context hint |
-| `responseFormat` | string | No | 'json', 'text', 'srt', 'vtt' |
+The **provider is inferred from `model`** — you never pass a provider name. Both endpoints default to OpenAI for backward compatibility.
 
 ## Text-to-Speech
 
 ```typescript
-const response = await cencori.ai.speech({
-  input: 'Hello, welcome to Cencori',
-  model: 'tts-1',
-  voice: 'alloy'
+const { audio } = await cencori.voice.speak({
+  input: 'Hello, welcome to Cencori.',
+  model: 'aura-asteria-en',   // Deepgram — provider inferred
 });
 
-// response.audio is an ArrayBuffer
-const blob = new Blob([response.audio], { type: 'audio/mpeg' });
+// audio is an ArrayBuffer
+await fs.writeFile('hello.mp3', Buffer.from(audio));
 ```
 
 ### Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `input` | string | Yes | Text to speak |
-| `model` | string | Yes | 'tts-1' or 'tts-1-hd' |
-| `voice` | string | Yes | Voice selection |
-| `speed` | number | No | 0.25 to 4.0 |
-| `responseFormat` | string | No | 'mp3', 'opus', 'aac', 'flac' |
+| `input` | string | Yes | Text to synthesize (max 4096 chars) |
+| `model` | string | No | TTS model. Default `tts-1`. See the table below |
+| `voice` | string | No | Voice id/name; provider-specific, falls back to the model default |
+| `responseFormat` | string | No | `mp3` (default), `opus`, `aac`, `flac`, `wav`, `pcm` (support varies by provider) |
+| `speed` | number | No | 0.25–4.0 (OpenAI only) |
+| `language` | string | No | Language code — Spitch: `en`, `yo`, `ha`, `ig`, `am` |
 
-## Available Voices
+### TTS models
 
-| Voice | Description |
-|-------|-------------|
-| alloy | Neutral tone |
-| echo | Warm, conversational |
-| fable | Expressive, dramatic |
-| onyx | Deep, authoritative |
-| nova | Friendly, upbeat |
-| shimmer | Soft, calm |
+| Model | Provider | Notes |
+|-------|----------|-------|
+| `tts-1`, `tts-1-hd` | OpenAI | 6 built-in voices |
+| `aura-asteria-en`, `aura-luna-en`, `aura-stella-en`, `aura-orion-en`, `aura-arcas-en` | Deepgram | Sub-200ms, great for agents |
+| `sonic-2` | Cartesia | Sub-100ms, purpose-built for realtime |
+| `spitch-tts` | Spitch | **African languages** — Yoruba, Hausa, Igbo, English, Amharic |
+| `eleven_turbo_v2_5`, `eleven_flash_v2_5`, `eleven_multilingual_v2` | ElevenLabs | Best voice quality (paid ElevenLabs plan required) |
+
+## Speech-to-Text
+
+```typescript
+const { text } = await cencori.voice.transcribe({
+  audio: fileBytes,           // Blob, ArrayBuffer, or Uint8Array
+  model: 'nova-3',            // Deepgram — provider inferred
+});
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `audio` | Blob \| ArrayBuffer \| Uint8Array | Yes | Audio to transcribe (max 25MB) |
+| `model` | string | No | STT model. Default `whisper-1` |
+| `language` | string | No | Language hint (Spitch: target language) |
+| `diarize` | boolean | No | Speaker labels (diarization-capable models) |
+| `responseFormat` | string | No | `json` (default), `text`, `srt`, `vtt`, `verbose_json` |
+| `prompt` | string | No | Context hint (OpenAI only) |
+
+### STT models
+
+| Model | Provider | Diarization | Notes |
+|-------|----------|-------------|-------|
+| `whisper-1` | OpenAI | — | General purpose |
+| `nova-3` | Deepgram | ✓ | Fast, cheap, word timestamps |
+| `assemblyai-universal` | AssemblyAI | ✓ | Strong long-form + speaker labels |
+| `spitch-stt` | Spitch | — | **African languages** |
+
+## Speaker diarization
+
+Use `diarize()` (or `diarize: true` + `responseFormat: 'verbose_json'`) with a diarization-capable model to get speaker-attributed segments:
+
+```typescript
+const { segments } = await cencori.voice.diarize({
+  audio: meetingBytes,
+  model: 'assemblyai-universal',
+});
+
+for (const s of segments) {
+  console.log(`${s.speaker}: ${s.text}`);
+}
+```
+
+## Subtitles (SRT / VTT)
+
+Set `responseFormat` to `srt` or `vtt` to get ready-to-use subtitles with timestamps:
+
+```typescript
+const { text: srt } = await cencori.voice.transcribe({
+  audio: videoAudio,
+  model: 'nova-3',
+  responseFormat: 'srt',
+});
+```
+
+## African languages with Spitch
+
+Spitch is the only provider here doing native **Yoruba, Hausa, Igbo, and Amharic** — both TTS and STT. Ideal for WhatsApp voice notes and West-African products:
+
+```typescript
+// Speak Yoruba
+const { audio } = await cencori.voice.speak({
+  input: 'Bawo ni, e ku aaro.',
+  model: 'spitch-tts',
+  voice: 'sade',
+  language: 'yo',
+});
+
+// Transcribe a Yoruba voice note
+const { text } = await cencori.voice.transcribe({
+  audio: voiceNote,
+  model: 'spitch-stt',
+  language: 'yo',
+});
+```
+
+## SDKs
+
+The same surface exists in every SDK — TypeScript, Python, Go, PHP, and Rust.
+
+```python
+# Python
+audio = cencori.voice.speak("Hello from Cencori.", model="aura-asteria-en")
+open("hello.mp3", "wb").write(audio)
+
+result = cencori.voice.transcribe("hello.mp3", model="nova-3")
+print(result["text"])
+```
+
+```go
+// Go
+out, _ := c.Voice.Speak(ctx, &cencori.SpeakParams{Input: "Hello.", Model: "aura-asteria-en"})
+os.WriteFile("hello.mp3", out.Audio, 0644)
+
+tr, _ := c.Voice.Transcribe(ctx, out.Audio, &cencori.TranscribeParams{Model: "nova-3"})
+fmt.Println(tr.Text)
+```
+
+## Drop-in React components
+
+```tsx
+import { VoiceRecorder, SpeakButton } from 'cencori/react';
+
+// Record from the mic and get the transcript
+<VoiceRecorder model="nova-3" apiKey={key} onTranscript={(text) => console.log(text)} />
+
+// Play any text as speech
+<SpeakButton text="Hello from Cencori." model="aura-asteria-en" apiKey={key} />
+```
 
 ## HTTP API
 
-### Transcription
-
-```bash
-curl -X POST https://cencori.com/api/ai/audio/transcriptions \
-  -H "CENCORI_API_KEY: csk_..." \
-  -F file=@audio.mp3 \
-  -F model=whisper-1
-```
-
-### Speech
+### Speech (TTS)
 
 ```bash
 curl -X POST https://cencori.com/api/ai/audio/speech \
@@ -81,8 +172,24 @@ curl -X POST https://cencori.com/api/ai/audio/speech \
   -H "Content-Type: application/json" \
   -d '{
     "input": "Hello world",
-    "model": "tts-1",
-    "voice": "alloy"
+    "model": "aura-asteria-en"
   }' \
   --output speech.mp3
 ```
+
+The response carries an `X-Provider` header telling you which provider served the request.
+
+### Transcription (STT)
+
+```bash
+curl -X POST https://cencori.com/api/ai/audio/transcriptions \
+  -H "CENCORI_API_KEY: csk_..." \
+  -F file=@audio.mp3 \
+  -F model=nova-3 \
+  -F diarize=true \
+  -F response_format=verbose_json
+```
+
+## Pricing & billing
+
+TTS bills per 1,000 characters; STT bills per minute of audio. Every request is logged to `ai_requests` with the provider, model, provider cost, and your Cencori charge (provider cost + markup) — visible in the dashboard alongside chat and vision usage. BYOK keys are used when configured; otherwise the platform key is used.
