@@ -117,6 +117,7 @@ export default function OrganizationLayoutClient({
     const isInsideProject = !!orgSubSegment && orgSubSegment !== "~";
     const projectSlug = isInsideProject ? orgSubSegment : (projects?.[0]?.slug || null);
     const isProjectCreation = pathname.includes("/projects/new") || pathname.includes("/projects/import");
+    const isPlayground = pathname.includes("/ai-gateway/playground");
     const [activeView, setActiveView] = useState<"main" | "ai-gateway">("main");
 
     const orgBase = `/${orgSlug}`;
@@ -204,7 +205,10 @@ export default function OrganizationLayoutClient({
     ];
 
     return (
-        <SidebarProvider defaultOpen>
+        <SidebarProvider
+            defaultOpen
+            className={isPlayground ? "h-full min-h-0 overflow-hidden" : undefined}
+        >
             {!isProjectCreation && (
                 <Sidebar className="top-12 h-[calc(100vh-3rem)] hidden lg:block border-r border-border/40 bg-sidebar">
                     <SidebarContent>
@@ -402,9 +406,16 @@ export default function OrganizationLayoutClient({
                 </SheetContent>
             </Sheet>
 
-            <main className="flex w-full flex-1 flex-col overflow-hidden">
+            <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
                 {organization && <UsageLimitBanner orgId={organization.id} orgSlug={organization.slug} />}
-                <div key={pathname} className="animate-fade-in" style={{ animationDuration: "150ms" }}>
+                <div
+                    key={pathname}
+                    className={isPlayground
+                        ? "flex min-h-0 flex-1 flex-col overflow-hidden animate-fade-in"
+                        : "animate-fade-in"
+                    }
+                    style={{ animationDuration: "150ms" }}
+                >
                     {children}
                 </div>
             </main>
