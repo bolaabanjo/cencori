@@ -86,6 +86,12 @@ INSERT INTO public.model_pricing (
     ('elevenlabs', 'eleven_flash_v2_5',      0.00000000, 0.00000000, 50.00, true, 'https://elevenlabs.io/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'ElevenLabs Flash v2.5 is $0.110 per 1,000 characters; token columns are intentionally zero. Requires a paid ElevenLabs plan.'),
     ('elevenlabs', 'eleven_multilingual_v2', 0.00000000, 0.00000000, 50.00, true, 'https://elevenlabs.io/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'ElevenLabs Multilingual v2 is $0.220 per 1,000 characters; token columns are intentionally zero. Requires a paid ElevenLabs plan.'),
 
+    -- Multi-provider voice (STT). Token columns are intentionally zero; these
+    -- models bill per minute via price_per_minute set below.
+    ('deepgram', 'nova-3',                0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Nova-3 transcription is $0.0077 per minute; token columns are intentionally zero.'),
+    ('assemblyai', 'assemblyai-universal', 0.00000000, 0.00000000, 50.00, true, 'https://www.assemblyai.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Universal transcription is $0.0062 per minute ($0.37/hour); token columns are intentionally zero.'),
+    ('spitch', 'spitch-stt',              0.00000000, 0.00000000, 50.00, true, 'https://spitch.app/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Spitch STT (African languages) is $0.010 per minute; token columns are intentionally zero.'),
+
     -- Anthropic first-party standard API. Sonnet 5's introductory price ends
     -- at the start of 2026-09-01 UTC and must be reviewed before then.
     ('anthropic', 'claude-sonnet-5',   0.00200000, 0.01000000, 50.00, true, 'https://platform.claude.com/docs/en/about-claude/pricing', '2026-07-15T00:00:00Z', '2026-09-01T00:00:00Z', 0.00020000, NULL, NULL, NULL, NULL, 'Introductory first-party price through 2026-08-31; standard pricing becomes $3/$15 per MTok afterward.'),
@@ -167,6 +173,20 @@ WHERE (provider = 'deepgram' AND model_name LIKE 'aura-%')
    OR (provider = 'cartesia' AND model_name IN ('sonic-2', 'sonic-english'))
    OR (provider = 'spitch' AND model_name = 'spitch-tts')
    OR (provider = 'elevenlabs' AND model_name IN ('eleven_turbo_v2_5', 'eleven_flash_v2_5', 'eleven_multilingual_v2'));
+
+-- Per-minute prices for the multi-provider voice (STT) models.
+UPDATE public.model_pricing
+SET
+    price_per_minute = CASE
+        WHEN provider = 'deepgram' AND model_name = 'nova-3' THEN 0.007700
+        WHEN provider = 'assemblyai' AND model_name = 'assemblyai-universal' THEN 0.006200
+        WHEN provider = 'spitch' AND model_name = 'spitch-stt' THEN 0.010000
+        ELSE price_per_minute
+    END,
+    updated_at = now()
+WHERE (provider = 'deepgram' AND model_name = 'nova-3')
+   OR (provider = 'assemblyai' AND model_name = 'assemblyai-universal')
+   OR (provider = 'spitch' AND model_name = 'spitch-stt');
 
 COMMENT ON COLUMN public.model_pricing.is_active IS
     'True only for rows whose exact provider/model price has been reviewed.';

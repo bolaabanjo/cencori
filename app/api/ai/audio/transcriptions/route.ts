@@ -1,15 +1,17 @@
 /**
  * Speech-to-Text (Transcription) API Route
- * 
+ *
  * POST /api/ai/audio/transcriptions
- * 
- * Transcribes audio to text using OpenAI Whisper.
- * Accepts multipart/form-data with audio file.
+ *
+ * Transcribes audio across multiple providers (OpenAI Whisper, Deepgram
+ * Nova-3, AssemblyAI, Spitch). Accepts multipart/form-data with an audio file.
+ *
+ * Provider is inferred from `model` (backward compatible: default is
+ * whisper-1). Transcription lives in `lib/audio/transcribe.ts`; this route
+ * owns the gateway pipeline (input guard, pricing, output guard, logging).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { decryptApiKey } from '@/lib/encryption';
 import {
     validateGatewayRequest,
     addGatewayHeaders,
@@ -22,13 +24,14 @@ import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { getUsageUnitPricingFromDB } from '@/lib/providers/pricing';
-
-type VerboseTranscription = {
-    text?: string;
-    duration?: number;
-    language?: string;
-    segments?: Array<{ start?: number; end?: number; text?: string }>;
-};
+import {
+    transcribeAudio,
+    resolveProviderModel,
+    listTranscriptionModels,
+    TranscribeRequestError,
+    type TranscriptSegment,
+    type STTProvider,
+} from '@/lib/audio/transcribe';
 
 function formatTimestamp(seconds: number, separator: ',' | '.'): string {
     const millis = Math.max(0, Math.round(seconds * 1000));
@@ -40,7 +43,7 @@ function formatTimestamp(seconds: number, separator: ',' | '.'): string {
 }
 
 function formatTimedTranscript(
-    segments: VerboseTranscription['segments'],
+    segments: TranscriptSegment[] | undefined,
     format: 'srt' | 'vtt',
     tokenMap: Map<string, string>,
 ): string {
@@ -48,8 +51,9 @@ function formatTimedTranscript(
     const blocks = (segments || []).map((segment, index) => {
         const start = formatTimestamp(Number(segment.start || 0), separator);
         const end = formatTimestamp(Number(segment.end || segment.start || 0), separator);
+        const speaker = segment.speaker ? `[${segment.speaker}] ` : '';
         const text = deTokenize(segment.text || '', tokenMap).trim();
-        return `${format === 'srt' ? `${index + 1}\n` : ''}${start} --> ${end}\n${text}`;
+        return `${format === 'srt' ? `${index + 1}\n` : ''}${start} --> ${end}\n${speaker}${text}`;
     });
     return `${format === 'vtt' ? 'WEBVTT\n\n' : ''}${blocks.join('\n\n')}${blocks.length ? '\n' : ''}`;
 }
@@ -66,22 +70,20 @@ export async function POST(req: NextRequest) {
     }
     const ctx = validation.context;
 
+    // Model/provider are needed in the catch block for logging.
+    let model = 'whisper-1';
+    let provider = 'openai';
+
     try {
-        // Parse form data
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
-        const model = (formData.get('model') as string) || 'whisper-1';
+        model = (formData.get('model') as string) || 'whisper-1';
         const language = formData.get('language') as string | null;
         const prompt = formData.get('prompt') as string | null;
         const responseFormat = (formData.get('response_format') as string) || 'json';
         const temperature = parseFloat(formData.get('temperature') as string) || 0;
+        const diarize = formData.get('diarize') === 'true';
 
-        if (model !== 'whisper-1') {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'bad_request', message: 'Unsupported transcription model' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
-        }
         const allowedResponseFormats = new Set(['json', 'text', 'srt', 'verbose_json', 'vtt']);
         if (!allowedResponseFormats.has(responseFormat)) {
             return addGatewayHeaders(
@@ -95,7 +97,6 @@ export async function POST(req: NextRequest) {
                 { requestId: ctx.requestId }
             );
         }
-
         if (!file) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'bad_request', message: 'Audio file is required' }, { status: 400 }),
@@ -112,14 +113,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Check file size (max 25MB for Whisper)
-        if (file.size > 25 * 1024 * 1024) {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'bad_request', message: 'File size exceeds maximum of 25MB' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
-        }
-
+        // ── Input guard (on the optional prompt) ──
         const inputPipeline = await runGatewayInputPipeline({
             supabase: ctx.supabase,
             projectId: ctx.projectId,
@@ -132,7 +126,7 @@ export async function POST(req: NextRequest) {
             await logGatewayRequest(ctx, {
                 endpoint: 'audio/transcriptions',
                 model,
-                provider: 'openai',
+                provider: formData.get('provider') as string || 'openai',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
             });
@@ -145,67 +139,37 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Get OpenAI API key (BYOK or default)
-        let openaiKey: string | null = null;
+        // Resolve provider/model and confirm pricing BEFORE the billable call.
+        const resolved = resolveProviderModel({ provider: (formData.get('provider') as STTProvider | null) ?? undefined, model });
+        model = resolved.model;
+        provider = resolved.provider;
+        const pricing = await getUsageUnitPricingFromDB(resolved.provider, resolved.model, 'minutes');
 
-        const { data: providerKey } = await ctx.supabase
-            .from('provider_keys')
-            .select('encrypted_key, is_active')
-            .eq('project_id', ctx.projectId)
-            .eq('provider', 'openai')
-            .eq('is_active', true)
-            .single();
-
-        if (providerKey?.encrypted_key) {
-            openaiKey = decryptApiKey(providerKey.encrypted_key, ctx.organizationId);
-        } else {
-            openaiKey = process.env.OPENAI_API_KEY ?? null;
-        }
-
-        if (!openaiKey) {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'provider_not_configured', message: 'No OpenAI API key configured' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
-        }
-
-        const pricing = await getUsageUnitPricingFromDB('openai', model, 'minutes');
-        const client = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
-
-        const transcriptionParams: OpenAI.Audio.TranscriptionCreateParams = {
+        // ── Transcribe (validates model, resolves BYOK key, dispatches) ──
+        const result = await transcribeAudio(ctx, {
             file,
-            model,
-            // Always request duration and segments so billing and timed output
-            // are derived from provider metadata instead of file-size guesses.
-            response_format: 'verbose_json',
-            timestamp_granularities: ['segment'],
+            provider: resolved.provider,
+            model: resolved.model,
+            language: language || undefined,
+            prompt: inputPipeline.messages[0]?.content ?? prompt ?? undefined,
             temperature,
-        };
+            diarize,
+        });
 
-        if (language) transcriptionParams.language = language;
-        if (prompt) transcriptionParams.prompt = inputPipeline.messages[0]?.content ?? prompt;
-
-        const response = await client.audio.transcriptions.create(transcriptionParams) as VerboseTranscription;
-
-        const durationSeconds = Number(response.duration)
-            || Number(response.segments?.at(-1)?.end)
-            || 0;
-        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-            throw new Error('Transcription provider did not return a billable audio duration');
-        }
-        const durationMinutes = durationSeconds / 60;
+        // ── Cost tracking (per minute) ──
+        const durationMinutes = result.durationSeconds / 60;
         const providerCost = durationMinutes * pricing.unitPriceUsd;
         const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
 
-        const rawTranscript = response.text || '';
         const tokenMap = inputPipeline.tokenMap ?? new Map();
-        const finalTranscript = deTokenize(rawTranscript, tokenMap);
+        const finalTranscript = deTokenize(result.text, tokenMap);
+
         const outputCheck = await runGatewayOutputGuard({
             supabase: ctx.supabase,
             projectId: ctx.projectId,
             apiKeyId: ctx.apiKeyId,
             environment: ctx.environment,
-            outputText: rawTranscript,
+            outputText: result.text,
             inputText: inputPipeline.inputText,
             inputSecurity: inputPipeline.inputSecurity,
             conversationHistory: inputPipeline.messages,
@@ -213,8 +177,8 @@ export async function POST(req: NextRequest) {
 
         await logGatewayRequest(ctx, {
             endpoint: 'audio/transcriptions',
-            model,
-            provider: 'openai',
+            model: result.model,
+            provider: result.provider,
             status: outputCheck.ok ? 'success' : 'blocked_output',
             costUsd: cencoriCharge,
             providerCostUsd: providerCost,
@@ -223,7 +187,8 @@ export async function POST(req: NextRequest) {
             metadata: {
                 file_size: file.size,
                 file_type: file.type,
-                duration_seconds: durationSeconds,
+                duration_seconds: result.durationSeconds,
+                diarization: Boolean(result.segments?.some((s) => s.speaker)),
             },
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
@@ -247,30 +212,57 @@ export async function POST(req: NextRequest) {
                     ? 'text/vtt'
                     : 'text/plain';
             const bodyText = responseFormat === 'srt' || responseFormat === 'vtt'
-                ? formatTimedTranscript(response.segments, responseFormat, tokenMap)
+                ? formatTimedTranscript(result.segments, responseFormat, tokenMap)
                 : finalTranscript;
             return addGatewayHeaders(new NextResponse(bodyText, {
-                headers: { 'Content-Type': `${contentType}; charset=utf-8` },
+                headers: { 'Content-Type': `${contentType}; charset=utf-8`, 'X-Provider': result.provider },
             }), { requestId: ctx.requestId });
         }
 
+        if (responseFormat === 'verbose_json') {
+            return addGatewayHeaders(
+                NextResponse.json({
+                    text: finalTranscript,
+                    language: result.language,
+                    duration: result.durationSeconds,
+                    provider: result.provider,
+                    model: result.model,
+                    segments: result.segments?.map((s) => ({ ...s, text: deTokenize(s.text, tokenMap) })),
+                    words: result.words,
+                }),
+                { requestId: ctx.requestId }
+            );
+        }
+
         return addGatewayHeaders(
-            NextResponse.json(
-                responseFormat === 'verbose_json'
-                    ? { ...response, text: finalTranscript }
-                    : { text: finalTranscript }
-            ),
+            NextResponse.json({ text: finalTranscript }),
             { requestId: ctx.requestId }
         );
 
     } catch (error) {
+        if (error instanceof TranscribeRequestError) {
+            if (error.status >= 500) {
+                await logGatewayRequest(ctx, {
+                    endpoint: 'audio/transcriptions',
+                    model,
+                    provider,
+                    status: 'error',
+                    errorMessage: error.message,
+                });
+            }
+            return addGatewayHeaders(
+                NextResponse.json({ error: error.code, message: error.message }, { status: error.status }),
+                { requestId: ctx.requestId }
+            );
+        }
+
         console.error('Transcription API error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
         await logGatewayRequest(ctx, {
             endpoint: 'audio/transcriptions',
-            model: 'whisper-1',
-            provider: 'openai',
+            model,
+            provider,
             status: 'error',
             errorMessage,
         });
@@ -284,7 +276,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
     return NextResponse.json({
-        models: ['whisper-1'],
+        models: listTranscriptionModels(),
         supported_formats: ['mp3', 'mp4', 'm4a', 'mpeg', 'mpga', 'wav', 'webm', 'ogg', 'flac'],
         response_formats: ['json', 'text', 'srt', 'verbose_json', 'vtt'],
         max_file_size: '25MB',
