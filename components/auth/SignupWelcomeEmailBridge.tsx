@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
     clearSignupNewsletterOptInPending,
@@ -13,6 +13,8 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 const NEW_SIGNUP_WINDOW_MS = 30 * 60 * 1000;
 
 export function SignupWelcomeEmailBridge() {
+    const loginAlertSent = useRef(false);
+
     useEffect(() => {
         let cancelled = false;
         let inFlight = false;
@@ -83,17 +85,17 @@ export function SignupWelcomeEmailBridge() {
 
         const maybeSendLoginAlert = async (session: Session | null) => {
             const email = session?.user?.email;
-            if (!email || cancelled || loginAlertInFlight) return;
+            if (!email || cancelled || loginAlertInFlight || loginAlertSent.current) return;
 
             loginAlertInFlight = true;
             try {
-                await fetch("/api/email/login-alert", {
+                const res = await fetch("/api/email/login-alert", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ user_agent: navigator.userAgent }),
                 });
+                if (res.ok) loginAlertSent.current = true;
             } catch {
-                // Best-effort — don't block login on a failed alert.
             } finally {
                 loginAlertInFlight = false;
             }

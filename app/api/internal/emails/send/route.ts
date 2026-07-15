@@ -64,10 +64,14 @@ interface Recipient {
     email: string;
     fullName: string;
     firstName: string;
-    // Newsletter subscribers use a stored unsubscribe_token; auth users
-    // use an HMAC-derived token bound to their userId.
     unsubscribeToken?: string;
     userId?: string;
+}
+
+function toFirstName(email: string): string {
+    const prefix = email.split('@')[0] ?? '';
+    const first = prefix.split(/[._-]/)[0] ?? prefix;
+    return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
 async function getNewsletterRecipients(maxRecipients: number): Promise<Recipient[]> {
@@ -83,7 +87,7 @@ async function getNewsletterRecipients(maxRecipients: number): Promise<Recipient
 
     return (data || []).map((row) => {
         const email = (row.email as string).trim().toLowerCase();
-        const firstName = email.split('@')[0];
+        const firstName = toFirstName(email);
         return {
             email,
             fullName: '',
@@ -123,7 +127,7 @@ async function getAllRecipients(maxRecipients: number): Promise<Recipient[]> {
                 (meta.name as string | undefined) ||
                 ''
             ).trim();
-            const firstName = fullName.split(/\s+/)[0] || email.split('@')[0];
+            const firstName = fullName.split(/\s+/)[0] || toFirstName(email);
 
             dedupe.add(email);
             recipients.push({
@@ -149,6 +153,7 @@ async function getAllRecipients(maxRecipients: number): Promise<Recipient[]> {
 function personalize(content: string, recipient: Recipient, unsubscribeUrl?: string): string {
     return content
         .replace(/\{first_name\}/gi, recipient.firstName)
+        .replace(/\{firstName\}/g, recipient.firstName)
         .replace(/\{full_name\}/gi, recipient.fullName || recipient.firstName)
         .replace(/\{email\}/gi, recipient.email)
         .replace(/\{unsubscribe_url\}/gi, unsubscribeUrl || '');

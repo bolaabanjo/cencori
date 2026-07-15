@@ -95,6 +95,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, skipped: true, reason: 'known_device' });
     }
 
+    const lastAlertAt = meta.last_login_alert_sent_at as string | undefined;
+    if (lastAlertAt) {
+      const elapsed = Date.now() - new Date(lastAlertAt).getTime();
+      if (elapsed < 3600000) {
+        return NextResponse.json({ success: true, skipped: true, reason: 'recent_alert_sent' });
+      }
+    }
+
     const device = clientUA ? parseUA(clientUA) : 'Unknown device';
     let location: string | null = null;
     if (ip && ip !== prevIP) {
@@ -141,6 +149,17 @@ export async function POST(request: NextRequest) {
     const link = (text: string, href: string) =>
       `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
 
+    const updateMeta: Record<string, string> = {};
+    if (clientUA) updateMeta.last_login_user_agent = clientUA;
+    if (ip) updateMeta.last_login_ip = ip;
+    updateMeta.last_login_alert_sent_at = new Date().toISOString();
+
+    if (Object.keys(updateMeta).length > 0) {
+      await supabaseAdmin.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...meta, ...updateMeta },
+      });
+    }
+
     const sendbyte = new SendByte(SENDBYTE_API_KEY);
     try {
       await sendbyte.emails.send({
@@ -185,16 +204,6 @@ ${detailLines.map((line, i) => {
     } catch (err) {
       console.error('[LoginAlert] Send failed:', err);
       return NextResponse.json({ error: 'Failed to send login alert' }, { status: 500 });
-    }
-
-    const updateMeta: Record<string, string> = {};
-    if (clientUA) updateMeta.last_login_user_agent = clientUA;
-    if (ip) updateMeta.last_login_ip = ip;
-
-    if (Object.keys(updateMeta).length > 0) {
-      await supabaseAdmin.auth.admin.updateUserById(user.id, {
-        user_metadata: { ...meta, ...updateMeta },
-      });
     }
 
     return NextResponse.json({ success: true });

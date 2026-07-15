@@ -72,6 +72,20 @@ INSERT INTO public.model_pricing (
     ('openai', 'tts-1-hd',               0.00000000, 0.00000000, 50.00, true, 'https://developers.openai.com/api/docs/models/tts-1-hd', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Speech generation is $0.030 per 1,000 characters; token columns are intentionally zero.'),
     ('openai', 'whisper-1',              0.00000000, 0.00000000, 50.00, true, 'https://developers.openai.com/api/docs/models/whisper-1', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Transcription is $0.006 per minute; token columns are intentionally zero.'),
 
+    -- Multi-provider voice (TTS). Token columns are intentionally zero; these
+    -- models bill per 1,000 characters via price_per_1k_chars set below.
+    ('deepgram', 'aura-asteria-en', 0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Aura TTS is $0.015 per 1,000 characters; token columns are intentionally zero.'),
+    ('deepgram', 'aura-luna-en',   0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Aura TTS is $0.015 per 1,000 characters; token columns are intentionally zero.'),
+    ('deepgram', 'aura-stella-en', 0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Aura TTS is $0.015 per 1,000 characters; token columns are intentionally zero.'),
+    ('deepgram', 'aura-orion-en',  0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Aura TTS is $0.015 per 1,000 characters; token columns are intentionally zero.'),
+    ('deepgram', 'aura-arcas-en',  0.00000000, 0.00000000, 50.00, true, 'https://deepgram.com/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Aura TTS is $0.015 per 1,000 characters; token columns are intentionally zero.'),
+    ('cartesia', 'sonic-2',        0.00000000, 0.00000000, 50.00, true, 'https://cartesia.ai/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Sonic TTS is $0.050 per 1,000 characters; token columns are intentionally zero.'),
+    ('cartesia', 'sonic-english',  0.00000000, 0.00000000, 50.00, true, 'https://cartesia.ai/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Sonic TTS is $0.050 per 1,000 characters; token columns are intentionally zero.'),
+    ('spitch', 'spitch-tts',       0.00000000, 0.00000000, 50.00, true, 'https://spitch.app/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Spitch TTS (African languages) is $0.030 per 1,000 characters; token columns are intentionally zero.'),
+    ('elevenlabs', 'eleven_turbo_v2_5',      0.00000000, 0.00000000, 50.00, true, 'https://elevenlabs.io/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'ElevenLabs Turbo v2.5 is $0.110 per 1,000 characters; token columns are intentionally zero. Requires a paid ElevenLabs plan.'),
+    ('elevenlabs', 'eleven_flash_v2_5',      0.00000000, 0.00000000, 50.00, true, 'https://elevenlabs.io/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'ElevenLabs Flash v2.5 is $0.110 per 1,000 characters; token columns are intentionally zero. Requires a paid ElevenLabs plan.'),
+    ('elevenlabs', 'eleven_multilingual_v2', 0.00000000, 0.00000000, 50.00, true, 'https://elevenlabs.io/pricing', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'ElevenLabs Multilingual v2 is $0.220 per 1,000 characters; token columns are intentionally zero. Requires a paid ElevenLabs plan.'),
+
     -- Anthropic first-party standard API. Sonnet 5's introductory price ends
     -- at the start of 2026-09-01 UTC and must be reviewed before then.
     ('anthropic', 'claude-sonnet-5',   0.00200000, 0.01000000, 50.00, true, 'https://platform.claude.com/docs/en/about-claude/pricing', '2026-07-15T00:00:00Z', '2026-09-01T00:00:00Z', 0.00020000, NULL, NULL, NULL, NULL, 'Introductory first-party price through 2026-08-31; standard pricing becomes $3/$15 per MTok afterward.'),
@@ -136,6 +150,23 @@ SET
     updated_at = now()
 WHERE provider = 'openai'
   AND model_name IN ('tts-1', 'tts-1-hd', 'whisper-1');
+
+-- Per-1,000-character prices for the multi-provider voice (TTS) models.
+UPDATE public.model_pricing
+SET
+    price_per_1k_chars = CASE
+        WHEN provider = 'deepgram' THEN 0.015000
+        WHEN provider = 'cartesia' THEN 0.050000
+        WHEN provider = 'spitch' AND model_name = 'spitch-tts' THEN 0.030000
+        WHEN provider = 'elevenlabs' AND model_name = 'eleven_multilingual_v2' THEN 0.220000
+        WHEN provider = 'elevenlabs' THEN 0.110000
+        ELSE price_per_1k_chars
+    END,
+    updated_at = now()
+WHERE (provider = 'deepgram' AND model_name LIKE 'aura-%')
+   OR (provider = 'cartesia' AND model_name IN ('sonic-2', 'sonic-english'))
+   OR (provider = 'spitch' AND model_name = 'spitch-tts')
+   OR (provider = 'elevenlabs' AND model_name IN ('eleven_turbo_v2_5', 'eleven_flash_v2_5', 'eleven_multilingual_v2'));
 
 COMMENT ON COLUMN public.model_pricing.is_active IS
     'True only for rows whose exact provider/model price has been reviewed.';
