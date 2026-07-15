@@ -9,8 +9,15 @@ import { ModelPricing } from './base';
 import { PricingUnavailableError } from './errors';
 
 const EXPLICITLY_FREE_MODELS = new Set([
-    // Contractual Cencori preview. Provider catalog labels are not evidence
-    // that arbitrary third-party models are free to Cencori.
+    // Cencori's public free-model catalog. These intentionally bypass the
+    // database pricing lookup and are never charged to the customer.
+    'groq:llama-3.3-70b-versatile',
+    'groq:llama-3.1-8b-instant',
+    'groq:groq/compound',
+    'groq:groq/compound-mini',
+    'cerebras:gpt-oss-120b',
+    'cerebras:zai-glm-4.7',
+    // Contractual Cencori preview.
     'maximo:maximo-atlas-preview',
 ]);
 

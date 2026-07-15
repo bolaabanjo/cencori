@@ -12,6 +12,13 @@ describe('public Gateway route contract', () => {
         readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
     ) as { rewrites: Rewrite[] };
 
+    it('exposes the dependency-free health check through the public /v1 namespace', () => {
+        expect(config.rewrites).toContainEqual({
+            source: '/v1/health',
+            destination: '/api/v1/health',
+        });
+    });
+
     it('routes the complete Sessions API through the public /v1 namespace', () => {
         expect(config.rewrites).toEqual(expect.arrayContaining([
             { source: '/v1/sessions', destination: '/api/v1/sessions' },

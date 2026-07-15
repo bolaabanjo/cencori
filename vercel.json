@@ -1,6 +1,10 @@
 {
     "rewrites": [
         {
+            "source": "/v1/health",
+            "destination": "/api/v1/health"
+        },
+        {
             "source": "/v1/chat/completions",
             "destination": "/api/v1/chat/completions"
         },

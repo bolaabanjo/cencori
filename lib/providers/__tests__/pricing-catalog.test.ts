@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SUPPORTED_PROVIDERS } from '../config';
+import { getPricingFromDB, hasStaticPricing } from '../pricing';
 
 const migration = readFileSync(
     resolve(process.cwd(), 'supabase/migrations/20260715_090000_reviewed_model_pricing.sql'),
@@ -43,6 +44,24 @@ describe('reviewed managed pricing catalog', () => {
         const active = new Set(activeRows.map(row => `${row.provider}:${row.model}`));
         expect(active.has('groq:groq/compound')).toBe(false);
         expect(active.has('groq:groq/compound-mini')).toBe(false);
+    });
+
+    it('keeps every model tagged free on zero-price static pricing', async () => {
+        const freeModels = SUPPORTED_PROVIDERS.flatMap(provider =>
+            provider.models
+                .filter(model => model.free)
+                .map(model => [provider.id, model.id] as const)
+        );
+
+        expect(freeModels.length).toBeGreaterThan(0);
+        for (const [provider, model] of freeModels) {
+            expect(hasStaticPricing(provider, model)).toBe(true);
+            await expect(getPricingFromDB(provider, model)).resolves.toEqual({
+                inputPer1KTokens: 0,
+                outputPer1KTokens: 0,
+                cencoriMarkupPercentage: 0,
+            });
+        }
     });
 
     it('records provenance and an expiry for the Sonnet 5 promotion', () => {
