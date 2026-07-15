@@ -118,23 +118,5 @@
             "destination": "/new-blog/:slug",
             "permanent": true
         }
-    ],
-    "crons": [
-        {
-            "path": "/api/cron/reset-usage",
-            "schedule": "0 0 1 * *"
-        },
-        {
-            "path": "/api/cron/gateway-maintenance",
-            "schedule": "*/15 * * * *"
-        },
-        {
-            "path": "/api/cron/cache-cleanup",
-            "schedule": "17 3 * * *"
-        },
-        {
-            "path": "/api/cron/anomaly-alerts",
-            "schedule": "7 * * * *"
-        }
     ]
 }
