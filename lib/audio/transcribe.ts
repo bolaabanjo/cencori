@@ -189,6 +189,23 @@ export async function transcribeAudio(ctx: GatewayContext, req: TranscribeReques
 
 const PROVIDER_TIMEOUT_MS = 55_000;
 
+const EXT_CONTENT_TYPES: Record<string, string> = {
+    mp3: 'audio/mpeg', mpeg: 'audio/mpeg', mpga: 'audio/mpeg', m4a: 'audio/mp4',
+    mp4: 'audio/mp4', wav: 'audio/wav', webm: 'audio/webm', ogg: 'audio/ogg', flac: 'audio/flac',
+};
+
+/**
+ * A usable audio Content-Type for providers that need it in the request header
+ * (Deepgram). Multipart uploads often arrive as application/octet-stream, so
+ * fall back to the filename extension, then to audio/mpeg.
+ */
+function audioContentType(file: File): string {
+    const type = (file.type || '').toLowerCase();
+    if (type.startsWith('audio/')) return type;
+    const ext = (file.name || '').toLowerCase().split('.').pop() ?? '';
+    return EXT_CONTENT_TYPES[ext] ?? 'audio/mpeg';
+}
+
 async function upstreamError(provider: STTProvider, res: Response): Promise<never> {
     let detail = '';
     try {
@@ -253,7 +270,7 @@ async function transcribeDeepgram(apiKey: string, model: string, req: Transcribe
 
     const res = await fetch(`https://api.deepgram.com/v1/listen?${query.toString()}`, {
         method: 'POST',
-        headers: { Authorization: `Token ${apiKey}`, 'Content-Type': req.file.type || 'audio/mpeg' },
+        headers: { Authorization: `Token ${apiKey}`, 'Content-Type': audioContentType(req.file) },
         body: await req.file.arrayBuffer(),
         signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     });

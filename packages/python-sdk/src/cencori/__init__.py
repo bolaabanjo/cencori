@@ -9,6 +9,7 @@ Every operation is secured, logged, and tracked.
 
 from .client import Cencori
 from .vision import VisionModule
+from .voice import VoiceModule
 from .documents import DocumentsModule
 from .errors import (
     AuthenticationError,
@@ -84,6 +85,7 @@ __version__ = "1.4.0"
 __all__ = [
     "Cencori",
     "VisionModule",
+    "VoiceModule",
     "DocumentsModule",
     # Errors
     "CencoriError",
