@@ -29,6 +29,7 @@ import type { CencoriConfig, RequestOptions } from './types';
 import { AINamespace } from './ai';
 import { AgentsNamespace } from './agents';
 import { VisionNamespace } from './vision';
+import { VoiceNamespace } from './voice';
 import { DocumentsNamespace } from './documents';
 import { SessionsNamespace } from './sessions';
 import { ComputeNamespace } from './compute';
@@ -91,6 +92,29 @@ export class Cencori {
      * });
      */
     readonly vision: VisionNamespace;
+
+    /**
+     * Voice - Text-to-speech and speech-to-text across providers
+     *
+     * @example
+     * const { audio } = await cencori.voice.speak({
+     *   input: 'Hello from Cencori.',
+     *   model: 'aura-asteria-en', // Deepgram; provider inferred from model
+     * });
+     *
+     * @example
+     * const { text } = await cencori.voice.transcribe({
+     *   audio: fileBytes,
+     *   model: 'nova-3',
+     * });
+     *
+     * @example
+     * const { segments } = await cencori.voice.diarize({
+     *   audio: fileBytes,
+     *   model: 'assemblyai-universal',
+     * });
+     */
+    readonly voice: VoiceNamespace;
 
     /**
      * Documents - Extract text from PDFs and images, summarize, and query
@@ -222,6 +246,7 @@ export class Cencori {
         this.ai = new AINamespace(this.config);
         this.chat = new ChatNamespace(this.config);
         this.vision = new VisionNamespace(this.config);
+        this.voice = new VoiceNamespace(this.config);
         this.documents = new DocumentsNamespace(this.config);
         this.agents = new AgentsNamespace(this.config);
         this.compute = new ComputeNamespace();
