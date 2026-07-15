@@ -34,3 +34,13 @@ export type { VisionFormatBannerProps, VisionProvider } from './vision/vision-fo
 
 export { VisionUploader } from './vision/vision-uploader';
 export type { VisionUploaderProps, VisionTask } from './vision/vision-uploader';
+
+// Voice — record + transcribe, and text-to-speech playback
+export { VoiceRecorder } from './voice/voice-recorder';
+export type { VoiceRecorderProps, VoiceTranscript } from './voice/voice-recorder';
+
+export { SpeakButton } from './voice/speak-button';
+export type { SpeakButtonProps } from './voice/speak-button';
+
+export { useVoiceRecorder } from './voice/use-voice-recorder';
+export type { UseVoiceRecorderResult, RecorderState } from './voice/use-voice-recorder';
