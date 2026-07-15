@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { assertSafeOutboundUrl } from '@/lib/security/outbound-url';
 
 interface WebhookUpdateBody {
     name?: string;
@@ -40,9 +41,9 @@ export async function PATCH(
 
     if (body.url) {
         try {
-            new URL(body.url);
+            await assertSafeOutboundUrl(body.url);
         } catch {
-            return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
+            return NextResponse.json({ error: 'Webhook URL must resolve to a public HTTP or HTTPS destination' }, { status: 400 });
         }
     }
 

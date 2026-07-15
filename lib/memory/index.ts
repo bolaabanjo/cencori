@@ -34,9 +34,10 @@ export {
     listSessionMemories,
     SESSION_MEMORY_CAP,
 } from './session-store';
-export { buildQuotaExceededBody, checkMemoryQuota } from './quota';
+export { buildQuotaCheckFailedBody, buildQuotaExceededBody, checkMemoryQuota } from './quota';
 export type { MemoryQuotaStatus } from './quota';
 export { buildMemorySystemBlock, retrieveMemories } from './retrieval';
+export type { MemoryEmbeddingUsage } from './retrieval';
 export { redactFact } from './redact';
 export { DEFAULT_EXTRACTION_PROMPT, extractFacts, parseExtractionOutput } from './extraction';
 export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';

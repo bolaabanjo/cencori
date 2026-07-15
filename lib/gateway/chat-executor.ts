@@ -42,6 +42,26 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
     }
 }
 
+async function* streamWithTimeout<T>(
+    stream: AsyncIterable<T>,
+    label: string
+): AsyncGenerator<T> {
+    const iterator = stream[Symbol.asyncIterator]();
+    try {
+        while (true) {
+            const next = await withTimeout(
+                iterator.next(),
+                PROVIDER_TIMEOUT_MS,
+                `${label} next chunk`
+            );
+            if (next.done) return;
+            yield next.value;
+        }
+    } finally {
+        await iterator.return?.();
+    }
+}
+
 function buildCircuitBreakerConfig(data: Record<string, unknown> | null | undefined): Partial<CircuitBreakerConfig> {
     if (!data) return {};
     const enabled = data.circuit_breaker_enabled;
@@ -168,6 +188,7 @@ export async function executeGatewayChat(params: {
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
             const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
+            await fallbackProvider.getPricing(fallbackModel);
             const response = await withTimeout(
                 fallbackProvider.chat({ ...chatRequest, model: fallbackModel }),
                 PROVIDER_TIMEOUT_MS,
@@ -237,37 +258,36 @@ export async function* streamGatewayChat(params: {
     const settings = await loadFailoverSettings(params.supabase, params.projectId);
     const cbConfig = settings.circuitBreakerConfig;
 
-    let actualProvider = providerName;
-    let actualModel = model;
-    let usedFallback = false;
     let lastError: Error | null = null;
     const fallbackErrors: string[] = [];
-
-    async function* runPrimary(): AsyncGenerator<GatewayStreamChunk> {
-        const stream = provider.stream(chatRequest);
-        for await (const chunk of stream) {
-            yield {
-                ...chunk,
-                actualProvider,
-                actualModel,
-                usedFallback,
-                originalProvider: providerName,
-                originalModel: model,
-            };
-        }
-    }
 
     if (!(await isCircuitOpen(providerName, cbConfig))) {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
+            let emitted = false;
             try {
-                for await (const chunk of runPrimary()) {
-                    yield chunk;
+                const stream = provider.stream(chatRequest);
+                for await (const chunk of streamWithTimeout(stream, `${providerName} primary`)) {
+                    emitted = true;
+                    yield {
+                        ...chunk,
+                        actualProvider: providerName,
+                        actualModel: model,
+                        usedFallback: false,
+                        originalProvider: providerName,
+                        originalModel: model,
+                    };
                 }
                 await recordSuccess(providerName);
                 return;
             } catch (error) {
                 lastError = error instanceof Error ? error : new Error(String(error));
+                // Once bytes have reached the caller, retrying or switching
+                // providers would splice two independent answers together.
+                if (emitted) {
+                    await recordFailure(providerName, cbConfig);
+                    throw lastError;
+                }
                 if (isNonRetryableError(error)) throw error;
                 if (attempt < maxRetries - 1) {
                     await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 100));
@@ -298,20 +318,20 @@ export async function* streamGatewayChat(params: {
             if (!initialized.success) continue;
         }
 
+        let fallbackEmitted = false;
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
             const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
-            actualProvider = fallbackProviderName;
-            actualModel = fallbackModel;
-            usedFallback = true;
-
+            await fallbackProvider.getPricing(fallbackModel);
             const stream = fallbackProvider.stream({ ...chatRequest, model: fallbackModel });
-            for await (const chunk of stream) {
+
+            for await (const chunk of streamWithTimeout(stream, `${fallbackProviderName} fallback`)) {
+                fallbackEmitted = true;
                 yield {
                     ...chunk,
-                    actualProvider,
-                    actualModel,
-                    usedFallback,
+                    actualProvider: fallbackProviderName,
+                    actualModel: fallbackModel,
+                    usedFallback: true,
                     originalProvider: providerName,
                     originalModel: model,
                 };
@@ -332,6 +352,9 @@ export async function* streamGatewayChat(params: {
             fallbackErrors.push(`${fallbackProviderName}: ${msg}`);
             console.warn(`[Gateway/Failover/Stream] Fallback ${fallbackProviderName} failed:`, fallbackError);
             await recordFailure(fallbackProviderName, cbConfig);
+            if (fallbackEmitted) {
+                throw fallbackError;
+            }
         }
     }
 

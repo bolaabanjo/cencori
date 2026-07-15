@@ -1,52 +1,30 @@
-/**
- * Memory Item API Route
- * 
- * GET /api/memory/[id] - Get a memory by ID
- * DELETE /api/memory/[id] - Delete a memory
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabaseAdmin';
-import crypto from 'crypto';
+import {
+    addGatewayHeaders,
+    handleCorsPreFlight,
+    logGatewayRequest,
+    validateGatewayRequest,
+} from '@/lib/gateway-middleware';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 
-export async function GET(
-    req: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function OPTIONS() {
+    return handleCorsPreFlight();
+}
+
+export async function GET(req: NextRequest, { params }: RouteContext) {
+    const validation = await validateGatewayRequest(req);
+    if (!validation.success) return validation.response;
+    const ctx = validation.context;
+    const { id } = await params;
+    const respond = (body: unknown, status: number) => addGatewayHeaders(
+        NextResponse.json(body, { status }),
+        { requestId: ctx.requestId },
+    );
+
     try {
-        const { id } = await params;
-
-        // Get API key from header
-        const apiKey = req.headers.get('CENCORI_API_KEY') || req.headers.get('Authorization')?.replace('Bearer ', '');
-
-        if (!apiKey) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Missing API key' },
-                { status: 401 }
-            );
-        }
-
-        // Initialize Supabase client
-        const supabase = createAdminClient();
-
-        // Validate API key and get project
-        const { data: keyData, error: keyError } = await supabase
-            .from('api_keys')
-            .select('id, project_id, key_type, is_active')
-            .eq('key_hash', crypto.createHash('sha256').update(apiKey).digest('hex'))
-            .single();
-
-        if (keyError || !keyData || !keyData.is_active) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Invalid or inactive API key' },
-                { status: 401 }
-            );
-        }
-
-        const projectId = keyData.project_id;
-
-        // Get memory with namespace check
-        const { data: memory, error: memoryError } = await supabase
+        const { data: memory, error } = await ctx.supabase
             .from('memories')
             .select(`
                 id,
@@ -58,127 +36,120 @@ export async function GET(
                 memory_namespaces!inner(id, name, project_id)
             `)
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
-        if (memoryError || !memory) {
-            return NextResponse.json(
-                { error: 'not_found', message: 'Memory not found' },
-                { status: 404 }
+        if (error) throw new Error(error.message);
+        if (!memory) return respond({ error: 'not_found', message: 'Memory not found' }, 404);
+
+        const namespace = memory.memory_namespaces as unknown as {
+            id: string;
+            name: string;
+            project_id: string;
+        };
+        // Return 404 across project boundaries to avoid revealing that the ID exists.
+        if (namespace.project_id !== ctx.projectId) {
+            return respond({ error: 'not_found', message: 'Memory not found' }, 404);
+        }
+
+        const safeInputSecurity = {
+            safe: true,
+            reasons: [],
+            layer: 'input' as const,
+            riskScore: 0,
+            confidence: 1,
+        };
+        const outputCheck = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: memory.content,
+            inputText: '',
+            inputSecurity: safeInputSecurity,
+            conversationHistory: [],
+        });
+        await logGatewayRequest(ctx, {
+            endpoint: 'memory/get',
+            model: 'none',
+            provider: 'none',
+            status: outputCheck.ok ? 'success' : 'blocked_output',
+            errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+        });
+        if (!outputCheck.ok) {
+            return respond(
+                { error: outputCheck.code, message: outputCheck.message, reasons: outputCheck.reasons },
+                outputCheck.status,
             );
         }
 
-        // Verify project ownership
-        const memoryNamespace = memory.memory_namespaces as unknown as { id: string; name: string; project_id: string };
-        if (memoryNamespace.project_id !== projectId) {
-            return NextResponse.json(
-                { error: 'forbidden', message: 'Access denied' },
-                { status: 403 }
-            );
-        }
-
-        return NextResponse.json({
+        return respond({
             id: memory.id,
-            namespace: memoryNamespace.name,
+            namespace: namespace.name,
             content: memory.content,
             metadata: memory.metadata,
             expiresAt: memory.expires_at,
             createdAt: memory.created_at,
             updatedAt: memory.updated_at,
-        });
-
+        }, 200);
     } catch (error) {
-        console.error('Memory GET API error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json(
-            { error: 'internal_error', message: errorMessage },
-            { status: 500 }
-        );
+        const message = error instanceof Error ? error.message : 'Memory lookup failed';
+        await logGatewayRequest(ctx, {
+            endpoint: 'memory/get',
+            model: 'none',
+            provider: 'none',
+            status: 'error',
+            errorMessage: message,
+        });
+        return respond({ error: 'internal_error', message }, 500);
     }
 }
 
-export async function DELETE(
-    req: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: RouteContext) {
+    const validation = await validateGatewayRequest(req);
+    if (!validation.success) return validation.response;
+    const ctx = validation.context;
+    const { id } = await params;
+    const respond = (body: unknown, status: number) => addGatewayHeaders(
+        NextResponse.json(body, { status }),
+        { requestId: ctx.requestId },
+    );
+
     try {
-        const { id } = await params;
-
-        // Get API key from header
-        const apiKey = req.headers.get('CENCORI_API_KEY') || req.headers.get('Authorization')?.replace('Bearer ', '');
-
-        if (!apiKey) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Missing API key' },
-                { status: 401 }
-            );
-        }
-
-        // Initialize Supabase client
-        const supabase = createAdminClient();
-
-        // Validate API key and get project
-        const { data: keyData, error: keyError } = await supabase
-            .from('api_keys')
-            .select('id, project_id, key_type, is_active')
-            .eq('key_hash', crypto.createHash('sha256').update(apiKey).digest('hex'))
-            .single();
-
-        if (keyError || !keyData || !keyData.is_active) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Invalid or inactive API key' },
-                { status: 401 }
-            );
-        }
-
-        const projectId = keyData.project_id;
-
-        // First verify ownership
-        const { data: memory, error: memoryError } = await supabase
+        const { data: memory, error: lookupError } = await ctx.supabase
             .from('memories')
-            .select(`
-                id,
-                memory_namespaces!inner(project_id)
-            `)
+            .select('id, memory_namespaces!inner(project_id)')
             .eq('id', id)
-            .single();
+            .maybeSingle();
+        if (lookupError) throw new Error(lookupError.message);
+        if (!memory) return respond({ error: 'not_found', message: 'Memory not found' }, 404);
 
-        if (memoryError || !memory) {
-            return NextResponse.json(
-                { error: 'not_found', message: 'Memory not found' },
-                { status: 404 }
-            );
+        const namespace = memory.memory_namespaces as unknown as { project_id: string };
+        if (namespace.project_id !== ctx.projectId) {
+            return respond({ error: 'not_found', message: 'Memory not found' }, 404);
         }
 
-        const memoryNamespace = memory.memory_namespaces as unknown as { project_id: string };
-        if (memoryNamespace.project_id !== projectId) {
-            return NextResponse.json(
-                { error: 'forbidden', message: 'Access denied' },
-                { status: 403 }
-            );
-        }
-
-        // Delete the memory
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await ctx.supabase
             .from('memories')
             .delete()
             .eq('id', id);
+        if (deleteError) throw new Error(deleteError.message);
 
-        if (deleteError) {
-            console.error('Delete error:', deleteError);
-            return NextResponse.json(
-                { error: 'internal_error', message: 'Failed to delete memory' },
-                { status: 500 }
-            );
-        }
-
-        return NextResponse.json({ deleted: true, id });
-
+        await logGatewayRequest(ctx, {
+            endpoint: 'memory/delete',
+            model: 'none',
+            provider: 'none',
+            status: 'success',
+        });
+        return respond({ deleted: true, id }, 200);
     } catch (error) {
-        console.error('Memory DELETE API error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json(
-            { error: 'internal_error', message: errorMessage },
-            { status: 500 }
-        );
+        const message = error instanceof Error ? error.message : 'Memory delete failed';
+        await logGatewayRequest(ctx, {
+            endpoint: 'memory/delete',
+            model: 'none',
+            provider: 'none',
+            status: 'error',
+            errorMessage: message,
+        });
+        return respond({ error: 'internal_error', message }, 500);
     }
 }

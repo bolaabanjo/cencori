@@ -60,10 +60,10 @@ describe('redactFact', () => {
         expect(result).toEqual({ content: 'Prefers dark mode', redactions: 0, blocked: false });
     });
 
-    it('fails open (passthrough) when rules processing throws', async () => {
+    it('fails closed when rules processing throws', async () => {
         fetchAndProcessCustomRules.mockRejectedValue(new Error('rules service down'));
 
         const result = await redactFact(supabase, 'proj_1', 'some fact');
-        expect(result).toEqual({ content: 'some fact', redactions: 0, blocked: false });
+        expect(result).toEqual({ content: '', redactions: 0, blocked: true });
     });
 });

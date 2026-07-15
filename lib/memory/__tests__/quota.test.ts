@@ -40,14 +40,19 @@ describe('checkMemoryQuota', () => {
         expect((supabase as { from: ReturnType<typeof vi.fn> }).from).not.toHaveBeenCalled();
     });
 
-    it('fails open when the count query throws', async () => {
+    it('fails closed when the count query throws', async () => {
         const supabase = {
             from: vi.fn(() => {
                 throw new Error('db down');
             }),
         } as never;
         const status = await checkMemoryQuota(supabase, 'proj_1', 'free');
-        expect(status.allowed).toBe(true);
+        expect(status).toEqual({
+            allowed: false,
+            used: 0,
+            limit: 1000,
+            error: 'quota_check_failed',
+        });
     });
 });
 

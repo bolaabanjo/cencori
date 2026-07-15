@@ -40,6 +40,8 @@
     "packages",
     "examples",
     "tmp",
-    ".claude"
+    ".claude",
+    "eve",
+    "**/__tests__/**"
   ]
 }

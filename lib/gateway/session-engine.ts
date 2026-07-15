@@ -3,15 +3,26 @@ import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { streamGatewayChat } from '@/lib/gateway/chat-executor';
-import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
+import {
+    resolveGatewayProvider,
+    type ResolvedGatewayProvider,
+} from '@/lib/gateway/providers-setup';
 import {
     preProcessBuiltInTools,
     type ResponsesBuiltInTool,
     type ToolCallOutput,
 } from '@/lib/gateway/v1-responses-tools';
 import type { ResponsesTool } from '@/lib/gateway/v1-responses-execute';
-import type { Tool, UnifiedMessage } from '@/lib/providers/base';
+import {
+    calculateProviderTokenCost,
+    type Tool,
+    type UnifiedMessage,
+} from '@/lib/providers/base';
 import type { SessionEventType, SessionEventPayloadMap } from '@/lib/gateway/session-types';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 export type { SupabaseAdmin };
@@ -30,6 +41,8 @@ export type TurnExecuteParams = {
     response_format?: { type: 'text' } | { type: 'json_object' } | { type: 'json_schema'; json_schema: { name: string; description?: string; schema: Record<string, unknown>; strict?: boolean } };
     inputMessages: UnifiedMessage[];
     inputText: string;
+    inputSecurity?: SecurityCheckResult;
+    tokenMap?: Map<string, string>;
     pauseOnToolCalls?: boolean;
     endUserId: string | null;
     tier: SubscriptionTier;
@@ -60,43 +73,52 @@ async function appendSessionEvent(
     supabase: SupabaseAdmin, sessionId: string, turnNumber: number,
     sequence: number, eventType: SessionEventType, payload: Record<string, unknown>,
 ): Promise<void> {
-    try {
-        await supabase.from('session_events').insert({
-            session_id: sessionId, turn_number: turnNumber, sequence,
-            event_type: eventType, payload,
-        });
-    } catch (e) {
-        console.error(`[SessionEngine] Failed to append event ${eventType}:`, e);
+    const result = await supabase.from('session_events').insert({
+        session_id: sessionId, turn_number: turnNumber, sequence,
+        event_type: eventType, payload,
+    });
+    if (result?.error) {
+        throw new Error(`Failed to append session event ${eventType}: ${result.error.message}`);
     }
 }
 
-const SESSION_PAUSE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-async function updateSessionStatus(
-    supabase: SupabaseAdmin, sessionId: string, status: string, turnNumber: number,
+async function finalizeSessionTurn(
+    supabase: SupabaseAdmin,
+    projectId: string,
+    sessionId: string,
+    turnNumber: number,
+    sequence: number,
+    eventType: 'turn.paused' | 'turn.completed' | 'turn.failed',
+    payload: Record<string, unknown>,
+    status: 'active' | 'paused' | 'completed' | 'failed',
+    costUsd: number,
 ): Promise<void> {
-    try {
-        const update: Record<string, unknown> = { status, last_turn_number: turnNumber };
-        if (status === 'paused') {
-            update.expires_at = new Date(Date.now() + SESSION_PAUSE_TTL_MS).toISOString();
-        } else if (status === 'active' || status === 'completed' || status === 'failed') {
-            update.expires_at = null;
-        }
-        await supabase.from('sessions').update(update).eq('id', sessionId);
-    } catch (e) {
-        console.error(`[SessionEngine] Failed to update session status:`, e);
+    const result = await supabase.rpc('finalize_session_turn', {
+        p_session_id: sessionId,
+        p_project_id: projectId,
+        p_turn_number: turnNumber,
+        p_sequence: sequence,
+        p_event_type: eventType,
+        p_payload: payload,
+        p_status: status,
+        p_cost: costUsd,
+    });
+    if (result?.error) {
+        throw new Error(`Failed to finalize session turn: ${result.error.message}`);
     }
 }
 
 export async function expireStaleSessions(supabase: SupabaseAdmin): Promise<void> {
     try {
-        await supabase
+        const result = await supabase
             .from('sessions')
             .update({ status: 'completed', expires_at: null })
             .eq('status', 'paused')
             .lt('expires_at', new Date().toISOString());
-    } catch (e) {
-        console.error(`[SessionEngine] Failed to expire stale sessions:`, e);
+        if (result?.error) throw new Error(result.error.message);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to expire stale sessions: ${message}`);
     }
 }
 
@@ -130,7 +152,7 @@ function resolveToolChoice(
 function makeStream(params: {
     supabase: SupabaseAdmin; gatewayCtx: GatewayContext;
     sessionId: string; turnNumber: number;
-    resolved: { model: string; customProviderTag?: string; provider: { countTokens: (t: string, m: string) => Promise<number>; getPricing: (m: string) => Promise<{ inputPer1KTokens: number; outputPer1KTokens: number; cencoriMarkupPercentage: number }> } };
+    resolved: ResolvedGatewayProvider;
     messages: UnifiedMessage[]; functionTools: Tool[];
     forceSchemaResult: boolean; schemaToolName: string | null;
     tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
@@ -140,6 +162,9 @@ function makeStream(params: {
     collectedBuiltinToolOutputs: ToolCallOutput[];
     instructions?: string;
     inputText?: string;
+    inputSecurity?: SecurityCheckResult;
+    tokenMap?: Map<string, string>;
+    endUserId?: string | null;
     tier: SubscriptionTier;
     logSuccess: (m: { provider: string; model: string; status: 'success' | 'success_fallback' | 'error'; promptTokens: number; completionTokens: number; totalTokens: number; providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number; errorMessage?: string }) => void;
     incrementUsage: (c: number) => void;
@@ -150,7 +175,7 @@ function makeStream(params: {
         supabase, gatewayCtx, sessionId, turnNumber, resolved,
         messages, functionTools, forceSchemaResult, schemaToolName, tool_choice,
         temperature, max_output_tokens, pauseOnToolCalls, needsApprovalToolNames, collectedBuiltinToolOutputs,
-        instructions, inputText,
+        instructions, inputText, inputSecurity, tokenMap, endUserId,
         tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
     } = params;
 
@@ -161,14 +186,42 @@ function makeStream(params: {
             let fullText = '';
             const toolCalls: Record<string, { id: string; name: string; args: string }> = {};
 
-            const el = (eventType: SessionEventType, data: SessionEventPayloadMap[typeof eventType]) => {
+            const el = async (eventType: SessionEventType, data: SessionEventPayloadMap[typeof eventType]) => {
                 seq++;
+                await appendSessionEvent(supabase, sessionId, turnNumber, seq, eventType, data as Record<string, unknown>);
                 controller.enqueue(encoder.encode(buildSSE(eventType, data as Record<string, unknown>)));
-                void appendSessionEvent(supabase, sessionId, turnNumber, seq, eventType, data as Record<string, unknown>);
+            };
+            const terminal = async (
+                eventType: 'turn.paused' | 'turn.completed' | 'turn.failed',
+                data: Record<string, unknown>,
+                status: 'active' | 'paused' | 'completed' | 'failed',
+                costUsd: number,
+            ) => {
+                seq++;
+                await finalizeSessionTurn(
+                    supabase,
+                    gatewayCtx.projectId,
+                    sessionId,
+                    turnNumber,
+                    seq,
+                    eventType,
+                    data,
+                    status,
+                    costUsd,
+                );
+                controller.enqueue(encoder.encode(buildSSE(eventType, data)));
             };
 
             try {
-                await el('turn.started', { turn_number: turnNumber, model: resolved.model, instructions, input_text: inputText, input_messages: messages.map(m => ({ role: m.role, content: m.content ?? null })) });
+                await el('turn.started', {
+                    turn_number: turnNumber,
+                    model: resolved.model,
+                    instructions,
+                    input_text: inputText,
+                    input_messages: messages.map(m => ({ role: m.role, content: m.content ?? null })),
+                    input_security: inputSecurity,
+                    input_token_map: tokenMap ? Object.fromEntries(tokenMap) : undefined,
+                });
 
                 for await (const chunk of streamGatewayChat({
                     supabase, projectId: gatewayCtx.projectId,
@@ -181,11 +234,10 @@ function makeStream(params: {
                     },
                     resolved: resolved as never,
                     requestId: gatewayCtx.requestId,
-                })) {
-                    if (chunk.delta) {
-                        fullText += chunk.delta;
-                        await el('output_text.delta', { delta: chunk.delta });
-                    }
+                    })) {
+                        if (chunk.delta) {
+                            fullText += chunk.delta;
+                        }
                     if (chunk.toolCalls) {
                         for (const tc of chunk.toolCalls) {
                             const k = tc.id || 'unknown';
@@ -204,6 +256,78 @@ function makeStream(params: {
                             t => !(forceSchemaResult && schemaToolName && t.name === schemaToolName),
                         );
 
+                        fullText = tokenMap ? deTokenize(fullText, tokenMap) : fullText;
+                        for (const toolCall of callValues) {
+                            if (tokenMap) toolCall.args = deTokenize(toolCall.args, tokenMap);
+                        }
+
+                        const safeInputSecurity = inputSecurity ?? {
+                            safe: true,
+                            reasons: [],
+                            layer: 'input',
+                            riskScore: 0,
+                            confidence: 1,
+                        };
+                        const outputCheck = await runGatewayOutputGuard({
+                            supabase,
+                            projectId: gatewayCtx.projectId,
+                            apiKeyId: gatewayCtx.apiKeyId,
+                            environment: gatewayCtx.environment,
+                            outputText: [fullText, ...callValues.map(tc => tc.args)].filter(Boolean).join('\n'),
+                            inputText: inputText ?? '',
+                            inputSecurity: safeInputSecurity,
+                            conversationHistory: messages,
+                            endUserId,
+                        });
+
+                        const streamProvider =
+                            chunk.actualProvider !== resolved.providerName
+                            && resolved.router?.hasProvider(chunk.actualProvider)
+                                ? resolved.router.getProvider(chunk.actualProvider)
+                                : resolved.provider;
+                        let pt = 0, ct = 0;
+                        try {
+                            pt = await streamProvider.countTokens(messages.map(m => m.content || '').join(' '), chunk.actualModel);
+                            ct = await streamProvider.countTokens(fullText, chunk.actualModel);
+                        } catch {
+                            pt = Math.max(1, Math.ceil(messages.map(m => m.content || '').join(' ').length / 4));
+                            ct = Math.max(1, Math.ceil(fullText.length / 4));
+                        }
+                        const tt = pt + ct;
+                        const pricing = await streamProvider.getPricing(chunk.actualModel);
+                        const pc = calculateProviderTokenCost(pt, ct, pricing);
+                        const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100)
+                            + (pricing.fixedFeePerRequest ?? 0);
+                        const pn = resolved.customProviderTag || chunk.actualProvider;
+
+                        if (!outputCheck.ok) {
+                            await terminal('turn.failed', {
+                                turn_number: turnNumber,
+                                output: { error: outputCheck.message },
+                                usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt },
+                            }, 'active', cc);
+                            logSuccess({
+                                provider: pn,
+                                model: chunk.actualModel,
+                                status: 'error',
+                                promptTokens: pt,
+                                completionTokens: ct,
+                                totalTokens: tt,
+                                providerCostUsd: pc,
+                                cencoriChargeUsd: cc,
+                                markupPercentage: pricing.cencoriMarkupPercentage,
+                                errorMessage: outputCheck.message,
+                            });
+                            incrementUsage(cc);
+                            if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                            controller.close();
+                            return;
+                        }
+
+                        if (fullText) {
+                            await el('output_text.delta', { delta: fullText });
+                        }
+
                         for (const tc of callValues) {
                             let args: Record<string, unknown> = {};
                             try { args = JSON.parse(tc.args); } catch {}
@@ -221,42 +345,36 @@ function makeStream(params: {
                             const shouldPause = needsApprovalToolNames.size === 0
                                 || callValues.some(tc => needsApprovalToolNames.has(tc.name));
                             if (shouldPause) {
-                                await el('turn.paused', {
+                                await terminal('turn.paused', {
                                     reason: 'approval_required',
                                     action_id: callValues[0].id,
                                     tool: callValues[0].name,
                                     arguments: Object.fromEntries(callValues.map(tc => [tc.name, tc.args])),
-                                });
-                                void updateSessionStatus(supabase, sessionId, 'paused', turnNumber);
+                                    actions: callValues.map(tc => ({
+                                        action_id: tc.id,
+                                        tool: tc.name,
+                                        arguments: tc.args,
+                                    })),
+                                }, 'paused', cc);
+                                logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                                incrementUsage(cc);
+                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
                                 controller.close();
                                 return;
                             }
                         }
 
                         // Complete
-                        let pt = 0, ct = 0;
-                        try {
-                            pt = await resolved.provider.countTokens(messages.map(m => m.content || '').join(' '), chunk.actualModel);
-                            ct = await resolved.provider.countTokens(fullText, chunk.actualModel);
-                        } catch {
-                            pt = Math.max(1, Math.ceil(messages.map(m => m.content || '').join(' ').length / 4));
-                            ct = Math.max(1, Math.ceil(fullText.length / 4));
-                        }
-                        const tt = pt + ct;
-                        const pricing = await resolved.provider.getPricing(chunk.actualModel);
-                        const pc = (pt / 1000) * pricing.inputPer1KTokens + (ct / 1000) * pricing.outputPer1KTokens;
-                        const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100);
-
                         const output = buildOutput(fullText, callValues, collectedBuiltinToolOutputs);
-                        await el('turn.completed', { turn_number: turnNumber, output, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } });
-                        // Completing a TURN keeps the SESSION open for the next
-                        // turn — sessions only end via close/reject/TTL expiry.
-                        void updateSessionStatus(supabase, sessionId, 'active', turnNumber);
+                        await terminal(
+                            'turn.completed',
+                            { turn_number: turnNumber, output, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } },
+                            'active',
+                            cc,
+                        );
 
-                        const pn = resolved.customProviderTag || chunk.actualProvider;
                         logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
                         incrementUsage(cc);
-                        void supabase.rpc('increment_session_cost', { session_id: sessionId, cost: cc });
                         if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
 
                         void maybeCreateCheckpoint(supabase, sessionId, turnNumber, messages, fullText);
@@ -270,10 +388,16 @@ function makeStream(params: {
                 }
             } catch (error) {
                 const msg = error instanceof Error ? error.message : 'Turn execution failed';
-                await el('turn.failed', { turn_number: turnNumber, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } });
-                // A failed turn shouldn't brick the session — stay active so
-                // the client can retry in the same conversation.
-                void updateSessionStatus(supabase, sessionId, 'active', turnNumber);
+                try {
+                    await terminal(
+                        'turn.failed',
+                        { turn_number: turnNumber, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } },
+                        'active',
+                        0,
+                    );
+                } catch (finalizeError) {
+                    console.error('[SessionEngine] Failed to persist turn failure:', finalizeError);
+                }
                 logSuccess({ provider: '', model: '', status: 'error', promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostUsd: 0, cencoriChargeUsd: 0, markupPercentage: 0, errorMessage: msg });
                 controller.close();
             }
@@ -294,13 +418,14 @@ const SESSION_HISTORY_MAX_MESSAGES = 40;
  * persisted when this runs, so everything returned is prior context.
  */
 async function loadSessionHistory(supabase: SupabaseAdmin, sessionId: string): Promise<UnifiedMessage[]> {
-    const { data: events } = await supabase
+    const { data: events, error } = await supabase
         .from('session_events')
         .select('event_type, payload, turn_number, sequence')
         .eq('session_id', sessionId)
         .in('event_type', ['turn.started', 'turn.completed'])
         .order('turn_number', { ascending: true })
         .order('sequence', { ascending: true });
+    if (error) throw new Error(`Failed to load session history: ${error.message}`);
 
     const history: UnifiedMessage[] = [];
     for (const ev of events ?? []) {
@@ -334,7 +459,7 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
     const {
         supabase, gatewayCtx, sessionId, turnNumber, model,
         instructions, tools, tool_choice, temperature, max_output_tokens,
-        response_format, inputMessages, inputText,
+        response_format, inputMessages, inputText, inputSecurity, tokenMap,
         pauseOnToolCalls, tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
     } = params;
 
@@ -360,6 +485,28 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
             : { systemContext: '', toolOutputs: [] as ToolCallOutput[] };
 
         if (pre.systemContext) {
+            const contextPipeline = await runGatewayInputPipeline({
+                supabase,
+                projectId: gatewayCtx.projectId,
+                apiKeyId: gatewayCtx.apiKeyId,
+                environment: gatewayCtx.environment,
+                tier,
+                messages: [{ role: 'user', content: pre.systemContext }],
+                endUserId: params.endUserId,
+            });
+            if (!contextPipeline.ok) {
+                pre.systemContext = '';
+                for (const output of pre.toolOutputs) {
+                    output.status = 'failed';
+                    output.error = 'Retrieved context was blocked by the project security policy';
+                    delete output.output;
+                }
+            } else {
+                pre.systemContext = contextPipeline.messages[0]?.content ?? '';
+            }
+        }
+
+        if (pre.systemContext) {
             const ci = builtInTools.some(t => t.type === 'web_search_preview')
                 ? '\n\nWhen citing information from search results, reference them using [N] notation where N is the result number (e.g., [1], [2]).'
                 : '';
@@ -375,6 +522,21 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
             forceSchema = true;
         }
 
+        if (functionTools.length > 0 && resolved.provider.supportsTools === false) {
+            return {
+                ok: false,
+                status: 400,
+                body: {
+                    error: {
+                        message: `Tool calling is not implemented for provider '${resolved.providerName}'.`,
+                        type: 'invalid_request_error',
+                        code: 'tools_not_supported_by_provider',
+                    },
+                    status: 'failed',
+                },
+            };
+        }
+
         const response = makeStream({
             supabase, gatewayCtx, sessionId, turnNumber,
             resolved: resolved as never,
@@ -383,7 +545,7 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
             pauseOnToolCalls: pauseOnToolCalls ?? false,
             needsApprovalToolNames,
             collectedBuiltinToolOutputs: [...pre.toolOutputs],
-            instructions, inputText,
+            instructions, inputText, inputSecurity, tokenMap, endUserId: params.endUserId,
             tier, logSuccess, incrementUsage, recordEndUserUsage, onCompletion,
         });
 
@@ -404,12 +566,17 @@ export type ResumeTurnParams = {
     logSuccess: TurnExecuteParams['logSuccess'];
     incrementUsage: TurnExecuteParams['incrementUsage'];
     recordEndUserUsage?: TurnExecuteParams['recordEndUserUsage'];
+    inputText?: string;
+    inputSecurity?: SecurityCheckResult;
+    tokenMap?: Map<string, string>;
 };
 
 export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnExecuteResult> {
     const {
         supabase, gatewayCtx, sessionId, turnNumber, toolResults,
         tier, logSuccess, incrementUsage, recordEndUserUsage,
+        inputText: resumedInputText, inputSecurity: resumedInputSecurity,
+        tokenMap: resumedTokenMap,
     } = params;
 
     try {
@@ -438,6 +605,13 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
         const model = sp.model as string;
         const instructions = sp.instructions as string | undefined;
         const inputText = sp.input_text as string | undefined;
+        const storedInputSecurity = sp.input_security as SecurityCheckResult | undefined;
+        const storedTokenMap = new Map<string, string>(
+            Object.entries((sp.input_token_map as Record<string, string> | undefined) ?? {})
+        );
+        for (const [placeholder, value] of resumedTokenMap ?? []) {
+            storedTokenMap.set(placeholder, value);
+        }
 
         if (!model) {
             return { ok: false, status: 400, body: { error: { message: 'Turn has no model', type: 'invalid_request_error', code: 'no_model' }, status: 'failed' } };
@@ -517,14 +691,38 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                 let fullText = '';
                 const newToolCalls: Record<string, { id: string; name: string; args: string }> = {};
 
-                const es = (eventType: SessionEventType, data: Record<string, unknown>) => {
+                const es = async (eventType: SessionEventType, data: Record<string, unknown>) => {
                     seq++;
                     const payload = { ...data, resumed_from_turn: turnNumber };
+                    await appendSessionEvent(
+                        supabase,
+                        sessionId,
+                        turnNumber + 1,
+                        seq,
+                        eventType,
+                        payload,
+                    );
                     controller.enqueue(encoder.encode(buildSSE(eventType, payload)));
-                    void supabase.from('session_events').insert({
-                        session_id: sessionId, turn_number: turnNumber + 1, sequence: seq,
-                        event_type: eventType, payload,
-                    });
+                };
+                const terminal = async (
+                    eventType: 'turn.completed' | 'turn.failed',
+                    data: Record<string, unknown>,
+                    costUsd: number,
+                ) => {
+                    seq++;
+                    const payload = { ...data, resumed_from_turn: turnNumber };
+                    await finalizeSessionTurn(
+                        supabase,
+                        gatewayCtx.projectId,
+                        sessionId,
+                        turnNumber + 1,
+                        seq,
+                        eventType,
+                        payload,
+                        'active',
+                        costUsd,
+                    );
+                    controller.enqueue(encoder.encode(buildSSE(eventType, payload)));
                 };
 
                 try {
@@ -549,30 +747,71 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                     })) {
                         if (chunk.delta) {
                             fullText += chunk.delta;
-                            es('output_text.delta', { delta: chunk.delta });
                         }
                         if (chunk.finishReason) {
+                            fullText = storedTokenMap.size > 0
+                                ? deTokenize(fullText, storedTokenMap)
+                                : fullText;
+                            const outputCheck = await runGatewayOutputGuard({
+                                supabase,
+                                projectId: gatewayCtx.projectId,
+                                apiKeyId: gatewayCtx.apiKeyId,
+                                environment: gatewayCtx.environment,
+                                outputText: fullText,
+                                inputText: [inputText, resumedInputText].filter(Boolean).join('\n'),
+                                inputSecurity: resumedInputSecurity ?? storedInputSecurity ?? {
+                                    safe: true,
+                                    reasons: [],
+                                    layer: 'input',
+                                    riskScore: 0,
+                                    confidence: 1,
+                                },
+                                conversationHistory: messages,
+                            });
+                            const streamProvider =
+                                chunk.actualProvider !== resolved.providerName
+                                && resolved.router?.hasProvider(chunk.actualProvider)
+                                    ? resolved.router.getProvider(chunk.actualProvider)
+                                    : resolved.provider;
                             let pt = 0, ct = 0;
                             try {
-                                pt = await resolved.provider.countTokens(messages.map(m => (m as { content: string }).content || '').join(' '), chunk.actualModel);
-                                ct = await resolved.provider.countTokens(fullText, chunk.actualModel);
+                                pt = await streamProvider.countTokens(messages.map(m => (m as { content: string }).content || '').join(' '), chunk.actualModel);
+                                ct = await streamProvider.countTokens(fullText, chunk.actualModel);
                             } catch {
                                 pt = Math.max(1, Math.ceil(messages.map(m => (m as { content: string }).content || '').join(' ').length / 4));
                                 ct = Math.max(1, Math.ceil(fullText.length / 4));
                             }
                             const tt = pt + ct;
-                            const pricing = await resolved.provider.getPricing(chunk.actualModel);
-                            const pc = (pt / 1000) * pricing.inputPer1KTokens + (ct / 1000) * pricing.outputPer1KTokens;
-                            const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100);
+                            const pricing = await streamProvider.getPricing(chunk.actualModel);
+                            const pc = calculateProviderTokenCost(pt, ct, pricing);
+                            const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100)
+                                + (pricing.fixedFeePerRequest ?? 0);
 
-                            es('turn.completed', { turn_number: turnNumber + 1, output: { text: fullText, tool_outputs: toolResults }, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } });
-                            // Keep the session open for the next turn.
-                            void updateSessionStatus(supabase, sessionId, 'active', turnNumber + 1);
+                            if (!outputCheck.ok) {
+                                await terminal('turn.failed', {
+                                    turn_number: turnNumber + 1,
+                                    output: { error: outputCheck.message },
+                                    usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt },
+                                }, cc);
+                                const pn = resolved.customProviderTag || chunk.actualProvider;
+                                logSuccess({ provider: pn, model: chunk.actualModel, status: 'error', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage, errorMessage: outputCheck.message });
+                                incrementUsage(cc);
+                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                                controller.close();
+                                return;
+                            }
+
+                            if (fullText) await es('output_text.delta', { delta: fullText });
+
+                            await terminal(
+                                'turn.completed',
+                                { turn_number: turnNumber + 1, output: { text: fullText, tool_outputs: toolResults }, usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt } },
+                                cc,
+                            );
 
                             const pn = resolved.customProviderTag || chunk.actualProvider;
                             logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
                             incrementUsage(cc);
-                            void supabase.rpc('increment_session_cost', { session_id: sessionId, cost: cc });
                             if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
 
                             void maybeCreateCheckpoint(supabase, sessionId, turnNumber + 1, messages, fullText);
@@ -582,9 +821,15 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                     }
                 } catch (error) {
                     const msg = error instanceof Error ? error.message : 'Resume execution failed';
-                    es('turn.failed', { turn_number: turnNumber + 1, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } });
-                    // A failed resume shouldn't brick the session either.
-                    void updateSessionStatus(supabase, sessionId, 'active', turnNumber + 1);
+                    try {
+                        await terminal(
+                            'turn.failed',
+                            { turn_number: turnNumber + 1, output: { error: msg }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } },
+                            0,
+                        );
+                    } catch (eventError) {
+                        console.error('[SessionEngine] Failed to persist resume failure:', eventError);
+                    }
                     logSuccess({ provider: '', model: '', status: 'error', promptTokens: 0, completionTokens: 0, totalTokens: 0, providerCostUsd: 0, cencoriChargeUsd: 0, markupPercentage: 0, errorMessage: msg });
                     controller.close();
                 }
@@ -630,13 +875,14 @@ async function maybeCreateCheckpoint(
             messages.push({ role: 'assistant', content: fullText });
         }
 
-        await supabase.from('session_events').insert({
+        const result = await supabase.from('session_events').insert({
             session_id: sessionId,
             turn_number: turnNumber,
             sequence: 0,
             event_type: 'turn.checkpoint',
             payload: { turn_number: turnNumber, messages },
         });
+        if (result?.error) throw new Error(result.error.message);
     } catch (e) {
         console.error(`[SessionEngine] Failed to create checkpoint at turn ${turnNumber}:`, e);
     }

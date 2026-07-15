@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { validateGatewayRequest, handleCorsPreFlight, type GatewayContext } from '@/lib/gateway-middleware';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
+import { invalidateAgentConfig } from '@/lib/config-cache';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -84,6 +85,9 @@ export async function GET(
         if (providedApiKey) {
             const validation = await validateGatewayRequest(req);
             if (!validation.success) return validation.response;
+            if (validation.context.keyType !== 'secret') {
+                return respondError(403, 'Agent management requires a secret API key', 'secret_key_required');
+            }
             gatewayCtx = validation.context;
         } else {
             const authHeader = req.headers.get('Authorization');
@@ -149,6 +153,9 @@ export async function PATCH(
         if (providedApiKey) {
             const validation = await validateGatewayRequest(req);
             if (!validation.success) return validation.response;
+            if (validation.context.keyType !== 'secret') {
+                return respondError(403, 'Agent management requires a secret API key', 'secret_key_required');
+            }
             gatewayCtx = validation.context;
         } else {
             const authHeader = req.headers.get('Authorization');
@@ -169,7 +176,48 @@ export async function PATCH(
             description?: string;
             is_active?: boolean;
             shadow_mode?: boolean;
+            config?: {
+                model?: string;
+                system_prompt?: string;
+                tools?: string[];
+                temperature?: number;
+            };
         };
+
+        if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) {
+            return respondError(400, 'name must be a non-empty string', 'invalid_name');
+        }
+        if (body.description !== undefined && typeof body.description !== 'string') {
+            return respondError(400, 'description must be a string', 'invalid_description');
+        }
+        if (body.is_active !== undefined && typeof body.is_active !== 'boolean') {
+            return respondError(400, 'is_active must be a boolean', 'invalid_is_active');
+        }
+        if (body.shadow_mode !== undefined && typeof body.shadow_mode !== 'boolean') {
+            return respondError(400, 'shadow_mode must be a boolean', 'invalid_shadow_mode');
+        }
+        if (body.config) {
+            if (body.config.model !== undefined && (typeof body.config.model !== 'string' || !body.config.model.trim())) {
+                return respondError(400, 'config.model must be a non-empty string', 'invalid_model');
+            }
+            if (body.config.system_prompt !== undefined && typeof body.config.system_prompt !== 'string') {
+                return respondError(400, 'config.system_prompt must be a string', 'invalid_system_prompt');
+            }
+            if (body.config.tools !== undefined && (
+                !Array.isArray(body.config.tools)
+                || body.config.tools.some(tool => typeof tool !== 'string')
+            )) {
+                return respondError(400, 'config.tools must be an array of strings', 'invalid_tools');
+            }
+            if (body.config.temperature !== undefined && (
+                typeof body.config.temperature !== 'number'
+                || !Number.isFinite(body.config.temperature)
+                || body.config.temperature < 0
+                || body.config.temperature > 2
+            )) {
+                return respondError(400, 'config.temperature must be between 0 and 2', 'invalid_temperature');
+            }
+        }
 
         const agentUpdate: Record<string, unknown> = {};
         if (body.name !== undefined) agentUpdate.name = body.name.trim();
@@ -189,17 +237,8 @@ export async function PATCH(
             }
         }
 
-        const configBody = (await req.json().catch(() => ({}))) as {
-            config?: {
-                model?: string;
-                system_prompt?: string;
-                tools?: string[];
-                temperature?: number;
-            };
-        };
-
-        if (configBody.config) {
-            const { model, system_prompt, tools, temperature } = configBody.config;
+        if (body.config) {
+            const { model, system_prompt, tools, temperature } = body.config;
             const configUpdate: Record<string, unknown> = {};
             if (model !== undefined) configUpdate.model = model;
             if (system_prompt !== undefined) configUpdate.system_prompt = system_prompt;
@@ -217,6 +256,10 @@ export async function PATCH(
                     return respondError(500, 'Failed to update agent configuration', 'config_update_failed');
                 }
             }
+        }
+
+        if (Object.keys(agentUpdate).length > 0 || body.config) {
+            await invalidateAgentConfig(agentId);
         }
 
         const { data: agent } = await adminClient
@@ -267,6 +310,9 @@ export async function DELETE(
         if (providedApiKey) {
             const validation = await validateGatewayRequest(req);
             if (!validation.success) return validation.response;
+            if (validation.context.keyType !== 'secret') {
+                return respondError(403, 'Agent management requires a secret API key', 'secret_key_required');
+            }
             gatewayCtx = validation.context;
         } else {
             const authHeader = req.headers.get('Authorization');
@@ -291,6 +337,8 @@ export async function DELETE(
             console.error('[Agents API] Failed to delete agent:', deleteError);
             return respondError(500, 'Failed to delete agent', 'delete_failed');
         }
+
+        await invalidateAgentConfig(agentId);
 
         return new NextResponse(null, { status: 204 });
     } catch (error: unknown) {

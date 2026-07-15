@@ -11,6 +11,7 @@ import {
     addGatewayHeaders,
     handleCorsPreFlight,
     logGatewayRequest,
+    incrementUsage,
 } from '@/lib/gateway-middleware';
 import {
     MEMORY_EMBEDDING_MODEL,
@@ -72,21 +73,41 @@ export async function POST(req: NextRequest) {
             return respond({ error: 'bad_request', message: parsed.error }, 400);
         }
 
+        const embeddingUsageRef: { current: {
+            totalTokens: number;
+            providerCostUsd: number;
+            cencoriChargeUsd: number;
+            markupPercentage: number;
+            model: string;
+            provider: string;
+        } | null } = { current: null };
         const results = await retrieveMemories({
             supabase: ctx.supabase,
             organizationId: ctx.organizationId,
             projectId: ctx.projectId,
             directive: parsed.directive,
             queryText: query,
+            onEmbeddingUsage: usage => {
+                embeddingUsageRef.current = usage;
+            },
         });
+        const embeddingUsage = embeddingUsageRef.current;
 
         await logGatewayRequest(ctx, {
             endpoint: 'memory/search',
-            model: parsed.directive.scope === 'session' ? 'none' : MEMORY_EMBEDDING_MODEL,
-            provider: parsed.directive.scope === 'session' ? 'none' : 'openai',
+            model: embeddingUsage?.model ?? (parsed.directive.scope === 'session' ? 'none' : MEMORY_EMBEDDING_MODEL),
+            provider: embeddingUsage?.provider ?? (parsed.directive.scope === 'session' ? 'none' : 'unknown'),
             status: 'success',
+            promptTokens: embeddingUsage?.totalTokens ?? 0,
+            completionTokens: 0,
+            totalTokens: embeddingUsage?.totalTokens ?? 0,
+            costUsd: embeddingUsage?.cencoriChargeUsd ?? 0,
+            providerCostUsd: embeddingUsage?.providerCostUsd ?? 0,
+            cencoriChargeUsd: embeddingUsage?.cencoriChargeUsd ?? 0,
+            markupPercentage: embeddingUsage?.markupPercentage ?? 0,
             metadata: { scope: parsed.directive.scope, results: results.length },
         });
+        await incrementUsage(ctx, embeddingUsage?.cencoriChargeUsd ?? 0);
 
         return respond(
             {

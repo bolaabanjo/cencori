@@ -233,7 +233,7 @@ class AIModule:
             "model": model,
         }
 
-        data = self._client._request("POST", "/api/v1/embeddings", json=payload)
+        data = self._client._request("POST", "/api/ai/embeddings", json=payload)
 
         embeddings = [item["embedding"] for item in data.get("data", [])]
 
@@ -638,7 +638,7 @@ class AIModule:
             "model": model,
         }
 
-        data = await self._client._async_request("POST", "/api/v1/embeddings", json=payload)
+        data = await self._client._async_request("POST", "/api/ai/embeddings", json=payload)
 
         embeddings = [item["embedding"] for item in data.get("data", [])]
 

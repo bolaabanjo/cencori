@@ -1,4 +1,5 @@
 import { getAllCircuitStates } from './providers/circuit-breaker';
+import { createAdminClient } from './supabaseAdmin';
 
 export type ServiceStatus = 'operational' | 'degraded' | 'down' | 'maintenance';
 
@@ -24,51 +25,12 @@ export interface StatusReport {
   lastUpdated: number;
 }
 
-const CORE_SERVICES: Omit<ServiceHealth, 'status'>[] = [
-  {
-    id: 'ai-gateway',
-    name: 'AI Gateway',
-    description: 'Request routing, load balancing, and failover for AI model providers',
-  },
-  {
-    id: 'api',
-    name: 'API',
-    description: 'Public REST API and OpenAI-compatible endpoints',
-  },
-  {
-    id: 'dashboard',
-    name: 'Dashboard',
-    description: 'Web application and management console',
-  },
-  {
-    id: 'compute',
-    name: 'Compute',
-    description: 'Serverless edge execution environment',
-  },
-  {
-    id: 'workflow',
-    name: 'Workflow',
-    description: 'Multi-step AI pipeline orchestration',
-  },
-  {
-    id: 'storage',
-    name: 'Storage',
-    description: 'Data persistence, vector sync, and caching layer',
-  },
-  {
-    id: 'provider-network',
-    name: 'Provider Network',
-    description: 'AI model provider connections and circuit states',
-  },
-  {
-    id: 'docs',
-    name: 'Documentation',
-    description: 'Developer documentation and API reference',
-  },
-];
-
 export async function getStatus(): Promise<StatusReport> {
-  const providerStates = await getAllCircuitStates();
+  const supabase = createAdminClient();
+  const [providerStates, storageProbe] = await Promise.all([
+    getAllCircuitStates(),
+    supabase.from('projects').select('id').limit(1),
+  ]);
 
   const providers: ProviderHealth[] = Object.entries(providerStates).map(
     ([provider, state]) => ({
@@ -88,12 +50,39 @@ export async function getStatus(): Promise<StatusReport> {
   else if (openCount > 0 || halfOpenCount > 0)
     providerNetworkStatus = 'degraded';
 
-  const services: ServiceHealth[] = CORE_SERVICES.map((s) => {
-    if (s.id === 'provider-network') {
-      return { ...s, status: providerNetworkStatus };
-    }
-    return { ...s, status: 'operational' };
-  });
+  const storageStatus: ServiceStatus = storageProbe.error ? 'down' : 'operational';
+  const gatewayStatus: ServiceStatus = storageStatus === 'down'
+    ? 'down'
+    : providerNetworkStatus;
+
+  // Only report components this endpoint can actually observe. Avoid
+  // presenting unrelated products as operational without a health signal.
+  const services: ServiceHealth[] = [
+    {
+      id: 'api',
+      name: 'API',
+      description: 'Public REST API and OpenAI-compatible endpoints',
+      status: 'operational',
+    },
+    {
+      id: 'storage',
+      name: 'Storage',
+      description: 'Primary Gateway database',
+      status: storageStatus,
+    },
+    {
+      id: 'provider-network',
+      name: 'Provider Network',
+      description: 'Observed provider circuit states',
+      status: providerNetworkStatus,
+    },
+    {
+      id: 'ai-gateway',
+      name: 'AI Gateway',
+      description: 'Request routing, policy enforcement, and failover',
+      status: gatewayStatus,
+    },
+  ];
 
   const hasDown = services.some((s) => s.status === 'down');
   const hasDegraded = services.some((s) => s.status === 'degraded');

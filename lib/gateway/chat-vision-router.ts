@@ -22,6 +22,10 @@ import {
     addGatewayHeaders,
     type GatewayContext,
 } from '@/lib/gateway-middleware';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
+import type { UnifiedMessage } from '@/lib/providers/base';
 
 type RawMessage = {
     role: string;
@@ -46,6 +50,37 @@ export function hasImageInMessages(messages: RawMessage[]): boolean {
     return false;
 }
 
+/**
+ * Preserve the conversational text for the shared input guard without
+ * serializing base64 image payloads or silently dropping multipart text.
+ */
+export function toVisionGuardMessages(messages: RawMessage[]): UnifiedMessage[] {
+    return messages.map((message) => {
+        let content = '';
+        if (typeof message.content === 'string') {
+            content = message.content;
+        } else if (Array.isArray(message.content)) {
+            content = message.content
+                .map((part) => {
+                    if (!part || typeof part !== 'object') return '';
+                    const value = part as { type?: string; text?: unknown };
+                    return value.type === 'text' && typeof value.text === 'string'
+                        ? value.text
+                        : '';
+                })
+                .filter(Boolean)
+                .join('\n');
+        }
+
+        const role = message.role === 'system'
+            || message.role === 'assistant'
+            || message.role === 'tool'
+            ? message.role
+            : 'user';
+        return { role, content } as UnifiedMessage;
+    });
+}
+
 // ── Model upgrade ──────────────────────────────────────────────
 
 // Non-vision → vision-capable equivalent in the same family. Anything already
@@ -55,7 +90,7 @@ const VISION_UPGRADES: Record<string, string> = {
     'gpt-4': 'gpt-4o',
     'claude-3-haiku-20240307': 'claude-3-5-haiku-latest',
     'claude-3-5-haiku-latest': 'claude-3-5-haiku-latest',
-    'claude-haiku-4.5': 'claude-3-5-sonnet-latest',
+    'claude-haiku-4.5': 'claude-sonnet-4-6',
     'gemini-2.0-flash-lite': 'gemini-2.5-flash-lite',
     'gemini-2.0-flash': 'gemini-2.5-flash',
 };
@@ -231,10 +266,42 @@ export interface RunVisionChatArgs {
     maxTokens?: number;
     temperature?: number;
     stream?: boolean;
+    guardedPrompt: string;
+    inputText: string;
+    inputSecurity: SecurityCheckResult;
+    conversationHistory: UnifiedMessage[];
+    tokenMap?: Map<string, string>;
+    endUserId?: string | null;
+    wireFormat?: 'openai' | 'cencori';
+    recordEndUserUsage?: (usageAndCost: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        providerCostUsd: number;
+        cencoriChargeUsd: number;
+        markupPercentage: number;
+    }) => void;
+    onCompletion?: (assistantText: string) => void;
 }
 
 export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> {
-    const { ctx, rawMessages, requestedModel, maxTokens, temperature, stream } = args;
+    const {
+        ctx,
+        rawMessages,
+        requestedModel,
+        maxTokens,
+        temperature,
+        stream,
+        guardedPrompt,
+        inputText,
+        inputSecurity,
+        conversationHistory,
+        tokenMap,
+        endUserId,
+        wireFormat = 'openai',
+        recordEndUserUsage,
+        onCompletion,
+    } = args;
 
     const upgrade = upgradeModelForVision(requestedModel);
     const { request: visionRequest, imageCount } = extractVisionRequest(rawMessages, upgrade.model, {
@@ -242,6 +309,67 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
         temperature,
         stream,
     });
+    visionRequest.prompt = guardedPrompt || 'Describe this image in detail.';
+
+    const guardOutput = async (text: string) => {
+        const finalText = tokenMap ? deTokenize(text, tokenMap) : text;
+        const result = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: finalText,
+            inputText,
+            inputSecurity,
+            conversationHistory,
+            endUserId,
+        });
+        return { finalText, result };
+    };
+
+    const settle = async (details: {
+        model: string;
+        provider: string;
+        promptTokens: number;
+        completionTokens: number;
+        providerCostUsd: number;
+        cencoriChargeUsd: number;
+        markupPercentage: number;
+        blocked: boolean;
+        streamed: boolean;
+    }) => {
+        await logGatewayRequest(ctx, {
+            endpoint: 'chat',
+            model: details.model,
+            provider: details.provider,
+            status: details.blocked ? 'blocked_output' : 'success',
+            promptTokens: details.promptTokens,
+            completionTokens: details.completionTokens,
+            totalTokens: details.promptTokens + details.completionTokens,
+            costUsd: details.cencoriChargeUsd,
+            providerCostUsd: details.providerCostUsd,
+            cencoriChargeUsd: details.cencoriChargeUsd,
+            markupPercentage: details.markupPercentage,
+            endUserId: endUserId || undefined,
+            metadata: {
+                routed_through: 'vision',
+                model_upgraded: upgrade.upgraded,
+                model_original: upgrade.from,
+                image_count: imageCount,
+                streamed: details.streamed,
+                output_blocked: details.blocked,
+            },
+        });
+        await incrementUsage(ctx, details.cencoriChargeUsd);
+        recordEndUserUsage?.({
+            promptTokens: details.promptTokens,
+            completionTokens: details.completionTokens,
+            totalTokens: details.promptTokens + details.completionTokens,
+            providerCostUsd: details.providerCostUsd,
+            cencoriChargeUsd: details.cencoriChargeUsd,
+            markupPercentage: details.markupPercentage,
+        });
+    };
 
     // ── Streaming path ─────────────────────────────────────
     if (stream) {
@@ -264,12 +392,13 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
                 let providerCostUsd = 0;
                 let cencoriChargeUsd = 0;
                 let markupPercentage = 0;
+                let fullText = '';
+                let actualModel = upgrade.model;
+                let actualProvider = 'vision-router';
                 try {
                     for await (const chunk of streamVision(ctx, visionRequest)) {
                         if (chunk.delta) {
-                            controller.enqueue(
-                                encoder.encode(`data: ${JSON.stringify(chatStreamChunkShape(chunk.delta, upgrade.model))}\n\n`)
-                            );
+                            fullText += chunk.delta;
                         }
                         if (chunk.done && chunk.usage && chunk.cost) {
                             promptTokens = chunk.usage.promptTokens;
@@ -277,34 +406,41 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
                             providerCostUsd = chunk.cost.providerCostUsd;
                             cencoriChargeUsd = chunk.cost.cencoriChargeUsd;
                             markupPercentage = chunk.cost.markupPercentage;
+                            actualModel = chunk.model ?? actualModel;
+                            actualProvider = chunk.provider ?? actualProvider;
                         }
                     }
-                    controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify(chatStreamFinalShape(upgrade.model))}\n\n`)
-                    );
-                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
 
-                    await logGatewayRequest(ctx, {
-                        endpoint: 'chat',
-                        model: upgrade.model,
-                        provider: 'vision-router',
-                        status: 'success',
+                    const guarded = await guardOutput(fullText);
+                    await settle({
+                        model: actualModel,
+                        provider: actualProvider,
                         promptTokens,
                         completionTokens,
-                        totalTokens: promptTokens + completionTokens,
-                        costUsd: cencoriChargeUsd,
                         providerCostUsd,
                         cencoriChargeUsd,
                         markupPercentage,
-                        metadata: {
-                            routed_through: 'vision',
-                            model_upgraded: upgrade.upgraded,
-                            model_original: upgrade.from,
-                            image_count: imageCount,
-                            streamed: true,
-                        },
+                        blocked: !guarded.result.ok,
+                        streamed: true,
                     });
-                    await incrementUsage(ctx);
+                    if (!guarded.result.ok) {
+                        const errorPayload = wireFormat === 'cencori'
+                            ? { error: 'Security violation detected', message: guarded.result.message }
+                            : { error: { message: guarded.result.message, type: 'security_error', code: guarded.result.code } };
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorPayload)}\n\n`));
+                        return;
+                    }
+
+                    if (guarded.finalText) {
+                        controller.enqueue(
+                            encoder.encode(`data: ${JSON.stringify(chatStreamChunkShape(guarded.finalText, actualModel))}\n\n`)
+                        );
+                    }
+                    controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify(chatStreamFinalShape(actualModel))}\n\n`)
+                    );
+                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    onCompletion?.(guarded.finalText);
                 } catch (err) {
                     const message = err instanceof Error ? err.message : 'vision_chat_error';
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
@@ -326,34 +462,45 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
 
     // ── Non-streaming path ─────────────────────────────────
     const result = await analyzeVision(ctx, visionRequest);
-
-    await logGatewayRequest(ctx, {
-        endpoint: 'chat',
-        model: upgrade.model,
-        provider: 'vision-router',
-        status: 'success',
+    const guarded = await guardOutput(result.analysis);
+    await settle({
+        model: result.model,
+        provider: result.provider,
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
-        totalTokens: result.usage.totalTokens,
-        costUsd: result.cost.cencoriChargeUsd,
         providerCostUsd: result.cost.providerCostUsd,
         cencoriChargeUsd: result.cost.cencoriChargeUsd,
         markupPercentage: result.cost.markupPercentage,
-        metadata: {
-            routed_through: 'vision',
-            model_upgraded: upgrade.upgraded,
-            model_original: upgrade.from,
-            image_count: imageCount,
-        },
+        blocked: !guarded.result.ok,
+        streamed: false,
     });
-    await incrementUsage(ctx);
 
-    const payload = chatCompletionShape(
-        result.analysis,
-        upgrade.model,
+    if (!guarded.result.ok) {
+        const body = wireFormat === 'cencori'
+            ? { error: 'Security violation detected', message: guarded.result.message }
+            : { error: { message: guarded.result.message, type: 'security_error', code: guarded.result.code } };
+        return addGatewayHeaders(NextResponse.json(body, { status: guarded.result.status }), {
+            requestId: ctx.requestId,
+        });
+    }
+
+    const payload: Record<string, unknown> = chatCompletionShape(
+        guarded.finalText,
+        result.model,
         result.usage.promptTokens,
         result.usage.completionTokens
     );
+    if (wireFormat === 'cencori') {
+        payload.content = guarded.finalText;
+        payload.provider = result.provider;
+        payload.cost_usd = result.cost.cencoriChargeUsd;
+        payload.fallback_used = result.usedFallback === true;
+        if (result.usedFallback) {
+            payload.original_model = result.originalModel;
+            payload.original_provider = result.originalProvider;
+        }
+    }
+    onCompletion?.(guarded.finalText);
 
     const response = NextResponse.json(payload);
     if (upgrade.upgraded) {

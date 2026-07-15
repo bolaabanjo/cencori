@@ -14,11 +14,8 @@ import {
     addGatewayHeaders,
     handleCorsPreFlight,
     logGatewayRequest,
-    incrementUsage,
 } from '@/lib/gateway-middleware';
 import {
-    analyzeVision,
-    streamVision,
     listVisionModels,
     parseVisionRequest,
     MAX_VISION_IMAGE_BYTES,
@@ -26,6 +23,7 @@ import {
     UNIVERSAL_VISION_FORMATS,
     VisionValidationError,
 } from '@/lib/vision/analyze';
+import { executeGuardedVision } from '@/lib/vision/guarded';
 import { ProviderError } from '@/lib/providers/errors';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 
@@ -40,52 +38,29 @@ export async function POST(req: NextRequest) {
 
     try {
         const request = await parseVisionRequest(req);
+        const requestedStream = request.stream === true;
+        const execution = await executeGuardedVision({ ctx, request, endpoint: 'vision' });
+        if (!execution.ok) return execution.response;
+        const result = execution.result;
 
         // ── Streaming path ─────────────────────────────────────
-        if (request.stream) {
+        if (requestedStream) {
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
-                async start(controller) {
-                    let final: { model: string; provider: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; cost: { providerCostUsd: number; cencoriChargeUsd: number; markupPercentage: number } } | null = null;
-                    try {
-                        for await (const chunk of streamVision(ctx, request)) {
-                            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-                            if (chunk.done && chunk.usage && chunk.cost && chunk.model && chunk.provider) {
-                                final = { model: chunk.model, provider: chunk.provider, usage: chunk.usage, cost: chunk.cost };
-                            }
-                        }
-                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                        if (final) {
-                            await logGatewayRequest(ctx, {
-                                endpoint: 'vision',
-                                model: final.model,
-                                provider: final.provider,
-                                status: 'success',
-                                promptTokens: final.usage.promptTokens,
-                                completionTokens: final.usage.completionTokens,
-                                totalTokens: final.usage.totalTokens,
-                                costUsd: final.cost.cencoriChargeUsd,
-                                providerCostUsd: final.cost.providerCostUsd,
-                                cencoriChargeUsd: final.cost.cencoriChargeUsd,
-                                markupPercentage: final.cost.markupPercentage,
-                                metadata: { streamed: true },
-                            });
-                            await incrementUsage(ctx);
-                        }
-                    } catch (err) {
-                        const message = err instanceof Error ? err.message : 'stream_error';
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
-                        await logGatewayRequest(ctx, {
-                            endpoint: 'vision',
-                            model: 'unknown',
-                            provider: 'unknown',
-                            status: 'error',
-                            errorMessage: message,
-                            metadata: { streamed: true },
-                        });
-                    } finally {
-                        controller.close();
-                    }
+                start(controller) {
+                    // Buffering is deliberate: direct vision streams follow
+                    // the same complete-output guard as chat streams.
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: result.analysis })}\n\n`));
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                        done: true,
+                        model: result.model,
+                        provider: result.provider,
+                        usage: result.usage,
+                        cost: result.cost,
+                        usedFallback: result.usedFallback,
+                    })}\n\n`));
+                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    controller.close();
                 },
             });
             return new Response(stream, {
@@ -97,23 +72,6 @@ export async function POST(req: NextRequest) {
                 },
             });
         }
-
-        const result = await analyzeVision(ctx, request);
-
-        await logGatewayRequest(ctx, {
-            endpoint: 'vision',
-            model: result.model,
-            provider: result.provider,
-            status: 'success',
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            totalTokens: result.usage.totalTokens,
-            costUsd: result.cost.cencoriChargeUsd,
-            providerCostUsd: result.cost.providerCostUsd,
-            cencoriChargeUsd: result.cost.cencoriChargeUsd,
-            markupPercentage: result.cost.markupPercentage,
-        });
-        await incrementUsage(ctx);
 
         return addGatewayHeaders(NextResponse.json(result), { requestId: ctx.requestId });
     } catch (error) {

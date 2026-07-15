@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from .types import (
     Breakdown,
@@ -31,7 +32,7 @@ class MetricsModule:
         Returns:
             MetricsResponse object
         """
-        path = f"/api/v1/metrics/{period}"
+        path = f"/v1/metrics?period={quote(period, safe='')}"
         data = self._client._request("GET", path)
 
         return MetricsResponse(

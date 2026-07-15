@@ -62,6 +62,18 @@ export class ContentFilterError extends ProviderError {
     }
 }
 
+export class PricingUnavailableError extends ProviderError {
+    constructor(provider: string, model: string, detail?: string) {
+        super(
+            provider,
+            `Pricing is not configured for ${provider}/${model}${detail ? `: ${detail}` : ''}`,
+            undefined,
+            false
+        );
+        this.name = 'PricingUnavailableError';
+    }
+}
+
 /**
  * Convert provider-specific errors to unified error types
  */

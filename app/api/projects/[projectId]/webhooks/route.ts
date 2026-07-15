@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { assertSafeOutboundUrl } from '@/lib/security/outbound-url';
 
 interface WebhookBody {
     name: string;
@@ -81,9 +82,9 @@ export async function POST(
         return NextResponse.json({ error: 'Name and URL are required' }, { status: 400 });
     }
     try {
-        new URL(body.url);
+        await assertSafeOutboundUrl(body.url);
     } catch {
-        return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
+        return NextResponse.json({ error: 'Webhook URL must resolve to a public HTTP or HTTPS destination' }, { status: 400 });
     }
 
     const secret = body.secret || crypto.randomBytes(32).toString('hex');

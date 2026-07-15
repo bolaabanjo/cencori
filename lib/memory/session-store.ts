@@ -9,10 +9,15 @@
 import { Redis } from '@upstash/redis';
 import { MEMORY_CONTENT_MAX_CHARS, type RetrievedMemory } from './types';
 
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+let redis: Redis | null | undefined;
+
+function getRedis(): Redis | null {
+    if (redis !== undefined) return redis;
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    redis = url && token ? new Redis({ url, token }) : null;
+    return redis;
+}
 
 /** Hard cap on entries kept per session. */
 export const SESSION_MEMORY_CAP = 20;
@@ -34,8 +39,11 @@ export async function appendSessionMemories(
     scopeKey: string,
     items: { content: string; importance: number }[],
     ttlSeconds: number
-): Promise<void> {
-    if (items.length === 0) return;
+): Promise<boolean> {
+    if (items.length === 0) return true;
+
+    const client = getRedis();
+    if (!client) return false;
 
     const key = sessionKey(orgId, projectId, scopeKey);
     const entries: SessionMemoryEntry[] = items.map(item => ({
@@ -45,11 +53,13 @@ export async function appendSessionMemories(
     }));
 
     try {
-        await redis.lpush(key, ...entries.map(e => JSON.stringify(e)));
-        await redis.ltrim(key, 0, SESSION_MEMORY_CAP - 1);
-        await redis.expire(key, ttlSeconds);
-    } catch {
-        // Silently fail
+        await client.lpush(key, ...entries.map(e => JSON.stringify(e)));
+        await client.ltrim(key, 0, SESSION_MEMORY_CAP - 1);
+        await client.expire(key, ttlSeconds);
+        return true;
+    } catch (error) {
+        console.warn('[Memory] Failed to append session memory:', error);
+        return false;
     }
 }
 
@@ -60,9 +70,11 @@ export async function listSessionMemories(
     cap: number = SESSION_MEMORY_CAP
 ): Promise<RetrievedMemory[]> {
     const key = sessionKey(orgId, projectId, scopeKey);
+    const client = getRedis();
+    if (!client) return [];
 
     try {
-        const raw = await redis.lrange(key, 0, cap - 1);
+        const raw = await client.lrange(key, 0, cap - 1);
         return raw
             .map((item): RetrievedMemory | null => {
                 try {
@@ -91,8 +103,10 @@ export async function clearSessionMemories(
     projectId: string,
     scopeKey: string
 ): Promise<void> {
+    const client = getRedis();
+    if (!client) return;
     try {
-        await redis.del(sessionKey(orgId, projectId, scopeKey));
+        await client.del(sessionKey(orgId, projectId, scopeKey));
     } catch {
         // Silently fail
     }

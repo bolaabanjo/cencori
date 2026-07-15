@@ -29,19 +29,26 @@ export const FALLBACK_CHAINS: Record<string, string[]> = {
  */
 export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     // OpenAI models → fallbacks
-    'gpt-5.5': { 'anthropic': 'claude-opus-4.5', 'google': 'gemini-3-pro' },
-    'gpt-5.4': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
+    'gpt-5.6-sol': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
+    'gpt-5.6-terra': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-3.5-flash' },
+    'gpt-5.6-luna': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-3-flash-preview' },
+    'gpt-5.5': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
+    'gpt-5.4': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
     'gpt-5.4-pro': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
     'gpt-5.3-chat-latest': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
     'gpt-5': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
-    'gpt-4o': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'gpt-4o-mini': { 'anthropic': 'claude-haiku-4.5', 'google': 'gemini-2.5-flash-lite' },
-    'o3': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-deep-think' },
+    'gpt-4o': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash' },
+    'gpt-4o-mini': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash-lite' },
+    'o3': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
     'o3-mini': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
     'o1': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-pro' },
 
     // Anthropic models → fallbacks
-    'claude-opus-4.8': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-opus-4-8': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-opus-4-7': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-opus-4-6': { 'openai': 'gpt-5.4', 'google': 'gemini-3.1-pro-preview' },
+    'claude-sonnet-4-6': { 'openai': 'gpt-5.4-mini', 'google': 'gemini-3.5-flash' },
+    'claude-sonnet-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
     'claude-opus-4': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
     'claude-opus-4.5': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
     'claude-sonnet-4': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },
@@ -51,9 +58,11 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
 
     // Google models → fallbacks
     'gemini-3-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4' },
-    'gemini-3-flash': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
-    'gemini-2.5-pro': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
-    'gemini-2.5-flash': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
+    'gemini-3.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
+    'gemini-3.1-pro-preview': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-4-8' },
+    'gemini-3-flash-preview': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
+    'gemini-2.5-pro': { 'openai': 'gpt-5.4', 'anthropic': 'claude-sonnet-4-6' },
+    'gemini-2.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-2.0-flash': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4.5' },
 
     // xAI models → fallbacks
@@ -159,12 +168,12 @@ export async function getFallbackModel(
 
     // Default fallback models per provider if no mapping exists
     const defaultFallbacks: Record<string, string> = {
-        'openai': 'gpt-4o',
-        'anthropic': 'claude-sonnet-4',
+        'openai': 'gpt-5.4-mini',
+        'anthropic': 'claude-sonnet-4-6',
         'google': 'gemini-2.5-flash',
     };
 
-    return defaultFallbacks[fallbackProvider] || 'gpt-4o';
+    return defaultFallbacks[fallbackProvider] || 'gpt-5.4-mini';
 }
 
 /**

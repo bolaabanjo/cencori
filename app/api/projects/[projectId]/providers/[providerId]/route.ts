@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { assertSafeOutboundUrl } from '@/lib/security/outbound-url';
 
 export async function GET(
     req: NextRequest,
@@ -61,6 +62,17 @@ export async function PATCH(
 
         const gate = await requireTierFeatureForProject(projectId, 'customProviders');
         if (gate) return gate;
+
+        if (baseUrl !== undefined) {
+            try {
+                await assertSafeOutboundUrl(baseUrl);
+            } catch {
+                return NextResponse.json(
+                    { error: 'baseUrl must resolve to a public HTTP or HTTPS destination' },
+                    { status: 400 },
+                );
+            }
+        }
 
         const updateData: Record<string, unknown> = {};
         if (name !== undefined) updateData.name = name;

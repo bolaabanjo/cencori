@@ -5,6 +5,8 @@ import { SUPPORTED_PROVIDERS } from '@/lib/providers/config';
 import { addGatewayHeaders, handleCorsPreFlight } from '@/lib/gateway-middleware';
 import { extractGatewayCallerIdentity, logApiGatewayRequest } from '@/lib/api-gateway-logs';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
+import { getManagedProviderNames } from '@/lib/gateway/providers-setup';
+import { hasStaticPricing } from '@/lib/providers/pricing';
 
 /**
  * GET /api/v1/models
@@ -142,10 +144,21 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // Include project custom providers/models for API-key scoped requests.
+    const availableProviderIds = getManagedProviderNames();
+
+    // Include project BYOK and custom providers/models for API-key scoped requests.
     let customModels: typeof MODELS = [];
     if (apiLogContext?.projectId) {
         const supabase = createAdminClient();
+        const { data: providerKeys } = await supabase
+            .from('provider_keys')
+            .select('provider')
+            .eq('project_id', apiLogContext.projectId)
+            .eq('is_active', true);
+        for (const providerKey of providerKeys ?? []) {
+            if (providerKey.provider) availableProviderIds.add(providerKey.provider);
+        }
+
         const { data: projectCustomProviders, error: customProviderError } = await supabase
             .from('custom_providers')
             .select(`
@@ -201,12 +214,46 @@ export async function GET(req: NextRequest) {
         }
     }
 
+    // Only advertise models that have exact pricing. Provider-wide guessed
+    // defaults are unsafe for billing and are intentionally not used.
+    const pricingClient = createAdminClient();
+    const { data: pricingRows, error: pricingError } = await pricingClient
+        .from('model_pricing')
+        .select('provider, model_name, pricing_expires_at')
+        .eq('is_active', true);
+    if (pricingError) {
+        return respond(
+            NextResponse.json({
+                error: {
+                    message: 'Model pricing catalog is temporarily unavailable',
+                    type: 'server_error',
+                    code: 'pricing_catalog_unavailable',
+                },
+            }, { status: 503 }),
+            'pricing_catalog_unavailable',
+            pricingError.message,
+        );
+    }
+    const pricedModels = new Set(
+        (pricingRows ?? [])
+            .filter(row => !row.pricing_expires_at || Date.parse(row.pricing_expires_at) > Date.now())
+            .map(row => `${row.provider}:${row.model_name}`)
+    );
+
     // Optional filtering by provider or type (Restored Feature)
     const url = new URL(req.url);
     const filterProvider = url.searchParams.get('provider');
     const filterType = url.searchParams.get('type');
 
-    let filteredModels = [...MODELS, ...customModels];
+    let filteredModels = [
+        ...MODELS.filter((model) =>
+            availableProviderIds.has(model.owned_by)
+            && (
+                pricedModels.has(`${model.owned_by}:${model.id}`)
+                || hasStaticPricing(model.owned_by, model.id)
+            )),
+        ...customModels,
+    ];
     if (filterProvider) {
         filteredModels = filteredModels.filter(m => m.owned_by === filterProvider);
     }
@@ -222,11 +269,14 @@ export async function GET(req: NextRequest) {
             object: 'list',
             data: filteredModels,
             providers: [
-                ...SUPPORTED_PROVIDERS.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    model_count: p.models.length,
-                })),
+                ...SUPPORTED_PROVIDERS
+                    .filter((provider) => availableProviderIds.has(provider.id))
+                    .map(provider => ({
+                        id: provider.id,
+                        name: provider.name,
+                        model_count: filteredModels.filter(model => model.owned_by === provider.id).length,
+                    }))
+                    .filter(provider => provider.model_count > 0),
                 ...Array.from(new Set(customModels.map(model => model.owned_by))).map((providerId) => ({
                     id: providerId,
                     name: providerId,

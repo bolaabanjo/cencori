@@ -8,6 +8,10 @@ import {
     parseCreditsBalance,
     shouldEnforceProjectCredits,
 } from "@/lib/project-credit-billing";
+import { decryptApiKey } from '@/lib/encryption';
+import { getPricingFromDB } from '@/lib/providers/pricing';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 interface RouteParams {
     params: Promise<{ projectId: string }>;
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
             return NextResponse.json({ error: "Namespace ID is required" }, { status: 400 });
         }
 
-        if (!content || typeof content !== "string") {
+        if (!content || typeof content !== "string" || content.length > 32_000) {
             return NextResponse.json({ error: "Content is required" }, { status: 400 });
         }
 
@@ -90,14 +94,12 @@ export async function POST(request: NextRequest, context: RouteParams) {
         }
 
         // Check user is member of organization
-        const { data: member, error: memberError } = await adminClient
+        const { data: member } = await adminClient
             .from("organization_members")
             .select("role")
             .eq("organization_id", project.organization_id)
             .eq("user_id", user.id)
             .single();
-
-        console.log("Membership check:", { userId: user.id, orgId: project.organization_id, member, memberError });
 
         if (!member) {
             return NextResponse.json({ error: "Access denied" }, { status: 403 });
@@ -115,11 +117,40 @@ export async function POST(request: NextRequest, context: RouteParams) {
             return NextResponse.json({ error: "Namespace not found" }, { status: 404 });
         }
 
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: adminClient as never,
+            projectId,
+            environment: 'production',
+            tier: tier as SubscriptionTier,
+            messages: [{ role: 'user', content }],
+        });
+        if (!inputPipeline.ok) {
+            return NextResponse.json(
+                { error: inputPipeline.code, message: inputPipeline.message },
+                { status: inputPipeline.status },
+            );
+        }
+        const guardedContent = inputPipeline.messages[0]?.content ?? content;
+
         // Generate embedding using OpenAI
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+        await getPricingFromDB('openai', 'text-embedding-3-small');
+        const { data: providerKey } = await adminClient
+            .from('provider_keys')
+            .select('encrypted_key')
+            .eq('project_id', projectId)
+            .eq('provider', 'openai')
+            .eq('is_active', true)
+            .maybeSingle();
+        const openaiKey = providerKey?.encrypted_key
+            ? decryptApiKey(providerKey.encrypted_key, project.organization_id)
+            : process.env.OPENAI_API_KEY;
+        if (!openaiKey) {
+            return NextResponse.json({ error: 'No OpenAI API key configured' }, { status: 400 });
+        }
+        const openai = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
         const embeddingResponse = await openai.embeddings.create({
             model: "text-embedding-3-small",
-            input: content,
+            input: guardedContent,
         });
         const embedding = embeddingResponse.data[0].embedding;
 
@@ -154,7 +185,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
             .from("memories")
             .insert({
                 namespace_id,
-                content,
+                content: guardedContent,
                 metadata: metadata || {},
                 embedding,
             })

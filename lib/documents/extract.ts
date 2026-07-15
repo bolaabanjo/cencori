@@ -10,6 +10,11 @@
 import type { NextRequest } from 'next/server';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import { analyzeVision, type VisionAnalyzeRequest } from '@/lib/vision/analyze';
+import {
+    readResponseBuffer,
+    safeOutboundFetch,
+    UnsafeOutboundUrlError,
+} from '@/lib/security/outbound-url';
 
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024; // 25MB
 
@@ -205,19 +210,32 @@ export async function parseDocumentRequest(req: NextRequest): Promise<ParsedDocu
 
     const body = await req.json();
     if (body.document_url && typeof body.document_url === 'string') {
-        const res = await fetch(body.document_url);
-        if (!res.ok) throw new DocumentValidationError('fetch_failed', `Failed to fetch document: ${res.status}`);
-        const buf = Buffer.from(await res.arrayBuffer());
-        const mimeType = res.headers.get('content-type')?.split(';')[0] ?? 'application/octet-stream';
-        return {
-            input: { bytes: buf, mimeType, filename: body.document_url.split('/').pop() },
-            opts: {
-                prompt: body.prompt,
-                model: body.model,
-                maxTokens: body.max_tokens,
-                temperature: body.temperature,
-            },
-        };
+        try {
+            const res = await safeOutboundFetch(
+                body.document_url,
+                {
+                    headers: { 'User-Agent': 'Cencori-Gateway/1.0 (+https://cencori.com)' },
+                    signal: AbortSignal.timeout(15_000),
+                },
+                { maxRedirects: 3 },
+            );
+            if (!res.ok) throw new DocumentValidationError('fetch_failed', `Failed to fetch document: ${res.status}`);
+            const buf = await readResponseBuffer(res, MAX_DOCUMENT_BYTES);
+            const mimeType = res.headers.get('content-type')?.split(';')[0] ?? 'application/octet-stream';
+            return {
+                input: { bytes: buf, mimeType, filename: new URL(body.document_url).pathname.split('/').pop() },
+                opts: {
+                    prompt: body.prompt,
+                    model: body.model,
+                    maxTokens: body.max_tokens,
+                    temperature: body.temperature,
+                },
+            };
+        } catch (error) {
+            if (error instanceof DocumentValidationError) throw error;
+            const code = error instanceof UnsafeOutboundUrlError ? 'unsafe_document_url' : 'fetch_failed';
+            throw new DocumentValidationError(code, error instanceof Error ? error.message : 'Failed to fetch document');
+        }
     }
 
     if (body.document_base64 && typeof body.document_base64 === 'string') {

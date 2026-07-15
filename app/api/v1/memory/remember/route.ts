@@ -19,6 +19,7 @@ import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
     buildQuotaExceededBody,
+    buildQuotaCheckFailedBody,
     checkMemoryQuota,
     getProjectMemorySettings,
     parseMemoryDirective,
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
         if (directive.scope !== 'session') {
             const quota = await checkMemoryQuota(ctx.supabase, ctx.projectId, tier);
             if (!quota.allowed) {
+                if (quota.error) return respond(buildQuotaCheckFailedBody(), 503);
                 return respond(buildQuotaExceededBody(ctx.projectId, tier, quota.used, quota.limit), 429);
             }
         }
@@ -127,6 +129,7 @@ export async function POST(req: NextRequest) {
 
         if (result.quotaExceeded) {
             const quota = await checkMemoryQuota(ctx.supabase, ctx.projectId, tier);
+            if (quota.error) return respond(buildQuotaCheckFailedBody(), 503);
             return respond(buildQuotaExceededBody(ctx.projectId, tier, quota.used, quota.limit), 429);
         }
 

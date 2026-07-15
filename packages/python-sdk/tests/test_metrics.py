@@ -36,4 +36,4 @@ def test_get_metrics(mock_client):
     assert metrics.requests.total == 100
     assert metrics.cost.total_usd == 1.0
     assert metrics.providers["openai"].requests == 80
-    mock_client._request.assert_called_with("GET", "/api/v1/metrics/24h")
+    mock_client._request.assert_called_with("GET", "/v1/metrics?period=24h")

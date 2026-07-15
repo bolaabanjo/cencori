@@ -17,9 +17,42 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SubscriptionTier } from '@/lib/entitlements';
+import { getUsageUnitPricingFromDB } from '@/lib/providers/pricing';
 
-// Whisper pricing: per minute of audio
-const WHISPER_PRICE_PER_MINUTE = 0.006; // $0.006/min
+type VerboseTranscription = {
+    text?: string;
+    duration?: number;
+    language?: string;
+    segments?: Array<{ start?: number; end?: number; text?: string }>;
+};
+
+function formatTimestamp(seconds: number, separator: ',' | '.'): string {
+    const millis = Math.max(0, Math.round(seconds * 1000));
+    const hours = Math.floor(millis / 3_600_000);
+    const minutes = Math.floor((millis % 3_600_000) / 60_000);
+    const secs = Math.floor((millis % 60_000) / 1000);
+    const ms = millis % 1000;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}${separator}${String(ms).padStart(3, '0')}`;
+}
+
+function formatTimedTranscript(
+    segments: VerboseTranscription['segments'],
+    format: 'srt' | 'vtt',
+    tokenMap: Map<string, string>,
+): string {
+    const separator = format === 'srt' ? ',' : '.';
+    const blocks = (segments || []).map((segment, index) => {
+        const start = formatTimestamp(Number(segment.start || 0), separator);
+        const end = formatTimestamp(Number(segment.end || segment.start || 0), separator);
+        const text = deTokenize(segment.text || '', tokenMap).trim();
+        return `${format === 'srt' ? `${index + 1}\n` : ''}${start} --> ${end}\n${text}`;
+    });
+    return `${format === 'vtt' ? 'WEBVTT\n\n' : ''}${blocks.join('\n\n')}${blocks.length ? '\n' : ''}`;
+}
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -43,6 +76,26 @@ export async function POST(req: NextRequest) {
         const responseFormat = (formData.get('response_format') as string) || 'json';
         const temperature = parseFloat(formData.get('temperature') as string) || 0;
 
+        if (model !== 'whisper-1') {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: 'Unsupported transcription model' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        const allowedResponseFormats = new Set(['json', 'text', 'srt', 'verbose_json', 'vtt']);
+        if (!allowedResponseFormats.has(responseFormat)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: 'Unsupported response_format' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (!Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: 'temperature must be between 0 and 1' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
         if (!file) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'bad_request', message: 'Audio file is required' }, { status: 400 }),
@@ -63,6 +116,31 @@ export async function POST(req: NextRequest) {
         if (file.size > 25 * 1024 * 1024) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'bad_request', message: 'File size exceeds maximum of 25MB' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: prompt || 'Transcribe the supplied audio.' }],
+        });
+        if (!inputPipeline.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'audio/transcriptions',
+                model,
+                provider: 'openai',
+                status: 'blocked',
+                errorMessage: inputPipeline.message,
+            });
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons },
+                    { status: inputPipeline.status }
+                ),
                 { requestId: ctx.requestId }
             );
         }
@@ -91,51 +169,97 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const client = new OpenAI({ apiKey: openaiKey });
+        const pricing = await getUsageUnitPricingFromDB('openai', model, 'minutes');
+        const client = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
 
         const transcriptionParams: OpenAI.Audio.TranscriptionCreateParams = {
             file,
             model,
-            response_format: responseFormat as 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt',
+            // Always request duration and segments so billing and timed output
+            // are derived from provider metadata instead of file-size guesses.
+            response_format: 'verbose_json',
+            timestamp_granularities: ['segment'],
             temperature,
         };
 
         if (language) transcriptionParams.language = language;
-        if (prompt) transcriptionParams.prompt = prompt;
+        if (prompt) transcriptionParams.prompt = inputPipeline.messages[0]?.content ?? prompt;
 
-        const response = await client.audio.transcriptions.create(transcriptionParams);
+        const response = await client.audio.transcriptions.create(transcriptionParams) as VerboseTranscription;
 
-        // Estimate cost (approximate from file size — ~1 min per 1MB for mp3)
-        const estimatedMinutes = Math.max(0.1, file.size / (1024 * 1024));
-        const providerCost = estimatedMinutes * WHISPER_PRICE_PER_MINUTE;
-        const cencoriCharge = providerCost * 1.2;
+        const durationSeconds = Number(response.duration)
+            || Number(response.segments?.at(-1)?.end)
+            || 0;
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+            throw new Error('Transcription provider did not return a billable audio duration');
+        }
+        const durationMinutes = durationSeconds / 60;
+        const providerCost = durationMinutes * pricing.unitPriceUsd;
+        const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+
+        const rawTranscript = response.text || '';
+        const tokenMap = inputPipeline.tokenMap ?? new Map();
+        const finalTranscript = deTokenize(rawTranscript, tokenMap);
+        const outputCheck = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: rawTranscript,
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            conversationHistory: inputPipeline.messages,
+        });
 
         await logGatewayRequest(ctx, {
             endpoint: 'audio/transcriptions',
             model,
             provider: 'openai',
-            status: 'success',
+            status: outputCheck.ok ? 'success' : 'blocked_output',
             costUsd: cencoriCharge,
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
-            markupPercentage: 20,
+            markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: {
                 file_size: file.size,
                 file_type: file.type,
-                estimated_minutes: estimatedMinutes,
+                duration_seconds: durationSeconds,
             },
+            errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, cencoriCharge);
+
+        if (!outputCheck.ok) {
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: outputCheck.code, message: outputCheck.message, reasons: outputCheck.reasons },
+                    { status: outputCheck.status }
+                ),
+                { requestId: ctx.requestId }
+            );
+        }
 
         // Return based on format
-        if (responseFormat === 'text') {
-            return new Response(response as unknown as string, {
-                headers: { 'Content-Type': 'text/plain', 'X-Request-Id': ctx.requestId },
-            });
+        if (responseFormat === 'text' || responseFormat === 'srt' || responseFormat === 'vtt') {
+            const contentType = responseFormat === 'srt'
+                ? 'application/x-subrip'
+                : responseFormat === 'vtt'
+                    ? 'text/vtt'
+                    : 'text/plain';
+            const bodyText = responseFormat === 'srt' || responseFormat === 'vtt'
+                ? formatTimedTranscript(response.segments, responseFormat, tokenMap)
+                : finalTranscript;
+            return addGatewayHeaders(new NextResponse(bodyText, {
+                headers: { 'Content-Type': `${contentType}; charset=utf-8` },
+            }), { requestId: ctx.requestId });
         }
 
         return addGatewayHeaders(
-            NextResponse.json(response),
+            NextResponse.json(
+                responseFormat === 'verbose_json'
+                    ? { ...response, text: finalTranscript }
+                    : { text: finalTranscript }
+            ),
             { requestId: ctx.requestId }
         );
 

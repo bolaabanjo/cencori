@@ -217,7 +217,7 @@ export async function storeInCache(params: CacheStoreParams): Promise<void> {
             const supabase = createAdminClient();
             const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
-            await supabase
+            const { error: upsertError } = await supabase
                 .from('prompt_cache_entries')
                 .upsert({
                     project_id: projectId,
@@ -236,6 +236,27 @@ export async function storeInCache(params: CacheStoreParams): Promise<void> {
                 }, {
                     onConflict: 'project_id,cache_key',
                 });
+            if (upsertError) throw upsertError;
+
+            // Enforce the configured per-project bound. Keep the newest rows
+            // and evict overflow from both persistent and exact-match stores.
+            if (config.maxEntries > 0) {
+                const { data: overflow, error: overflowError } = await supabase
+                    .from('prompt_cache_entries')
+                    .select('id, cache_key')
+                    .eq('project_id', projectId)
+                    .eq('environment', environment)
+                    .order('updated_at', { ascending: false })
+                    .range(config.maxEntries, config.maxEntries + 499);
+                if (overflowError) throw overflowError;
+                if (overflow && overflow.length > 0) {
+                    await redis.del(...overflow.map((entry) => `${REDIS_PREFIX}${entry.cache_key}`));
+                    await supabase
+                        .from('prompt_cache_entries')
+                        .delete()
+                        .in('id', overflow.map((entry) => entry.id));
+                }
+            }
 
             // 3. Log store event
             void logCacheEvent({

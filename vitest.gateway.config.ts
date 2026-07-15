@@ -9,7 +9,11 @@ export default defineConfig({
             NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
             SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
         },
-        include: ['lib/gateway/__tests__/**/*.test.ts', 'lib/memory/__tests__/**/*.test.ts'],
+        include: [
+            'lib/gateway/__tests__/**/*.test.ts',
+            'lib/memory/__tests__/**/*.test.ts',
+            'lib/security/__tests__/**/*.test.ts',
+        ],
         exclude: ['**/node_modules/**', '.next', 'dist'],
         testTimeout: 15000,
         fileParallelism: false,

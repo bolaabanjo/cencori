@@ -29,7 +29,11 @@ import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import { runV1ProviderExecution } from "@/lib/gateway/v1-execute";
 import { makeChatLogSuccess } from "@/lib/gateway/chat-post-success";
-import { hasImageInMessages, runVisionChat } from "@/lib/gateway/chat-vision-router";
+import {
+    hasImageInMessages,
+    runVisionChat,
+    toVisionGuardMessages,
+} from "@/lib/gateway/chat-vision-router";
 import { waitUntil } from "@vercel/functions";
 import {
     buildMemorySystemBlock,
@@ -116,9 +120,11 @@ const createPendingAction = async (
 };
 
 /**
- * Insert a tool call as an already-executed action (shadow mode OFF).
+ * Record a tool call returned to the client (shadow mode OFF). Cencori does
+ * not execute arbitrary customer functions, so the audit status is
+ * "dispatched", not "executed".
  */
-const createExecutedAction = async (
+const createDispatchedAction = async (
     supabase: SupabaseAdminClient,
     agentId: string,
     toolCall: ToolCallPayload
@@ -128,7 +134,7 @@ const createExecutedAction = async (
             agent_id: agentId,
             type: "tool_call",
             payload: toolCall,
-            status: "executed",
+            status: "dispatched",
         });
     } catch (e) {
         console.error("Failed to log action", e);
@@ -260,6 +266,14 @@ export async function POST(req: NextRequest) {
         if (messages.length === 0) {
             return respondError(400, "Missing messages", "missing_messages");
         }
+        const isVisionRequest = hasImageInMessages(messages);
+        if (isVisionRequest && tools && tools.length > 0) {
+            return respondError(
+                400,
+                "Tool calling is not supported for image chat requests.",
+                "vision_tools_unsupported"
+            );
+        }
 
         // Resolve model: agent config overrides request model; non-agent mode uses request/default project model.
         const configuredModel = agentConfig?.model || body.model || gatewayCtx?.defaultModel;
@@ -274,23 +288,6 @@ export async function POST(req: NextRequest) {
             );
         }
         const model = normalizeGatewayModelId(configuredModel.trim());
-
-        // ── Vision auto-routing ──
-        // Image content parts can't flow through the text pipeline (they'd
-        // be stringified away) — route through the Vision engine, which
-        // upgrades the model if needed and returns OpenAI chat.completion
-        // shape. Mirrors the /api/ai/chat behavior.
-        if (gatewayCtx && hasImageInMessages(messages)) {
-            const visionResponse = await runVisionChat({
-                ctx: gatewayCtx,
-                rawMessages: messages,
-                requestedModel: model,
-                maxTokens: body.max_tokens,
-                temperature: body.temperature,
-                stream: shouldStream,
-            });
-            return respond(visionResponse as NextResponse);
-        }
 
         // Inject system prompt from agent config (agent mode only).
         if (agentConfig?.system_prompt) {
@@ -326,6 +323,7 @@ export async function POST(req: NextRequest) {
                 return respondError(400, msg, 'prompt_resolution_failed');
             }
         }
+        const visionSourceMessages = isVisionRequest ? [...messages] : null;
 
         const toUnifiedMessages = (items: ChatMessage[]): UnifiedMessage[] => {
             return items.map((m) => ({
@@ -432,7 +430,9 @@ export async function POST(req: NextRequest) {
             memoryDirective = parsedDirective.directive;
         }
 
-        const pipelineMessages: UnifiedMessage[] = toUnifiedMessages(messages);
+        const pipelineMessages: UnifiedMessage[] = isVisionRequest
+            ? toVisionGuardMessages(messages)
+            : toUnifiedMessages(messages);
 
         // Kick off memory retrieval in parallel with the input pipeline —
         // the embedding + RPC overlap the pipeline's own work, keeping added
@@ -448,6 +448,25 @@ export async function POST(req: NextRequest) {
                     projectId: activeGatewayCtx.projectId,
                     directive: memoryDirective,
                     queryText: lastUserMessageText,
+                    onEmbeddingUsage: usage => {
+                        waitUntil(Promise.all([
+                            logGatewayRequest(activeGatewayCtx, {
+                                endpoint: "memory/search",
+                                model: usage.model,
+                                provider: usage.provider,
+                                status: "success",
+                                promptTokens: usage.totalTokens,
+                                completionTokens: 0,
+                                totalTokens: usage.totalTokens,
+                                costUsd: usage.cencoriChargeUsd,
+                                providerCostUsd: usage.providerCostUsd,
+                                cencoriChargeUsd: usage.cencoriChargeUsd,
+                                markupPercentage: usage.markupPercentage,
+                                metadata: { source: "chat_memory_retrieval" },
+                            }),
+                            incrementUsage(activeGatewayCtx, usage.cencoriChargeUsd),
+                        ]).then(() => undefined));
+                    },
                 })
                 : Promise.resolve([]);
 
@@ -500,6 +519,62 @@ export async function POST(req: NextRequest) {
             role: m.role,
             content: m.content,
         }));
+
+        // Vision uses the same quota, memory, input rules, output guard, and
+        // billing hooks as text chat. The image-bearing source is preserved
+        // separately while the provider receives only guarded text.
+        if (isVisionRequest && visionSourceMessages) {
+            const guardedPrompt = guardedMessages
+                .map((message) => `${message.role}: ${message.content}`)
+                .join('\n');
+            const visionResponse = await runVisionChat({
+                ctx: activeGatewayCtx,
+                rawMessages: visionSourceMessages,
+                requestedModel: model,
+                maxTokens: body.max_tokens,
+                temperature: body.temperature,
+                stream: shouldStream,
+                guardedPrompt,
+                inputText: inputPipeline.inputText,
+                inputSecurity: inputPipeline.inputSecurity,
+                conversationHistory: guardedMessages,
+                tokenMap: inputPipeline.tokenMap,
+                endUserId,
+                wireFormat: 'openai',
+                recordEndUserUsage: maybeRecordEndUserUsage,
+                onCompletion: (assistantText) => {
+                    if (memoryDirective?.write && memorySettings && assistantText) {
+                        waitUntil(runChatMemoryWriteback({
+                            supabase: adminClient,
+                            gatewayCtx: activeGatewayCtx,
+                            directive: memoryDirective,
+                            settings: memorySettings,
+                            userText: inputPipeline.inputText,
+                            assistantText,
+                        }));
+                    }
+                    if (resolvedPrompt) {
+                        void logPromptUsage({
+                            projectId: activeGatewayCtx.projectId,
+                            promptId: resolvedPrompt.promptId,
+                            versionId: resolvedPrompt.versionId,
+                            model,
+                            apiKeyId: activeGatewayCtx.apiKeyId ?? undefined,
+                            requestId: activeGatewayCtx.requestId,
+                            variablesUsed: body.prompt?.variables || null,
+                            latencyMs: Date.now() - startedAt,
+                        });
+                    }
+                },
+            });
+            if (memoryDirective) {
+                visionResponse.headers.set(
+                    'X-Cencori-Memory-Retrieved',
+                    String(retrievedMemories.length)
+                );
+            }
+            return respond(visionResponse as NextResponse);
+        }
 
         // ── Prompt Cache Intercept ──
         let cacheConfig: CacheConfig | null = null;
@@ -621,7 +696,7 @@ export async function POST(req: NextRequest) {
         // Helper: store response in cache after successful non-streaming completion
         const maybeCacheResponse = (responseJson: unknown, tokens: number, costUsd: number) => {
             if (cacheConfig?.cacheEnabled && cacheKey && gatewayCtx && !shouldStream && promptTextForCache) {
-                void storeInCache({
+                void Promise.resolve(storeInCache({
                     projectId: gatewayCtx.projectId,
                     cacheKey,
                     promptText: promptTextForCache,
@@ -634,7 +709,7 @@ export async function POST(req: NextRequest) {
                     ttlSeconds: cacheConfig.ttlSeconds,
                     estimatedTokens: tokens,
                     estimatedCostUsd: costUsd,
-                }).then(() => {
+                })).then(() => {
                     void logCacheEvent({
                         projectId: gatewayCtx!.projectId,
                         entryId: null,
@@ -722,9 +797,9 @@ export async function POST(req: NextRequest) {
             createPendingAction: agentId
                 ? (toolCall) => createPendingAction(adminClient, agentId, toolCall)
                 : undefined,
-            createExecutedAction: agentId
+            createDispatchedAction: agentId
                 ? (toolCall) => {
-                    void createExecutedAction(adminClient, agentId, toolCall);
+                    void createDispatchedAction(adminClient, agentId, toolCall);
                 }
                 : undefined,
         });

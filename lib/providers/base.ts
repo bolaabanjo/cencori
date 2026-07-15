@@ -121,6 +121,47 @@ export interface ModelPricing {
     inputPer1KTokens: number;
     outputPer1KTokens: number;
     cencoriMarkupPercentage: number;
+    /** Discounted provider rate for cached prompt tokens, when reported. */
+    cachedInputPer1KTokens?: number;
+    /** Prompt-token count above which the long-context rates apply. */
+    longContextThresholdTokens?: number;
+    longContextInputPer1KTokens?: number;
+    longContextOutputPer1KTokens?: number;
+    longContextCachedInputPer1KTokens?: number;
+    /** Review deadline for temporary/promotional pricing. */
+    pricingExpiresAt?: string;
+    /** Optional fixed platform fee charged once per provider request. */
+    fixedFeePerRequest?: number;
+}
+
+/**
+ * Calculate provider token cost, including request-wide long-context tiers.
+ * Cached input is intentionally not accepted until every streaming adapter can
+ * report it consistently; callers therefore bill prompt tokens at the normal
+ * input rate rather than applying an unverified discount.
+ */
+export function calculateProviderTokenCost(
+    promptTokens: number,
+    completionTokens: number,
+    pricing: ModelPricing
+): number {
+    const safePromptTokens = Math.max(0, Number(promptTokens) || 0);
+    const safeCompletionTokens = Math.max(0, Number(completionTokens) || 0);
+    const useLongContext = pricing.longContextThresholdTokens !== undefined
+        && safePromptTokens > pricing.longContextThresholdTokens;
+    const inputRate = useLongContext
+        ? pricing.longContextInputPer1KTokens
+        : pricing.inputPer1KTokens;
+    const outputRate = useLongContext
+        ? pricing.longContextOutputPer1KTokens
+        : pricing.outputPer1KTokens;
+
+    if (inputRate === undefined || outputRate === undefined) {
+        throw new Error('Long-context pricing is incomplete');
+    }
+
+    return (safePromptTokens / 1000) * inputRate
+        + (safeCompletionTokens / 1000) * outputRate;
 }
 
 /**
@@ -129,6 +170,8 @@ export interface ModelPricing {
  */
 export abstract class AIProvider {
     abstract readonly providerName: string;
+    /** True only when this adapter faithfully maps tool definitions/results. */
+    readonly supportsTools: boolean = false;
 
     /**
      * Send a chat request (non-streaming)
@@ -168,9 +211,7 @@ export abstract class AIProvider {
         completionTokens: number,
         pricing: ModelPricing
     ): number {
-        const inputCost = (promptTokens / 1000) * pricing.inputPer1KTokens;
-        const outputCost = (completionTokens / 1000) * pricing.outputPer1KTokens;
-        return inputCost + outputCost;
+        return calculateProviderTokenCost(promptTokens, completionTokens, pricing);
     }
 
     /**

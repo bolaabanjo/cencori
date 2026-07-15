@@ -13,6 +13,7 @@ import type { NextRequest } from 'next/server';
 import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import {
     normalizeProviderError,
@@ -20,6 +21,11 @@ import {
     ContentFilterError,
     ModelNotFoundError,
 } from '@/lib/providers/errors';
+import {
+    readResponseBuffer,
+    safeOutboundFetch,
+    UnsafeOutboundUrlError,
+} from '@/lib/security/outbound-url';
 
 export const MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024;
 
@@ -127,7 +133,7 @@ const VISION_MODELS: Record<string, ModelInfo> = {
     'gpt-4o-mini': { provider: 'openai', apiModel: 'gpt-4o-mini', description: 'Fast, cheap vision — good default' },
     'gpt-4-turbo': { provider: 'openai', apiModel: 'gpt-4-turbo', description: 'GPT-4 Turbo vision' },
     // Anthropic
-    'claude-sonnet-4-5': { provider: 'anthropic', apiModel: 'claude-sonnet-4-5', description: 'Claude Sonnet 4.5 — strong OCR' },
+    'claude-sonnet-4-6': { provider: 'anthropic', apiModel: 'claude-sonnet-4-6', description: 'Claude Sonnet 4.6 — strong OCR' },
     'claude-3-5-sonnet-latest': { provider: 'anthropic', apiModel: 'claude-3-5-sonnet-latest', description: 'Claude 3.5 Sonnet' },
     'claude-3-5-haiku-latest': { provider: 'anthropic', apiModel: 'claude-3-5-haiku-latest', description: 'Claude 3.5 Haiku' },
     // Google
@@ -204,15 +210,26 @@ async function normalizeImage(image: VisionImage): Promise<NormalizedImage> {
         }
         // Remote URL: fetch bytes so all three providers can consume it
         if (image.url.startsWith('http://') || image.url.startsWith('https://')) {
-            // Some hosts (e.g. Wikimedia) reject UA-less requests with 400/403.
-            const res = await fetch(image.url, {
-                headers: { 'User-Agent': 'Cencori-Gateway/1.0 (+https://cencori.com)' },
-            });
-            if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
-            const buf = Buffer.from(await res.arrayBuffer());
-            const mimeType = res.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
-            const base64 = buf.toString('base64');
-            return { dataUrl: image.url, base64, mimeType, isRemote: true };
+            try {
+                // Some hosts (e.g. Wikimedia) reject UA-less requests with 400/403.
+                const res = await safeOutboundFetch(
+                    image.url,
+                    {
+                        headers: { 'User-Agent': 'Cencori-Gateway/1.0 (+https://cencori.com)' },
+                        signal: AbortSignal.timeout(15_000),
+                    },
+                    { maxRedirects: 3 },
+                );
+                if (!res.ok) throw new VisionValidationError('fetch_failed', `Failed to fetch image: ${res.status}`);
+                const buf = await readResponseBuffer(res, MAX_VISION_IMAGE_BYTES);
+                const mimeType = res.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
+                const base64 = buf.toString('base64');
+                return { dataUrl: `data:${mimeType};base64,${base64}`, base64, mimeType, isRemote: false };
+            } catch (error) {
+                if (error instanceof VisionValidationError) throw error;
+                const code = error instanceof UnsafeOutboundUrlError ? 'unsafe_image_url' : 'fetch_failed';
+                throw new VisionValidationError(code, error instanceof Error ? error.message : 'Failed to fetch image');
+            }
         }
         throw new Error('Image URL must be http(s):// or data:');
     }
@@ -305,7 +322,7 @@ async function analyzeOpenAI(
     imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number; jsonMode?: boolean }
 ): Promise<{ analysis: string; promptTokens: number; completionTokens: number }> {
-    const client = new OpenAI({ apiKey });
+    const client = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 });
     const response = await client.chat.completions.create({
         model,
         max_tokens: opts.maxTokens ?? 1024,
@@ -421,6 +438,9 @@ export interface VisionStreamChunk {
     model?: string;
     provider?: VisionProvider;
     error?: string;
+    usedFallback?: boolean;
+    originalModel?: string;
+    originalProvider?: VisionProvider;
 }
 
 async function* streamOpenAI(
@@ -430,7 +450,7 @@ async function* streamOpenAI(
     imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
-    const client = new OpenAI({ apiKey });
+    const client = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 });
     const stream = await client.chat.completions.create({
         model,
         max_tokens: opts.maxTokens ?? 1024,
@@ -547,6 +567,8 @@ export async function* streamVision(
     request: VisionAnalyzeRequest
 ): AsyncGenerator<VisionStreamChunk> {
     let model = resolveModel(request.model);
+    const originalModel = model;
+    let usedFallback = false;
     const apiKey = await getProviderKey(ctx, model.provider);
     if (!apiKey) {
         throw new Error(`No ${model.provider} API key configured for this project. Add one in project settings.`);
@@ -556,6 +578,7 @@ export async function* streamVision(
     for (const img of imgs) validateImageForProvider(img, model.provider);
     const prompt = request.prompt ?? (imgs.length > 1 ? 'Analyze these images together.' : 'Describe this image in detail.');
     const opts = { maxTokens: request.maxTokens, temperature: request.temperature };
+    let pricing = await getPricingFromDB(model.provider, model.apiModel);
 
     // Failover window: only before the first chunk is emitted. Once bytes
     // have flowed to the client we can't switch providers mid-answer.
@@ -585,6 +608,7 @@ export async function* streamVision(
 
             const fallbackModel = resolveModel(candidate.modelKey);
             try {
+                const fallbackPricing = await getPricingFromDB(candidate.provider, fallbackModel.apiModel);
                 for (const img of imgs) validateImageForProvider(img, candidate.provider);
                 generator = makeVisionStreamGenerator(
                     candidate.provider, fallbackKey, fallbackModel.apiModel, prompt, imgs, opts
@@ -592,6 +616,8 @@ export async function* streamVision(
                 iterator = generator[Symbol.asyncIterator]();
                 first = await iterator.next();
                 model = fallbackModel;
+                pricing = fallbackPricing;
+                usedFallback = true;
                 recovered = true;
                 break;
             } catch (fallbackError) {
@@ -621,11 +647,13 @@ export async function* streamVision(
         first = await iterator.next();
     }
 
-    const pricing = await getPricingFromDB(model.provider, model.apiModel);
-    const providerCost =
-        (promptTokens / 1000) * pricing.inputPer1KTokens +
-        (completionTokens / 1000) * pricing.outputPer1KTokens;
-    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+    const providerCost = calculateProviderTokenCost(
+        promptTokens,
+        completionTokens,
+        pricing
+    );
+    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100)
+        + (pricing.fixedFeePerRequest ?? 0);
 
     yield {
         done: true,
@@ -641,6 +669,10 @@ export async function* streamVision(
             cencoriChargeUsd: cencoriCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
         },
+        usedFallback,
+        ...(usedFallback
+            ? { originalModel: originalModel.key, originalProvider: originalModel.provider }
+            : {}),
     };
 }
 
@@ -706,6 +738,7 @@ export async function analyzeVision(
         temperature: request.temperature,
         jsonMode: request.responseFormat === 'json',
     };
+    let pricing = await getPricingFromDB(model.provider, model.apiModel);
 
     let result: VisionCallResult;
     let usedFallback = false;
@@ -732,6 +765,7 @@ export async function analyzeVision(
 
             const fallbackModel = resolveModel(candidate.modelKey);
             try {
+                const fallbackPricing = await getPricingFromDB(candidate.provider, fallbackModel.apiModel);
                 for (const img of imgs) validateImageForProvider(img, candidate.provider);
                 const fallbackResult = await callVisionProvider(
                     candidate.provider,
@@ -742,6 +776,7 @@ export async function analyzeVision(
                     opts
                 );
                 recovered = { result: fallbackResult, candidate: fallbackModel };
+                pricing = fallbackPricing;
                 break;
             } catch (fallbackError) {
                 console.warn(
@@ -762,11 +797,13 @@ export async function analyzeVision(
         usedFallback = true;
     }
 
-    const pricing = await getPricingFromDB(model.provider, model.apiModel);
-    const providerCost =
-        (result.promptTokens / 1000) * pricing.inputPer1KTokens +
-        (result.completionTokens / 1000) * pricing.outputPer1KTokens;
-    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+    const providerCost = calculateProviderTokenCost(
+        result.promptTokens,
+        result.completionTokens,
+        pricing
+    );
+    const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100)
+        + (pricing.fixedFeePerRequest ?? 0);
 
     return {
         analysis: result.analysis,

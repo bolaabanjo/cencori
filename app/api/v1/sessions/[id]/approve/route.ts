@@ -12,6 +12,9 @@ import {
 import { extractCencoriApiKeyFromHeaders } from "@/lib/api-keys";
 import { resumeSessionTurn, type SupabaseAdmin } from "@/lib/gateway/session-engine";
 import type { SubscriptionTier } from "@/lib/entitlements";
+import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
+import type { UnifiedMessage } from "@/lib/providers/base";
+import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -56,12 +59,38 @@ export async function POST(
         if (!validation.success) return validation.response;
         gatewayCtx = validation.context;
 
-        const body = await req.json() as { action_id: string; tool_results?: Array<{ action_id: string; output: string }> };
+        let body: { action_id?: unknown; tool_results?: unknown };
+        try {
+            body = await req.json() as { action_id?: unknown; tool_results?: unknown };
+        } catch {
+            return respondError(400, 'Request body must be valid JSON', 'invalid_json');
+        }
         const { action_id, tool_results } = body;
 
-        if (!action_id) {
+        if (typeof action_id !== 'string' || !action_id.trim()) {
             return respondError(400, "Missing action_id", "missing_action_id");
         }
+
+        if (!Array.isArray(tool_results) || tool_results.length === 0) {
+            return respondError(
+                400,
+                "tool_results are required to resume an approved tool call",
+                "missing_tool_results",
+            );
+        }
+        if (tool_results.length > 100 || tool_results.some((result) =>
+            !result || typeof result !== 'object'
+            || typeof (result as Record<string, unknown>).action_id !== 'string'
+            || typeof (result as Record<string, unknown>).output !== 'string'
+            || new TextEncoder().encode((result as Record<string, unknown>).output as string).byteLength > 1024 * 1024
+        )) {
+            return respondError(
+                400,
+                'tool_results must contain at most 100 string outputs, each no larger than 1 MiB',
+                'invalid_tool_results',
+            );
+        }
+        const validatedToolResults = tool_results as Array<{ action_id: string; output: string }>;
 
         const adminClient = createAdminClient();
 
@@ -101,65 +130,109 @@ export async function POST(
             return respondError(409, "action_id does not match the paused tool call", "action_id_mismatch");
         }
 
-        // If tool_results provided, verify at least one matches the paused action_id
-        if (tool_results && tool_results.length > 0) {
-            const validIds = new Set([action_id, ...Object.keys(pausedPayload.arguments as Record<string, unknown> || {})]);
-            for (const tr of tool_results) {
-                if (!validIds.has(tr.action_id)) {
-                    return respondError(400, `tool_result action_id "${tr.action_id}" does not match any paused tool call`, "invalid_tool_result_action_id");
-                }
+        const pausedActions = Array.isArray(pausedPayload.actions)
+            ? (pausedPayload.actions as Array<{ action_id?: unknown }>)
+                .map((action) => action.action_id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            : [action_id];
+        const validIds = new Set(pausedActions);
+        for (const tr of validatedToolResults) {
+            if (!validIds.has(tr.action_id)) {
+                return respondError(400, `tool_result action_id "${tr.action_id}" does not match any paused tool call`, "invalid_tool_result_action_id");
             }
         }
+        const suppliedIds = new Set(validatedToolResults.map((result) => result.action_id));
+        const missingResult = pausedActions.find((id) => !suppliedIds.has(id));
+        if (missingResult) {
+            return respondError(
+                400,
+                `Missing tool_result for paused action "${missingResult}"`,
+                'missing_tool_result',
+            );
+        }
 
-        // Compute next sequence number for this turn
-        const { data: seqResult } = await adminClient
+        // Tool outputs are external input. Guard and transform them before
+        // they are put back into the model context on resume.
+        const toolResultMessages: UnifiedMessage[] = validatedToolResults.map((result) => ({
+            role: 'user',
+            content: result.output,
+        }));
+        const toolInputPipeline = await runGatewayInputPipeline({
+            supabase: adminClient,
+            projectId: gatewayCtx.projectId,
+            apiKeyId: gatewayCtx.apiKeyId,
+            environment: gatewayCtx.environment,
+            tier: (gatewayCtx.tier || 'free') as SubscriptionTier,
+            messages: toolResultMessages,
+        });
+        if (!toolInputPipeline.ok) {
+            return respondError(
+                toolInputPipeline.status,
+                toolInputPipeline.message,
+                toolInputPipeline.code,
+            );
+        }
+        const guardedToolResults = validatedToolResults.map((result, index) => ({
+            ...result,
+            output: toolInputPipeline.messages[index]?.content ?? '',
+        }));
+
+        // Complete every fallible resume preflight before consuming the pause.
+        // Once resolve_session_pause commits, concurrent approvals must lose,
+        // so a missing event/model/pricing row cannot be discovered afterward.
+        const { data: startedEvent, error: startedEventError } = await adminClient
             .from('session_events')
-            .select('sequence')
+            .select('payload')
             .eq('session_id', sessionId)
             .eq('turn_number', session.last_turn_number)
-            .order('sequence', { ascending: false })
-            .limit(1);
-
-        const nextSeq = (seqResult && seqResult.length > 0 ? seqResult[0].sequence : 0) + 1;
-
-        // Append turn.resumed event
-        const { error: eventError } = await adminClient.from('session_events').insert({
-            session_id: sessionId,
-            turn_number: session.last_turn_number,
-            sequence: nextSeq,
-            event_type: 'turn.resumed',
-            payload: { action_id, resolution: 'approved' },
+            .eq('event_type', 'turn.started')
+            .single();
+        if (startedEventError || !startedEvent) {
+            return respondError(409, 'Turn has no durable started event', 'no_started_event');
+        }
+        const resumeModel = (startedEvent.payload as Record<string, unknown>)?.model;
+        if (typeof resumeModel !== 'string' || !resumeModel.trim()) {
+            return respondError(409, 'Turn has no durable model', 'no_model');
+        }
+        await resolveGatewayProvider({
+            supabase: adminClient,
+            projectId: gatewayCtx.projectId,
+            organizationId: gatewayCtx.organizationId,
+            requestedModel: resumeModel,
         });
 
-        if (eventError) {
-            return respondError(500, eventError.message, 'event_creation_failed');
+        const { data: resolutionRows, error: resolutionError } = await adminClient.rpc(
+            'resolve_session_pause',
+            {
+                p_session_id: sessionId,
+                p_project_id: gatewayCtx.projectId,
+                p_turn_number: session.last_turn_number,
+                p_action_id: action_id,
+                p_resolution: 'approved',
+            },
+        );
+        if (resolutionError) {
+            console.error('[Sessions] Approval resolution failed:', resolutionError);
+            return respondError(500, 'Failed to resolve session pause', 'session_resolution_failed');
+        }
+        const resolution = Array.isArray(resolutionRows) ? resolutionRows[0] : resolutionRows;
+        if (!resolution?.applied) {
+            const code = resolution?.error_code || 'concurrent_modification';
+            const status = code === 'session_not_found' ? 404 : 409;
+            return respondError(status, 'Session pause was already resolved or no longer matches', code);
         }
 
-        // Set session back to active (CAS: only if still paused) with no TTL
-        const { data: updated, error: updateError } = await adminClient
-            .from('sessions')
-            .update({ status: 'active', expires_at: null })
-            .eq('id', sessionId)
-            .eq('status', 'paused')
-            .select('id, status')
-            .single();
-
-        if (updateError) {
-            if (updateError.code === 'PGRST116') {
-                return respondError(409, 'Session was already processed by another request', 'concurrent_modification');
-            }
-            return respondError(500, updateError.message, 'session_update_failed');
-        }
-
-        // If tool results provided, resume the turn and return SSE stream
-        if (tool_results && tool_results.length > 0) {
-            const execResult = await resumeSessionTurn({
+        // Resume the turn and return its SSE stream.
+        const execResult = await resumeSessionTurn({
                 supabase: adminClient as SupabaseAdmin,
                 gatewayCtx,
                 sessionId,
                 turnNumber: session.last_turn_number,
-                toolResults: tool_results,
+                toolResults: guardedToolResults,
                 tier: (gatewayCtx.tier || "free") as SubscriptionTier,
+                inputText: toolInputPipeline.inputText,
+                inputSecurity: toolInputPipeline.inputSecurity,
+                tokenMap: toolInputPipeline.tokenMap,
                 logSuccess: (meta) => {
                     void logGatewayRequest(gatewayCtx!, {
                         endpoint: "/v1/sessions/:id/approve",
@@ -181,26 +254,17 @@ export async function POST(
                 },
             });
 
-            if (!execResult.ok) {
-                return respond(
-                    NextResponse.json(execResult.body, { status: execResult.status }),
-                    "resume_failed",
-                    (execResult.body as { error?: { message?: string } }).error?.message || "Resume failed",
-                );
-            }
-
-            return respond(execResult.response);
+        if (!execResult.ok) {
+            return respond(
+                NextResponse.json(execResult.body, { status: execResult.status }),
+                "resume_failed",
+                (execResult.body as { error?: { message?: string } }).error?.message || "Resume failed",
+            );
         }
 
-        // No tool results — return acknowledgment
-        return respond(NextResponse.json({
-            id: sessionId,
-            action_id,
-            resolution: 'approved',
-            status: 'active',
-        }));
+        return respond(execResult.response);
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Internal server error";
-        return respondError(500, message, 'internal_error');
+        console.error('[Sessions] Approve failed:', error);
+        return respondError(500, 'Internal server error', 'internal_error');
     }
 }

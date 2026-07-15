@@ -21,6 +21,11 @@ import {
     DocumentValidationError,
 } from '@/lib/documents/extract';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 const QUERY_MODEL = 'gpt-4o-mini';
 
@@ -54,8 +59,45 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Fail before document extraction if the generation model cannot be
+        // billed exactly.
+        const pricing = await getPricingFromDB('openai', QUERY_MODEL);
+
         const { input, opts } = await parseDocumentRequest(req);
+        if (opts.prompt) {
+            const promptGuard = await runGatewayInputPipeline({
+                supabase: ctx.supabase,
+                projectId: ctx.projectId,
+                apiKeyId: ctx.apiKeyId,
+                environment: ctx.environment,
+                tier: (ctx.tier || 'free') as SubscriptionTier,
+                messages: [{ role: 'user', content: opts.prompt }],
+            });
+            if (!promptGuard.ok) {
+                return addGatewayHeaders(
+                    NextResponse.json({ error: promptGuard.code, message: promptGuard.message }, { status: promptGuard.status }),
+                    { requestId: ctx.requestId }
+                );
+            }
+            opts.prompt = promptGuard.messages[0]?.content ?? opts.prompt;
+        }
         const extracted = await extractDocument(ctx, input, opts);
+
+        const providerInput = `Document:\n\n${extracted.text}\n\n---\n\nQuestion: ${question}`;
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: providerInput }],
+        });
+        if (!inputPipeline.ok) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons }, { status: inputPipeline.status }),
+                { requestId: ctx.requestId }
+            );
+        }
 
         const { data: providerKey } = await ctx.supabase
             .from('provider_keys')
@@ -74,7 +116,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const client = new OpenAI({ apiKey: openaiKey });
+        const client = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
         const queryResp = await client.chat.completions.create({
             model: QUERY_MODEL,
             temperature: 0,
@@ -84,27 +126,43 @@ export async function POST(req: NextRequest) {
                     role: 'system',
                     content: 'You answer questions strictly from the provided document. If the answer is not present, say "Not found in the document." Do not invent details. Include short quoted excerpts when useful.',
                 },
-                { role: 'user', content: `Document:\n\n${extracted.text}\n\n---\n\nQuestion: ${question}` },
+                { role: 'user', content: inputPipeline.messages[0]?.content ?? providerInput },
             ],
         });
-        const answer = queryResp.choices[0]?.message?.content ?? '';
+        const rawAnswer = queryResp.choices[0]?.message?.content ?? '';
+        const answer = inputPipeline.tokenMap
+            ? deTokenize(rawAnswer, inputPipeline.tokenMap)
+            : rawAnswer;
         const promptTokens = queryResp.usage?.prompt_tokens ?? 0;
         const completionTokens = queryResp.usage?.completion_tokens ?? 0;
 
-        const pricing = await getPricingFromDB('openai', QUERY_MODEL);
-        const providerCost =
-            (promptTokens / 1000) * pricing.inputPer1KTokens +
-            (completionTokens / 1000) * pricing.outputPer1KTokens;
-        const charge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+        const providerCost = calculateProviderTokenCost(
+            promptTokens,
+            completionTokens,
+            pricing
+        );
+        const charge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100)
+            + (pricing.fixedFeePerRequest ?? 0);
 
         const totalProviderCost = providerCost + (extracted.cost?.providerCostUsd ?? 0);
         const totalCharge = charge + (extracted.cost?.cencoriChargeUsd ?? 0);
+
+        const outputCheck = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: answer,
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            conversationHistory: inputPipeline.messages,
+        });
 
         await logGatewayRequest(ctx, {
             endpoint: 'documents/query',
             model: QUERY_MODEL,
             provider: 'openai',
-            status: 'success',
+            status: outputCheck.ok ? 'success' : 'blocked_output',
             promptTokens: promptTokens + (extracted.usage?.promptTokens ?? 0),
             completionTokens: completionTokens + (extracted.usage?.completionTokens ?? 0),
             totalTokens: promptTokens + completionTokens + (extracted.usage?.totalTokens ?? 0),
@@ -113,8 +171,16 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: totalCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: { extract_method: extracted.method, kind: extracted.kind, pageCount: extracted.pageCount, question_length: question.length },
+            errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, totalCharge);
+
+        if (!outputCheck.ok) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: outputCheck.code, message: outputCheck.message, reasons: outputCheck.reasons }, { status: outputCheck.status }),
+                { requestId: ctx.requestId }
+            );
+        }
 
         return addGatewayHeaders(
             NextResponse.json({

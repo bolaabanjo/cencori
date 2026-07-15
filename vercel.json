@@ -6,7 +6,7 @@
         },
         {
             "source": "/v1/completions",
-            "destination": "/api/ai/chat"
+            "destination": "/api/ai/completions"
         },
         {
             "source": "/v1/models",
@@ -19,6 +19,14 @@
         {
             "source": "/v1/responses",
             "destination": "/api/v1/responses"
+        },
+        {
+            "source": "/v1/sessions",
+            "destination": "/api/v1/sessions"
+        },
+        {
+            "source": "/v1/sessions/:path*",
+            "destination": "/api/v1/sessions/:path*"
         },
         {
             "source": "/v1/memory/:path*",
@@ -115,6 +123,18 @@
         {
             "path": "/api/cron/reset-usage",
             "schedule": "0 0 1 * *"
+        },
+        {
+            "path": "/api/cron/gateway-maintenance",
+            "schedule": "*/15 * * * *"
+        },
+        {
+            "path": "/api/cron/cache-cleanup",
+            "schedule": "17 3 * * *"
+        },
+        {
+            "path": "/api/cron/anomaly-alerts",
+            "schedule": "7 * * * *"
         }
     ]
 }

@@ -28,7 +28,11 @@ import {
     type GatewayContext,
 } from '@/lib/gateway-middleware';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
-import { hasImageInMessages, runVisionChat } from '@/lib/gateway/chat-vision-router';
+import {
+    hasImageInMessages,
+    runVisionChat,
+    toVisionGuardMessages,
+} from '@/lib/gateway/chat-vision-router';
 import { loadAgentKeyContext } from '@/lib/gateway/agent-context';
 import { runV1ProviderExecution } from '@/lib/gateway/v1-execute';
 import { makeChatLogSuccess } from '@/lib/gateway/chat-post-success';
@@ -167,25 +171,19 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        let messages = rawMessages as Array<{ role: string; content: string }>;
-
-        // ── Vision auto-route ──
-        // Multi-part messages with images can't survive the text pipeline;
-        // route through the Vision engine (auto-upgrades non-vision models).
-        if (hasImageInMessages(rawMessages as Array<{ role: string; content: unknown }>)) {
-            try {
-                return await runVisionChat({
-                    ctx,
-                    rawMessages: rawMessages as Array<{ role: string; content: unknown }>,
-                    requestedModel: model,
-                    maxTokens,
-                    temperature,
-                    stream: isStreaming,
-                });
-            } catch (err) {
-                const message = err instanceof Error ? err.message : 'vision_route_failed';
-                return wrap(NextResponse.json({ error: message }, { status: 400 }), ctx);
-            }
+        let messages = rawMessages as Array<{ role: string; content: unknown }>;
+        const isVisionRequest = hasImageInMessages(messages);
+        if (isVisionRequest && tools && tools.length > 0) {
+            return wrap(
+                NextResponse.json(
+                    {
+                        error: 'vision_tools_unsupported',
+                        message: 'Tool calling is not supported for image chat requests.',
+                    },
+                    { status: 400 }
+                ),
+                ctx
+            );
         }
 
         // ── End-user billing quota (legacy flat shapes) ──
@@ -247,7 +245,17 @@ export async function POST(req: NextRequest) {
                     );
                 }
             } catch (err) {
-                console.error('[EndUserBilling] Quota check failed, allowing request:', err);
+                console.error('[EndUserBilling] Quota check failed:', err);
+                return wrap(
+                    NextResponse.json(
+                        {
+                            error: 'End-user quota unavailable',
+                            message: 'Usage limits could not be verified. Retry shortly.',
+                        },
+                        { status: 503 }
+                    ),
+                    ctx
+                );
             }
         }
 
@@ -304,11 +312,16 @@ export async function POST(req: NextRequest) {
             messages = messages.filter((m) => m.role !== 'system');
             messages = [{ role: 'system', content: resolvedPromptData.content }, ...messages];
         }
+        const visionSourceMessages = isVisionRequest ? [...messages] : null;
 
-        let unifiedMessages: UnifiedMessage[] = messages.map((msg) => ({
-            role: msg.role as UnifiedMessage['role'],
-            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? ''),
-        }));
+        let unifiedMessages: UnifiedMessage[] = isVisionRequest
+            ? toVisionGuardMessages(messages)
+            : messages.map((msg) => ({
+                  role: msg.role as UnifiedMessage['role'],
+                  content: typeof msg.content === 'string'
+                      ? msg.content
+                      : JSON.stringify(msg.content ?? ''),
+              }));
 
         // ── Memory (API opt-in — same engine feature as /v1) ──
         let memoryDirective: MemoryDirective | null = null;
@@ -335,12 +348,31 @@ export async function POST(req: NextRequest) {
             [...unifiedMessages].reverse().find((m) => m.role === 'user')?.content ?? '';
         const memoryPromise: Promise<RetrievedMemory[]> =
             memoryDirective?.retrieve
-                ? retrieveMemories({
+                  ? retrieveMemories({
                       supabase,
                       organizationId: ctx.organizationId,
                       projectId: ctx.projectId,
                       directive: memoryDirective,
                       queryText: lastUserMessageText,
+                      onEmbeddingUsage: usage => {
+                          waitUntil(Promise.all([
+                              logGatewayRequest(ctx, {
+                                  endpoint: 'memory/search',
+                                  model: usage.model,
+                                  provider: usage.provider,
+                                  status: 'success',
+                                  promptTokens: usage.totalTokens,
+                                  completionTokens: 0,
+                                  totalTokens: usage.totalTokens,
+                                  costUsd: usage.cencoriChargeUsd,
+                                  providerCostUsd: usage.providerCostUsd,
+                                  cencoriChargeUsd: usage.cencoriChargeUsd,
+                                  markupPercentage: usage.markupPercentage,
+                                  metadata: { source: 'chat_memory_retrieval' },
+                              }),
+                              incrementUsage(ctx, usage.cencoriChargeUsd),
+                          ]).then(() => undefined));
+                      },
                   })
                 : Promise.resolve([]);
 
@@ -394,10 +426,12 @@ export async function POST(req: NextRequest) {
         // ── Model resolution (legacy chain, incl. hardcoded fallback) ──
         const resolvedModel = model === 'auto' || model === 'cencori/auto' ? null : model;
         const requestedModel =
-            resolvedModel || agentConfigModel || ctx.defaultModel || 'gemini-2.0-flash';
+            resolvedModel || agentConfigModel || ctx.defaultModel || 'gemini-2.5-flash';
 
         // ── Prompt cache (skip both directions when memory retrieval active) ──
         const cacheEligible =
+            !isVisionRequest
+            &&
             !isStreaming
             && (!Array.isArray(tools) || tools.length === 0)
             && !memoryDirective?.retrieve;
@@ -565,6 +599,55 @@ export async function POST(req: NextRequest) {
                 );
             }
         };
+
+        if (isVisionRequest && visionSourceMessages) {
+            const guardedPrompt = unifiedMessages
+                .map((message) => `${message.role}: ${message.content}`)
+                .join('\n');
+            try {
+                const response = await runVisionChat({
+                    ctx,
+                    rawMessages: visionSourceMessages,
+                    requestedModel,
+                    maxTokens,
+                    temperature,
+                    stream: isStreaming,
+                    guardedPrompt,
+                    inputText: inputPipeline.inputText,
+                    inputSecurity: inputPipeline.inputSecurity,
+                    conversationHistory: unifiedMessages,
+                    tokenMap: inputPipeline.tokenMap,
+                    endUserId,
+                    wireFormat: 'cencori',
+                    recordEndUserUsage: maybeRecordEndUserUsage,
+                    onCompletion: (assistantText) => {
+                        scheduleMemoryWriteback(assistantText);
+                        if (resolvedPromptData) {
+                            void logPromptUsage({
+                                projectId: ctx.projectId,
+                                promptId: resolvedPromptData.promptId,
+                                versionId: resolvedPromptData.versionId,
+                                model: requestedModel,
+                                apiKeyId: ctx.apiKeyId ?? undefined,
+                                requestId: ctx.requestId,
+                                variablesUsed: body.prompt?.variables || null,
+                                latencyMs: Date.now() - startTime,
+                            });
+                        }
+                    },
+                });
+                if (memoryDirective) {
+                    response.headers.set(
+                        'X-Cencori-Memory-Retrieved',
+                        String(retrievedMemories.length)
+                    );
+                }
+                return wrap(response as NextResponse, ctx);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'vision_route_failed';
+                return wrap(NextResponse.json({ error: message }, { status: 400 }), ctx);
+            }
+        }
 
         // ── Unified engine, legacy wire format ──
         const execResult = await runV1ProviderExecution({

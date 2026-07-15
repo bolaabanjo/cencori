@@ -102,7 +102,9 @@ export async function POST(
 
         // ── Agent resolution ──
         const adminClient = createAdminClient();
-        void expireStaleSessions(adminClient as never);
+        void expireStaleSessions(adminClient as never).catch((error) => {
+            console.error('[Sessions] Opportunistic expiry failed:', error);
+        });
 
         // Fetch session first
         const { data: session, error: sessionError } = await adminClient
@@ -123,24 +125,6 @@ export async function POST(
             return respondError(409, `Session is ${session.status}, not active`, "session_not_active");
         }
 
-        // ── Atomic turn counter: CAS on last_turn_number ──
-        const { data: locked, error: lockError } = await adminClient
-            .from('sessions')
-            .update({ last_turn_number: session.last_turn_number + 1 })
-            .eq('id', sessionId)
-            .eq('last_turn_number', session.last_turn_number)
-            .select('id, last_turn_number')
-            .single();
-
-        if (lockError) {
-            if (lockError.code === 'PGRST116') {
-                return respondError(409, 'Concurrent turn detected. Session was already updated by another request.', 'concurrent_turn');
-            }
-            return respondError(500, lockError.message, 'session_lock_failed');
-        }
-
-        const newTurnNumber = locked.last_turn_number;
-
         const agentResult = await resolveAgentContext({
             supabase: adminClient,
             req,
@@ -148,6 +132,7 @@ export async function POST(
             authenticatedProjectId: gatewayCtx.projectId,
             authenticatedUserId: null,
             startedAt,
+            agentIdOverride: session.agent_id,
         });
 
         let agentId: string | null = session.agent_id || null;
@@ -315,6 +300,25 @@ export async function POST(
                     projectId: activeGatewayCtx.projectId,
                     directive: memoryDirective,
                     queryText: lastUserMessageText,
+                    onEmbeddingUsage: usage => {
+                        waitUntil(Promise.all([
+                            logGatewayRequest(activeGatewayCtx, {
+                                endpoint: "memory/search",
+                                model: usage.model,
+                                provider: usage.provider,
+                                status: "success",
+                                promptTokens: usage.totalTokens,
+                                completionTokens: 0,
+                                totalTokens: usage.totalTokens,
+                                costUsd: usage.cencoriChargeUsd,
+                                providerCostUsd: usage.providerCostUsd,
+                                cencoriChargeUsd: usage.cencoriChargeUsd,
+                                markupPercentage: usage.markupPercentage,
+                                metadata: { source: "session_memory_retrieval" },
+                            }),
+                            incrementUsage(activeGatewayCtx, usage.cencoriChargeUsd),
+                        ]).then(() => undefined));
+                    },
                 })
                 : Promise.resolve([]);
 
@@ -382,6 +386,26 @@ export async function POST(
             }
         }
 
+        // Reserve a turn only after authentication, validation, quota, memory,
+        // and security checks have succeeded. Invalid requests must not burn a
+        // turn number or create gaps in replay history.
+        const { data: locked, error: lockError } = await adminClient
+            .from('sessions')
+            .update({ last_turn_number: session.last_turn_number + 1 })
+            .eq('id', sessionId)
+            .eq('last_turn_number', session.last_turn_number)
+            .select('id, last_turn_number')
+            .single();
+
+        if (lockError || !locked) {
+            if (lockError?.code === 'PGRST116') {
+                return respondError(409, 'Concurrent turn detected. Session was already updated by another request.', 'concurrent_turn');
+            }
+            return respondError(500, lockError?.message || 'Failed to reserve session turn', 'session_lock_failed');
+        }
+
+        const newTurnNumber = locked.last_turn_number;
+
         // ── Execute turn ──
         const execResult = await executeSessionTurn({
             supabase: adminClient,
@@ -397,6 +421,8 @@ export async function POST(
             response_format: body.response_format,
             inputMessages: guardedInput,
             inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            tokenMap: inputPipeline.tokenMap,
             onCompletion: scheduleMemoryWriteback,
             pauseOnToolCalls: body.pause_on_tool_calls ?? false,
             endUserId,

@@ -15,12 +15,14 @@ import {
 import { getPricingFromDB } from './pricing';
 import { toAnthropicMessages } from './utils';
 import { normalizeProviderError } from './errors';
+import { safeProviderFetch } from '@/lib/security/outbound-url';
 
 export class AnthropicProvider extends AIProvider {
     readonly providerName = 'anthropic';
     private client: Anthropic;
+    private pricingOverride?: ModelPricing;
 
-    constructor(apiKey?: string, options?: { baseURL?: string }) {
+    constructor(apiKey?: string, options?: { baseURL?: string; pricing?: ModelPricing }) {
         super();
 
         const key = apiKey || process.env.ANTHROPIC_API_KEY;
@@ -31,7 +33,11 @@ export class AnthropicProvider extends AIProvider {
         this.client = new Anthropic({
             apiKey: key,
             ...(options?.baseURL ? { baseURL: options.baseURL } : {}),
+            ...(options?.baseURL ? { fetch: safeProviderFetch } : {}),
+            timeout: 55_000,
+            maxRetries: 0,
         });
+        this.pricingOverride = options?.pricing;
     }
 
     async chat(request: UnifiedChatRequest): Promise<UnifiedChatResponse> {
@@ -55,7 +61,8 @@ export class AnthropicProvider extends AIProvider {
                 response.usage.output_tokens,
                 pricing
             );
-            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage);
+            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                + (pricing.fixedFeePerRequest ?? 0);
 
             // Normalize Anthropic's stop_reason to our type
             const stopReason = response.stop_reason;
@@ -134,7 +141,7 @@ export class AnthropicProvider extends AIProvider {
     }
 
     async getPricing(model: string): Promise<ModelPricing> {
-        return getPricingFromDB('anthropic', model);
+        return this.pricingOverride || getPricingFromDB('anthropic', model);
     }
 
     async testConnection(): Promise<boolean> {

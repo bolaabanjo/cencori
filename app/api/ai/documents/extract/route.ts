@@ -21,6 +21,8 @@ import {
     DocumentValidationError,
     MAX_DOCUMENT_BYTES,
 } from '@/lib/documents/extract';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -33,7 +35,56 @@ export async function POST(req: NextRequest) {
 
     try {
         const { input, opts } = await parseDocumentRequest(req);
+        if (opts.prompt) {
+            const promptGuard = await runGatewayInputPipeline({
+                supabase: ctx.supabase,
+                projectId: ctx.projectId,
+                apiKeyId: ctx.apiKeyId,
+                environment: ctx.environment,
+                tier: (ctx.tier || 'free') as SubscriptionTier,
+                messages: [{ role: 'user', content: opts.prompt }],
+            });
+            if (!promptGuard.ok) {
+                return addGatewayHeaders(
+                    NextResponse.json(
+                        { error: promptGuard.code, message: promptGuard.message, reasons: promptGuard.reasons },
+                        { status: promptGuard.status }
+                    ),
+                    { requestId: ctx.requestId }
+                );
+            }
+            opts.prompt = promptGuard.messages[0]?.content ?? opts.prompt;
+        }
         const result = await extractDocument(ctx, input, opts);
+        const contentGuard = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: result.text }],
+        });
+        if (!contentGuard.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'documents/extract',
+                model: result.model ?? 'pdf-parse',
+                provider: result.provider ?? 'native',
+                status: 'blocked',
+                costUsd: result.cost?.cencoriChargeUsd ?? 0,
+                providerCostUsd: result.cost?.providerCostUsd ?? 0,
+                cencoriChargeUsd: result.cost?.cencoriChargeUsd ?? 0,
+                errorMessage: contentGuard.message,
+            });
+            await incrementUsage(ctx, result.cost?.cencoriChargeUsd ?? 0);
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: contentGuard.code, message: contentGuard.message, reasons: contentGuard.reasons },
+                    { status: contentGuard.status }
+                ),
+                { requestId: ctx.requestId }
+            );
+        }
+        result.text = contentGuard.messages[0]?.content ?? result.text;
 
         await logGatewayRequest(ctx, {
             endpoint: 'documents/extract',
@@ -49,7 +100,7 @@ export async function POST(req: NextRequest) {
             markupPercentage: result.cost?.markupPercentage ?? 0,
             metadata: { method: result.method, kind: result.kind, pageCount: result.pageCount },
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, result.cost?.cencoriChargeUsd ?? 0);
 
         return addGatewayHeaders(NextResponse.json(result), { requestId: ctx.requestId });
     } catch (error) {

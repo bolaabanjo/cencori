@@ -8,7 +8,7 @@ import type { GatewayContext } from '@/lib/gateway-middleware';
 import { logGatewayRequest, incrementUsage } from '@/lib/gateway-middleware';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { SubscriptionTier } from '@/lib/entitlements';
-import { embedForMemory, MEMORY_EMBEDDING_MODEL } from './embeddings';
+import { embedForMemory } from './embeddings';
 import { extractFacts } from './extraction';
 import { checkMemoryQuota } from './quota';
 import { redactFact } from './redact';
@@ -34,12 +34,15 @@ export interface WriteMemoriesParams {
     namespace: string | null;
     facts: ExtractedFact[];
     metadata?: Record<string, unknown>;
+    expiresAt?: string | null;
 }
 
 export interface WriteMemoriesResult {
     written: WrittenMemory[];
     quotaExceeded: boolean;
     embeddingCostUsd: number;
+    embeddingModel?: string;
+    embeddingProvider?: 'openai' | 'google';
 }
 
 /**
@@ -48,7 +51,7 @@ export interface WriteMemoriesResult {
  * context — never from user input.
  */
 export async function writeMemories(params: WriteMemoriesParams): Promise<WriteMemoriesResult> {
-    const { supabase, organizationId, projectId, tier, scope, scopeKey, namespace, facts, metadata } = params;
+    const { supabase, organizationId, projectId, tier, scope, scopeKey, namespace, facts, metadata, expiresAt } = params;
 
     if (facts.length === 0) {
         return { written: [], quotaExceeded: false, embeddingCostUsd: 0 };
@@ -94,7 +97,10 @@ export async function writeMemories(params: WriteMemoriesParams): Promise<WriteM
         metadata: {
             ...metadata,
             piiRedactions: fact.redactions,
+            embeddingProvider: embedding.provider,
+            embeddingModel: embedding.model,
         },
+        expires_at: expiresAt ?? null,
     }));
 
     const { data, error } = await supabase
@@ -104,7 +110,13 @@ export async function writeMemories(params: WriteMemoriesParams): Promise<WriteM
 
     if (error) {
         console.error('[Memory] Insert failed:', error.message);
-        return { written: [], quotaExceeded: false, embeddingCostUsd: embedding.cencoriChargeUsd };
+        return {
+            written: [],
+            quotaExceeded: false,
+            embeddingCostUsd: embedding.cencoriChargeUsd,
+            embeddingModel: embedding.model,
+            embeddingProvider: embedding.provider,
+        };
     }
 
     return {
@@ -115,6 +127,8 @@ export async function writeMemories(params: WriteMemoriesParams): Promise<WriteM
         })),
         quotaExceeded: false,
         embeddingCostUsd: embedding.cencoriChargeUsd,
+        embeddingModel: embedding.model,
+        embeddingProvider: embedding.provider,
     };
 }
 
@@ -246,6 +260,8 @@ export async function runChatMemoryWriteback(params: {
         let writtenCount = 0;
         let quotaExceeded = false;
         let embeddingCostUsd = 0;
+        let embeddingModel: string | undefined;
+        let embeddingProvider: 'openai' | 'google' | undefined;
 
         if (directive.scope === 'session') {
             // Redact, then append to the Redis session list (no embeddings).
@@ -282,6 +298,8 @@ export async function runChatMemoryWriteback(params: {
             writtenCount = result.written.length;
             quotaExceeded = result.quotaExceeded;
             embeddingCostUsd = result.embeddingCostUsd;
+            embeddingModel = result.embeddingModel;
+            embeddingProvider = result.embeddingProvider;
 
             if (quotaExceeded) {
                 // Response has already been sent — can't 429. Log it instead.
@@ -304,7 +322,8 @@ export async function runChatMemoryWriteback(params: {
                 extracted: extraction.facts.length,
                 written: writtenCount,
                 scope: directive.scope,
-                embedding_model: MEMORY_EMBEDDING_MODEL,
+                embedding_model: embeddingModel,
+                embedding_provider: embeddingProvider,
             },
         });
 

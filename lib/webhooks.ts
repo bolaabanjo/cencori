@@ -6,6 +6,7 @@
 
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import crypto from 'crypto';
+import { safeOutboundFetch } from '@/lib/security/outbound-url';
 
 interface WebhookPayload {
     event: string;
@@ -78,12 +79,12 @@ export async function triggerWebhook(
                     headers['X-Webhook-Signature'] = generateSignature(payloadString, webhook.secret);
                 }
 
-                const response = await fetch(webhook.url, {
+                const response = await safeOutboundFetch(webhook.url, {
                     method: 'POST',
                     headers,
                     body: payloadString,
                     signal: AbortSignal.timeout(10000), // 10 second timeout
-                });
+                }, { maxRedirects: 0 });
 
                 const currentData = await supabase
                     .from('webhooks')

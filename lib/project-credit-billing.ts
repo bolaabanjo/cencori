@@ -1,5 +1,6 @@
 import { deductCredits } from '@/lib/credits';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
 
 export function shouldEnforceProjectCredits(tier: string | null | undefined): boolean {
     const normalizedTier = (tier || 'free').toLowerCase();
@@ -25,10 +26,13 @@ export async function calculateTokenCharge(
     const safeCompletionTokens = Math.max(0, Number(completionTokens) || 0);
 
     const pricing = await getPricingFromDB(provider, model);
-    const providerCostUsd =
-        (safePromptTokens / 1000) * pricing.inputPer1KTokens
-        + (safeCompletionTokens / 1000) * pricing.outputPer1KTokens;
-    const cencoriChargeUsd = providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100);
+    const providerCostUsd = calculateProviderTokenCost(
+        safePromptTokens,
+        safeCompletionTokens,
+        pricing
+    );
+    const cencoriChargeUsd = providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
+        + (pricing.fixedFeePerRequest ?? 0);
 
     return {
         providerCostUsd,
@@ -57,4 +61,3 @@ export async function chargeProjectUsageCredits(
         `Usage charge: ${endpoint}`
     );
 }
-

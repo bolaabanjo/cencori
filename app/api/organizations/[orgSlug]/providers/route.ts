@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabaseServer';
 import { encryptApiKey } from '@/lib/encryption';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { assertSafeOutboundUrl } from '@/lib/security/outbound-url';
 
 export async function GET(
     req: NextRequest,
@@ -130,6 +131,15 @@ export async function POST(
             return NextResponse.json(
                 { error: 'Missing required fields: name, baseUrl, format' },
                 { status: 400 }
+            );
+        }
+
+        try {
+            await assertSafeOutboundUrl(baseUrl);
+        } catch {
+            return NextResponse.json(
+                { error: 'baseUrl must resolve to a public HTTP or HTTPS destination' },
+                { status: 400 },
             );
         }
 

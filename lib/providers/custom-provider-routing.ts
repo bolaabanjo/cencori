@@ -18,6 +18,9 @@ function getRedisClient(): Redis | null {
 type CustomProviderModelRow = {
     model_name: string | null;
     is_active: boolean | null;
+    input_price_per_1k_tokens: number | string | null;
+    output_price_per_1k_tokens: number | string | null;
+    platform_fee_per_request: number | string | null;
 };
 
 export type CustomProviderLookupRow = {
@@ -39,6 +42,12 @@ export type ResolvedCustomProvider = {
     matchedBy: 'model' | 'provider_name' | 'provider_prefix';
     requestedModel: string;
     upstreamModel: string;
+    pricing: {
+        inputPer1KTokens: number;
+        outputPer1KTokens: number;
+        cencoriMarkupPercentage: number;
+        fixedFeePerRequest: number;
+    };
 };
 
 const normalize = (value: string): string => value.trim().toLowerCase();
@@ -54,7 +63,7 @@ const getActiveModelNames = (provider: CustomProviderLookupRow): string[] => {
 export function resolveCustomProviderMatchFromRows(
     providers: CustomProviderLookupRow[],
     requestedModel: string
-): Omit<ResolvedCustomProvider, 'apiKey' | 'apiFormat' | 'baseUrl'> | null {
+): Omit<ResolvedCustomProvider, 'apiKey' | 'apiFormat' | 'baseUrl' | 'pricing'> | null {
     const requested = requestedModel.trim();
     const requestedNorm = normalize(requested);
 
@@ -146,7 +155,13 @@ export async function resolveCustomProviderForProject(params: {
                 base_url,
                 api_format,
                 encrypted_api_key,
-                custom_models(model_name, is_active)
+                custom_models(
+                    model_name,
+                    is_active,
+                    input_price_per_1k_tokens,
+                    output_price_per_1k_tokens,
+                    platform_fee_per_request
+                )
             `)
             .eq('project_id', projectId)
             .eq('is_active', true);
@@ -179,6 +194,15 @@ export async function resolveCustomProviderForProject(params: {
         return null;
     }
 
+    const modelRow = (providerRow.custom_models || []).find(
+        model => model.model_name && normalize(model.model_name) === normalize(candidate.upstreamModel)
+    );
+    if (!modelRow || modelRow.is_active === false) {
+        throw new Error(
+            `Custom provider '${providerRow.name}' has no active pricing configuration for model '${candidate.upstreamModel}'.`
+        );
+    }
+
     let decryptedKey: string | undefined;
     if (providerRow.encrypted_api_key) {
         try {
@@ -193,5 +217,17 @@ export async function resolveCustomProviderForProject(params: {
         baseUrl: providerRow.base_url,
         apiFormat: providerRow.api_format === 'anthropic' ? 'anthropic' : 'openai',
         apiKey: decryptedKey,
+        pricing: (() => {
+            const parseNonNegative = (value: number | string | null | undefined): number => {
+                const parsed = Number(value ?? 0);
+                return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+            };
+            return {
+                inputPer1KTokens: parseNonNegative(modelRow?.input_price_per_1k_tokens),
+                outputPer1KTokens: parseNonNegative(modelRow?.output_price_per_1k_tokens),
+                cencoriMarkupPercentage: 0,
+                fixedFeePerRequest: parseNonNegative(modelRow?.platform_fee_per_request),
+            };
+        })(),
     };
 }

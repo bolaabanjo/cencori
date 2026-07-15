@@ -382,10 +382,10 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
     it('passes the same user messages into runGatewayInputPipeline', async () => {
         const messages = toUnifiedMessages(CHAT_REQUEST_BODY.messages);
         routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
-        routeMocks.runV1ProviderExecution.mockResolvedValue({
+        routeMocks.runV1ProviderExecution.mockImplementation(async () => ({
             ok: true,
             response: Response.json({ choices: [{ message: { content: 'ok' } }] }),
-        });
+        }));
         routeMocks.executeGatewayChat.mockResolvedValue(createMockChatResponse());
 
         const { POST: v1Post } = await import('@/app/api/v1/chat/completions/route');

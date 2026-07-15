@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { expireStaleSessions } from '@/lib/gateway/session-engine';
 
-export async function POST(req: NextRequest) {
+async function run(req: NextRequest) {
     try {
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.get('authorization');
@@ -44,12 +44,5 @@ export async function POST(req: NextRequest) {
     }
 }
 
-export async function GET(req: NextRequest) {
-    if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json(
-            { error: 'GET not allowed in production' },
-            { status: 405 }
-        );
-    }
-    return POST(req);
-}
+export const GET = run;
+export const POST = run;

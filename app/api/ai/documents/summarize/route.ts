@@ -20,6 +20,11 @@ import {
     DocumentValidationError,
 } from '@/lib/documents/extract';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 const SUMMARY_MODEL = 'gpt-4o-mini';
 
@@ -33,8 +38,44 @@ export async function POST(req: NextRequest) {
     const ctx = validation.context;
 
     try {
+        // Fail before document extraction if the generation model cannot be
+        // billed exactly.
+        const pricing = await getPricingFromDB('openai', SUMMARY_MODEL);
         const { input, opts } = await parseDocumentRequest(req);
+        if (opts.prompt) {
+            const promptGuard = await runGatewayInputPipeline({
+                supabase: ctx.supabase,
+                projectId: ctx.projectId,
+                apiKeyId: ctx.apiKeyId,
+                environment: ctx.environment,
+                tier: (ctx.tier || 'free') as SubscriptionTier,
+                messages: [{ role: 'user', content: opts.prompt }],
+            });
+            if (!promptGuard.ok) {
+                return addGatewayHeaders(
+                    NextResponse.json({ error: promptGuard.code, message: promptGuard.message }, { status: promptGuard.status }),
+                    { requestId: ctx.requestId }
+                );
+            }
+            opts.prompt = promptGuard.messages[0]?.content ?? opts.prompt;
+        }
         const extracted = await extractDocument(ctx, input, opts);
+
+        const providerInput = `Summarize this document:\n\n${extracted.text}`;
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: providerInput }],
+        });
+        if (!inputPipeline.ok) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons }, { status: inputPipeline.status }),
+                { requestId: ctx.requestId }
+            );
+        }
 
         // Resolve OpenAI key
         const { data: providerKey } = await ctx.supabase
@@ -54,7 +95,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const client = new OpenAI({ apiKey: openaiKey });
+        const client = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
         const summaryResp = await client.chat.completions.create({
             model: SUMMARY_MODEL,
             temperature: 0.2,
@@ -64,28 +105,44 @@ export async function POST(req: NextRequest) {
                     role: 'system',
                     content: 'You are an expert document summarizer. Given a document, produce a concise, faithful summary. Keep numbers, names, and dates exact. Do not invent details.',
                 },
-                { role: 'user', content: `Summarize this document:\n\n${extracted.text}` },
+                { role: 'user', content: inputPipeline.messages[0]?.content ?? providerInput },
             ],
         });
-        const summary = summaryResp.choices[0]?.message?.content ?? '';
+        const rawSummary = summaryResp.choices[0]?.message?.content ?? '';
+        const summary = inputPipeline.tokenMap
+            ? deTokenize(rawSummary, inputPipeline.tokenMap)
+            : rawSummary;
         const summaryPromptTokens = summaryResp.usage?.prompt_tokens ?? 0;
         const summaryCompletionTokens = summaryResp.usage?.completion_tokens ?? 0;
 
-        const pricing = await getPricingFromDB('openai', SUMMARY_MODEL);
-        const summaryProviderCost =
-            (summaryPromptTokens / 1000) * pricing.inputPer1KTokens +
-            (summaryCompletionTokens / 1000) * pricing.outputPer1KTokens;
-        const summaryCharge = summaryProviderCost * (1 + pricing.cencoriMarkupPercentage / 100);
+        const summaryProviderCost = calculateProviderTokenCost(
+            summaryPromptTokens,
+            summaryCompletionTokens,
+            pricing
+        );
+        const summaryCharge = summaryProviderCost * (1 + pricing.cencoriMarkupPercentage / 100)
+            + (pricing.fixedFeePerRequest ?? 0);
 
         // Combine costs (extract may have run through Vision)
         const totalProviderCost = summaryProviderCost + (extracted.cost?.providerCostUsd ?? 0);
         const totalCharge = summaryCharge + (extracted.cost?.cencoriChargeUsd ?? 0);
 
+        const outputCheck = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: summary,
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            conversationHistory: inputPipeline.messages,
+        });
+
         await logGatewayRequest(ctx, {
             endpoint: 'documents/summarize',
             model: SUMMARY_MODEL,
             provider: 'openai',
-            status: 'success',
+            status: outputCheck.ok ? 'success' : 'blocked_output',
             promptTokens: summaryPromptTokens + (extracted.usage?.promptTokens ?? 0),
             completionTokens: summaryCompletionTokens + (extracted.usage?.completionTokens ?? 0),
             totalTokens: summaryPromptTokens + summaryCompletionTokens + (extracted.usage?.totalTokens ?? 0),
@@ -94,8 +151,16 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: totalCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: { extract_method: extracted.method, kind: extracted.kind, pageCount: extracted.pageCount },
+            errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, totalCharge);
+
+        if (!outputCheck.ok) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: outputCheck.code, message: outputCheck.message, reasons: outputCheck.reasons }, { status: outputCheck.status }),
+                { requestId: ctx.requestId }
+            );
+        }
 
         return addGatewayHeaders(
             NextResponse.json({

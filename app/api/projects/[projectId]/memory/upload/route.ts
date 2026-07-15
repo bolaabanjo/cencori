@@ -3,11 +3,15 @@ import { createServerClient } from "@/lib/supabaseServer";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import {
-    calculateTokenCharge,
-    chargeProjectUsageCredits,
     parseCreditsBalance,
     shouldEnforceProjectCredits,
 } from "@/lib/project-credit-billing";
+import { invalidateCreditsBalance } from '@/lib/config-cache';
+import { decryptApiKey } from '@/lib/encryption';
+import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 interface RouteParams {
     params: Promise<{ projectId: string }>;
@@ -83,14 +87,14 @@ export async function POST(request: NextRequest, context: RouteParams) {
         }
 
         // Check file type
-        const allowedTypes = ["text/plain", "application/pdf", "text/markdown"];
+        const allowedTypes = ["text/plain", "text/markdown"];
         if (!allowedTypes.includes(file.type) && !file.name.endsWith('.txt') && !file.name.endsWith('.md')) {
-            return NextResponse.json({ error: "Only TXT, MD, and PDF files are supported" }, { status: 400 });
+            return NextResponse.json({ error: "Only TXT and Markdown files are supported" }, { status: 400 });
         }
 
-        // Check file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            return NextResponse.json({ error: "File size exceeds 10MB limit" }, { status: 400 });
+        // Check file size (max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            return NextResponse.json({ error: "File size exceeds 2MB limit" }, { status: 400 });
         }
 
         // Verify user has access to project
@@ -161,20 +165,26 @@ export async function POST(request: NextRequest, context: RouteParams) {
 
         // Extract text from file
         let text: string;
-        if (file.type === "application/pdf") {
-            // For PDF, we'll just read as text (basic support)
-            // In production, you'd use pdf-parse or similar
-            const buffer = await file.arrayBuffer();
-            text = new TextDecoder().decode(buffer);
-            // Try to clean up PDF text
-            text = text.replace(/[^\x20-\x7E\n]/g, ' ');
-        } else {
-            text = await file.text();
-        }
+        text = await file.text();
 
         if (!text.trim()) {
             return NextResponse.json({ error: "File appears to be empty" }, { status: 400 });
         }
+
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: adminClient as never,
+            projectId,
+            environment: 'production',
+            tier: tier as SubscriptionTier,
+            messages: [{ role: 'user', content: text }],
+        });
+        if (!inputPipeline.ok) {
+            return NextResponse.json(
+                { error: inputPipeline.code, message: inputPipeline.message },
+                { status: inputPipeline.status },
+            );
+        }
+        text = inputPipeline.messages[0]?.content ?? text;
 
         // Chunk the document
         const chunks = chunkText(text);
@@ -183,79 +193,148 @@ export async function POST(request: NextRequest, context: RouteParams) {
             return NextResponse.json({ error: "Could not extract text from file" }, { status: 400 });
         }
 
-        // Generate embeddings for all chunks
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+        // Generate embeddings and atomically persist/bill each completed batch.
+        const pricing = await getPricingFromDB('openai', 'text-embedding-3-small');
+        const { data: providerKey } = await adminClient
+            .from('provider_keys')
+            .select('encrypted_key')
+            .eq('project_id', projectId)
+            .eq('provider', 'openai')
+            .eq('is_active', true)
+            .maybeSingle();
+        const openaiKey = providerKey?.encrypted_key
+            ? decryptApiKey(providerKey.encrypted_key, project.organization_id)
+            : process.env.OPENAI_API_KEY;
+        if (!openaiKey) {
+            return NextResponse.json({ error: 'No OpenAI API key configured' }, { status: 400 });
+        }
+        const openai = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
 
-        const memories: Array<{
-            namespace_id: string;
-            content: string;
-            metadata: object;
-            embedding: number[];
-        }> = [];
-        let totalEmbeddingTokens = 0;
+        const uploadId = crypto.randomUUID();
+        let storedChunks = 0;
 
-        // Process chunks in batches of 10
+        // Process chunks in batches of 10. Each provider call is followed by a
+        // single DB transaction that stores that batch and charges its exact
+        // token usage, so partial failures remain internally consistent.
         for (let i = 0; i < chunks.length; i += 10) {
             const batch = chunks.slice(i, i + 10);
-            const embeddingResponse = await openai.embeddings.create({
-                model: "text-embedding-3-small",
-                input: batch,
-            });
-            totalEmbeddingTokens += embeddingResponse.usage?.total_tokens ?? 0;
+            let embeddingResponse;
+            try {
+                embeddingResponse = await openai.embeddings.create({
+                    model: "text-embedding-3-small",
+                    input: batch,
+                });
+            } catch (error) {
+                console.error('Embedding provider failed during memory upload:', error);
+                return NextResponse.json(
+                    {
+                        error: 'Embedding provider unavailable',
+                        partial: storedChunks > 0,
+                        chunks_created: storedChunks,
+                        upload_id: uploadId,
+                    },
+                    { status: 502 }
+                );
+            }
+
+            const memories: Array<{
+                content: string;
+                metadata: object;
+                embedding: number[];
+            }> = [];
 
             for (let j = 0; j < batch.length; j++) {
+                const embedding = embeddingResponse.data[j]?.embedding;
+                if (!embedding || embedding.length !== 1536) {
+                    return NextResponse.json(
+                        {
+                            error: 'Embedding provider returned an invalid response',
+                            partial: storedChunks > 0,
+                            chunks_created: storedChunks,
+                            upload_id: uploadId,
+                        },
+                        { status: 502 }
+                    );
+                }
+
                 memories.push({
-                    namespace_id: namespaceId,
                     content: batch[j],
                     metadata: {
                         source: file.name,
                         chunk_index: i + j,
                         total_chunks: chunks.length,
+                        upload_id: uploadId,
                     },
-                    embedding: embeddingResponse.data[j].embedding,
+                    embedding,
                 });
             }
-        }
 
-        const { cencoriChargeUsd } = await calculateTokenCharge(
-            "openai",
-            "text-embedding-3-small",
-            totalEmbeddingTokens,
-            0
-        );
+            const embeddingTokens = embeddingResponse.usage?.total_tokens;
+            if (!Number.isSafeInteger(embeddingTokens) || embeddingTokens < 0) {
+                return NextResponse.json(
+                    {
+                        error: 'Embedding provider did not return billable token usage',
+                        partial: storedChunks > 0,
+                        chunks_created: storedChunks,
+                        upload_id: uploadId,
+                    },
+                    { status: 502 }
+                );
+            }
 
-        const charged = await chargeProjectUsageCredits(
-            project.organization_id,
-            tier,
-            cencoriChargeUsd,
-            "projects/memory/upload"
-        );
-
-        if (!charged) {
-            return NextResponse.json(
+            const providerCostUsd = calculateProviderTokenCost(embeddingTokens, 0, pricing);
+            const cencoriChargeUsd = shouldEnforceCredits
+                ? providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
+                    + (i === 0 ? pricing.fixedFeePerRequest ?? 0 : 0)
+                : 0;
+            const batchNumber = Math.floor(i / 10);
+            const { data: rpcData, error: rpcError } = await adminClient.rpc(
+                'store_memory_batch_and_charge',
                 {
-                    error: "INSUFFICIENT_CREDITS",
-                    message: "Unable to charge credits for this request.",
-                },
-                { status: 402 }
+                    p_organization_id: project.organization_id,
+                    p_project_id: projectId,
+                    p_namespace_id: namespaceId,
+                    p_amount: cencoriChargeUsd,
+                    p_description: 'Usage charge: projects/memory/upload',
+                    p_reference_id: `memory-upload:${uploadId}:${batchNumber}`,
+                    p_memories: memories,
+                }
             );
-        }
+            const rpcResult = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as {
+                success?: boolean;
+                error_message?: string | null;
+                inserted_count?: number;
+            } | null;
 
-        // Store all memories
-        const { error } = await adminClient
-            .from("memories")
-            .insert(memories);
+            if (rpcError || !rpcResult?.success) {
+                console.error('Atomic memory upload batch failed:', rpcError || rpcResult?.error_message);
+                const insufficient = rpcResult?.error_message === 'Insufficient balance';
+                return NextResponse.json(
+                    {
+                        error: insufficient ? 'INSUFFICIENT_CREDITS' : 'Failed to store memory batch',
+                        message: insufficient
+                            ? 'Unable to charge credits for this batch.'
+                            : 'The completed batch was not stored or charged.',
+                        partial: storedChunks > 0,
+                        chunks_created: storedChunks,
+                        upload_id: uploadId,
+                    },
+                    { status: insufficient ? 402 : 500 }
+                );
+            }
 
-        if (error) {
-            console.error("Error storing memories:", error);
-            return NextResponse.json({ error: "Failed to store memories" }, { status: 500 });
+            storedChunks += rpcResult.inserted_count ?? memories.length;
+            if (cencoriChargeUsd > 0) {
+                await invalidateCreditsBalance(project.organization_id);
+            }
         }
 
         return NextResponse.json({
             success: true,
             file_name: file.name,
-            chunks_created: chunks.length,
-            message: `Successfully created ${chunks.length} memories from "${file.name}"`,
+            chunks_created: storedChunks,
+            upload_id: uploadId,
+            message: `Successfully created ${storedChunks} memories from "${file.name}"`,
         }, { status: 201 });
 
     } catch (error) {

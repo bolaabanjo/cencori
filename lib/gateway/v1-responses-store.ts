@@ -1,52 +1,42 @@
-/**
- * @deprecated Use Cencori Sessions (/v1/sessions) for durable multi-turn conversations.
- * 
- * In-memory response store for Responses API multi-turn.
- * Responses are stored with TTL and can be referenced
- * via previous_response_id for conversation chaining.
- * 
- * Limitations (replaced by Sessions):
- *   - No persistence: lost on restart/scale-to-zero
- *   - Single-process only: doesn't work across instances
- *   - 30-min hard TTL: can't hold long conversations
- * 
- * TODO: Replace previous_response_id usage with session-based chaining
- *       in v1-responses-execute.ts
- */
-
+import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { ResponsesResponse } from './v1-responses-execute';
 
-const TTL_MS = 30 * 60 * 1000; // 30 minutes
+type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
-interface StoredResponse {
-    response: ResponsesResponse;
-    expiresAt: number;
-}
+const TTL_MS = 30 * 60 * 1000;
 
-const store = new Map<string, StoredResponse>();
-
-const cleanup = setInterval(() => {
-    const now = Date.now();
-    for (const [id, entry] of store) {
-        if (entry.expiresAt < now) store.delete(id);
-    }
-}, 60_000);
-
-if (cleanup.unref) cleanup.unref();
-
-export function storeResponse(response: ResponsesResponse): void {
-    store.set(response.id, {
+export async function storeResponse(
+    supabase: SupabaseAdmin,
+    projectId: string,
+    organizationId: string,
+    response: ResponsesResponse,
+): Promise<void> {
+    const { error } = await supabase.from('gateway_responses').upsert({
+        id: response.id,
+        project_id: projectId,
+        organization_id: organizationId,
         response,
-        expiresAt: Date.now() + TTL_MS,
+        expires_at: new Date(Date.now() + TTL_MS).toISOString(),
     });
+    if (error) throw new Error(`Failed to persist response: ${error.message}`);
 }
 
-export function getResponse(id: string): ResponsesResponse | null {
-    const entry = store.get(id);
-    if (!entry) return null;
-    if (entry.expiresAt < Date.now()) {
-        store.delete(id);
+export async function getResponse(
+    supabase: SupabaseAdmin,
+    projectId: string,
+    id: string,
+): Promise<ResponsesResponse | null> {
+    const { data, error } = await supabase
+        .from('gateway_responses')
+        .select('response, expires_at')
+        .eq('id', id)
+        .eq('project_id', projectId)
+        .maybeSingle();
+
+    if (error || !data) return null;
+    if (new Date(data.expires_at).getTime() <= Date.now()) {
+        void supabase.from('gateway_responses').delete().eq('id', id).eq('project_id', projectId);
         return null;
     }
-    return entry.response;
+    return data.response as ResponsesResponse;
 }

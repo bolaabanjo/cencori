@@ -15,6 +15,40 @@ import type { AIProvider } from '@/lib/providers/base';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
+const OPENAI_COMPATIBLE_ENV_VARS: Record<string, string[]> = {
+    xai: ['XAI_API_KEY'],
+    deepseek: ['DEEPSEEK_API_KEY'],
+    groq: ['GROQ_API_KEY'],
+    mistral: ['MISTRAL_API_KEY'],
+    together: ['TOGETHER_API_KEY'],
+    openrouter: ['OPENROUTER_API_KEY'],
+    perplexity: ['PERPLEXITY_API_KEY'],
+    huggingface: ['HUGGINGFACE_API_KEY'],
+    zai: ['ZAI_API_KEY'],
+    cerebras: ['CEREBRAS_API_KEY'],
+    // Support the historical deployment variable as well as the canonical one.
+    maximo: ['MAXIMO_API_KEY', 'MAXIMOAI_API_KEY'],
+};
+
+function firstConfiguredEnv(names: string[]): string | undefined {
+    for (const name of names) {
+        if (process.env[name]) return process.env[name];
+    }
+    return undefined;
+}
+
+export function getManagedProviderNames(): Set<string> {
+    const providers = new Set<string>();
+    if (getGoogleApiKey()) providers.add('google');
+    if (process.env.OPENAI_API_KEY) providers.add('openai');
+    if (process.env.ANTHROPIC_API_KEY) providers.add('anthropic');
+    if (process.env.COHERE_API_KEY) providers.add('cohere');
+    for (const [provider, envVars] of Object.entries(OPENAI_COMPATIBLE_ENV_VARS)) {
+        if (firstConfiguredEnv(envVars)) providers.add(provider);
+    }
+    return providers;
+}
+
 export function registerDefaultProviders(router: ProviderRouter): void {
     const defaultGoogleApiKey = getGoogleApiKey();
     if (!router.hasProvider('google') && defaultGoogleApiKey) {
@@ -49,22 +83,8 @@ export function registerDefaultProviders(router: ProviderRouter): void {
         }
     }
 
-    const openAICompatibleEnvVars: Record<string, string> = {
-        xai: 'XAI_API_KEY',
-        deepseek: 'DEEPSEEK_API_KEY',
-        groq: 'GROQ_API_KEY',
-        mistral: 'MISTRAL_API_KEY',
-        together: 'TOGETHER_API_KEY',
-        openrouter: 'OPENROUTER_API_KEY',
-        perplexity: 'PERPLEXITY_API_KEY',
-        huggingface: 'HUGGINGFACE_API_KEY',
-        zai: 'ZAI_API_KEY',
-        cerebras: 'CEREBRAS_API_KEY',
-        maximo: 'MAXIMO_API_KEY',
-    };
-
-    for (const [provider, envVar] of Object.entries(openAICompatibleEnvVars)) {
-        const apiKey = process.env[envVar];
+    for (const [provider, envVars] of Object.entries(OPENAI_COMPATIBLE_ENV_VARS)) {
+        const apiKey = firstConfiguredEnv(envVars);
         if (!router.hasProvider(provider) && apiKey) {
             try {
                 router.registerProvider(provider, new OpenAICompatibleProvider(provider, apiKey));
@@ -170,11 +190,13 @@ export async function resolveGatewayProvider(params: {
                 customProvider.apiFormat === 'anthropic'
                     ? new AnthropicProvider(customProvider.apiKey || process.env.ANTHROPIC_API_KEY!, {
                           baseURL: customProvider.baseUrl,
+                          pricing: customProvider.pricing,
                       })
                     : new OpenAICompatibleProvider(
                           providerName,
                           customProvider.apiKey || 'cencori-no-key',
-                          customProvider.baseUrl
+                          customProvider.baseUrl,
+                          customProvider.pricing,
                       );
             router.registerProvider(providerName, impl);
         }
@@ -204,6 +226,12 @@ export async function resolveGatewayProvider(params: {
     const provider = customProvider
         ? router.getProvider(providerName)
         : router.getProviderForModel(params.requestedModel);
+
+    // Verify exact billing configuration before any upstream request is made.
+    // This prevents a successful provider call from later becoming an
+    // unbillable response because a model was only covered by a guessed
+    // provider-wide default.
+    await provider.getPricing(model);
 
     return {
         router,

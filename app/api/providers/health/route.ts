@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCircuitStatus } from '@/lib/providers/circuit-breaker';
+import { createServerClient } from '@/lib/supabaseServer';
+import { getGoogleApiKey } from '@/lib/providers/google-env';
 
 interface ProviderHealth {
     name: string;
@@ -54,7 +56,9 @@ const PROVIDERS = [
 ];
 
 async function pingProvider(provider: typeof PROVIDERS[0]): Promise<ProviderHealth> {
-    const apiKey = process.env[provider.envKey];
+    const apiKey = provider.id === 'google'
+        ? getGoogleApiKey()
+        : process.env[provider.envKey];
 
     const circuitState = await getCircuitStatus(provider.id);
     const circuit = {
@@ -108,13 +112,23 @@ async function pingProvider(provider: typeof PROVIDERS[0]): Promise<ProviderHeal
 
         const latency = Date.now() - start;
 
-        if (response.ok || response.status === 401 || response.status === 403) {
+        if (response.ok) {
             const status = circuitState.state === 'half-open' ? 'degraded' :
                 latency > 500 ? 'degraded' : 'healthy';
             return {
                 name: provider.name,
                 status,
                 latency,
+                circuit,
+            };
+        }
+
+        if (response.status === 401 || response.status === 403) {
+            return {
+                name: provider.name,
+                status: 'down',
+                latency,
+                error: `Authentication failed (HTTP ${response.status})`,
                 circuit,
             };
         }
@@ -139,6 +153,12 @@ async function pingProvider(provider: typeof PROVIDERS[0]): Promise<ProviderHeal
 }
 
 export async function GET() {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const results = await Promise.all(PROVIDERS.map(pingProvider));
 
     const healthy = results.filter(p => p.status === 'healthy').length;
@@ -156,4 +176,3 @@ export async function GET() {
         checked_at: new Date().toISOString(),
     });
 }
-

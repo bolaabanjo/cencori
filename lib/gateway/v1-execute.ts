@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import type { QuotaCheckResult } from '@/lib/end-user-billing';
-import type { UnifiedMessage, Tool, UnifiedChatRequest } from '@/lib/providers/base';
+import {
+    calculateProviderTokenCost,
+    type UnifiedMessage,
+    type Tool,
+    type UnifiedChatRequest,
+} from '@/lib/providers/base';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
@@ -82,7 +87,7 @@ export type V1ExecuteParams = {
     agentId?: string | null;
     shadowMode?: boolean;
     createPendingAction?: (toolCall: ToolCallPayload) => Promise<string | null>;
-    createExecutedAction?: (toolCall: ToolCallPayload) => void;
+    createDispatchedAction?: (toolCall: ToolCallPayload) => void;
 };
 
 function buildOpenAiCompletionJson(params: {
@@ -195,6 +200,20 @@ export async function runV1ProviderExecution(
             presencePenalty: params.presencePenalty,
         };
 
+        if (params.tools && params.tools.length > 0 && resolved.provider.supportsTools === false) {
+            return {
+                ok: false,
+                status: 400,
+                body: {
+                    error: {
+                        message: `Tool calling is not implemented for provider '${resolved.providerName}'.`,
+                        type: 'invalid_request_error',
+                        code: 'tools_not_supported_by_provider',
+                    },
+                },
+            };
+        }
+
         if (!params.stream) {
             const result = await executeGatewayChat({
                 supabase: params.supabase,
@@ -217,12 +236,21 @@ export async function runV1ProviderExecution(
                 content = content.slice(0, params.maxTokens * 4);
             }
 
+            const openAiToolCalls = result.toolCalls?.map((tc) => ({
+                id: tc.id,
+                type: tc.type,
+                function: tc.function,
+            }));
+            const outputTextForGuard = [
+                content,
+                ...(openAiToolCalls ?? []).map((toolCall) => toolCall.function.arguments),
+            ].filter(Boolean).join('\n');
             const outputBlock = await runGatewayOutputGuard({
                 supabase: params.supabase,
                 projectId: params.gatewayCtx.projectId,
                 apiKeyId: params.gatewayCtx.apiKeyId,
                 environment: params.gatewayCtx.environment,
-                outputText: content,
+                outputText: outputTextForGuard,
                 inputText: params.inputText,
                 inputSecurity: params.inputSecurity,
                 conversationHistory: params.messages,
@@ -230,6 +258,29 @@ export async function runV1ProviderExecution(
             });
 
             if (!outputBlock.ok) {
+                const providerLogName = resolved.customProviderTag || result.actualProvider;
+                params.logSuccess({
+                    provider: providerLogName,
+                    model: result.actualModel,
+                    status: 'error',
+                    promptTokens: result.usage.promptTokens,
+                    completionTokens: result.usage.completionTokens,
+                    totalTokens: result.usage.totalTokens,
+                    providerCostUsd: result.cost.providerCostUsd,
+                    cencoriChargeUsd: result.cost.cencoriChargeUsd,
+                    markupPercentage: result.cost.markupPercentage,
+                    errorMessage: outputBlock.message,
+                    finishReason: result.finishReason,
+                });
+                params.incrementUsage(result.cost.cencoriChargeUsd);
+                params.recordEndUserUsage({
+                    promptTokens: result.usage.promptTokens,
+                    completionTokens: result.usage.completionTokens,
+                    totalTokens: result.usage.totalTokens,
+                    providerCostUsd: result.cost.providerCostUsd,
+                    cencoriChargeUsd: result.cost.cencoriChargeUsd,
+                    markupPercentage: result.cost.markupPercentage,
+                });
                 return {
                     ok: false,
                     status: outputBlock.status,
@@ -244,12 +295,6 @@ export async function runV1ProviderExecution(
                 };
             }
 
-            const openAiToolCalls = result.toolCalls?.map((tc) => ({
-                id: tc.id,
-                type: tc.type,
-                function: tc.function,
-            }));
-
             if (params.agentId && openAiToolCalls && openAiToolCalls.length > 0) {
                 if (params.shadowMode && params.createPendingAction) {
                     for (const tc of openAiToolCalls) {
@@ -259,9 +304,9 @@ export async function runV1ProviderExecution(
                             arguments: tc.function.arguments,
                         });
                     }
-                } else if (params.createExecutedAction) {
+                } else if (params.createDispatchedAction) {
                     for (const tc of openAiToolCalls) {
-                        params.createExecutedAction({
+                        params.createDispatchedAction({
                             tool_call_id: tc.id,
                             tool: tc.function.name,
                             arguments: tc.function.arguments,
@@ -333,10 +378,9 @@ export async function runV1ProviderExecution(
             async start(controller) {
                 const encoder = new TextEncoder();
                 let fullText = '';
-                let emittedFirstContent = false;
                 let tokenLimitReached = false;
                 const collectedToolCalls: Record<
-                    number,
+                    string,
                     { id: string; type: string; function: { name: string; arguments: string } }
                 > = {};
 
@@ -353,8 +397,14 @@ export async function runV1ProviderExecution(
                     actualProvider: string;
                     usedFallback: boolean;
                     finishReason: string;
+                    blocked?: boolean;
+                    errorMessage?: string;
                 }) => {
-                    const streamProvider = resolved.provider;
+                    const streamProvider =
+                        meta.actualProvider !== resolved.providerName
+                        && resolved.router.hasProvider(meta.actualProvider)
+                            ? resolved.router.getProvider(meta.actualProvider)
+                            : resolved.provider;
                     const promptText = params.messages.map((m) => m.content).join(' ');
                     let promptTokens = 0;
                     let completionTokens = 0;
@@ -367,11 +417,14 @@ export async function runV1ProviderExecution(
                     }
                     const totalTokens = promptTokens + completionTokens;
                     const pricing = await streamProvider.getPricing(meta.actualModel);
-                    const providerCostUsd =
-                        (promptTokens / 1000) * pricing.inputPer1KTokens
-                        + (completionTokens / 1000) * pricing.outputPer1KTokens;
+                    const providerCostUsd = calculateProviderTokenCost(
+                        promptTokens,
+                        completionTokens,
+                        pricing
+                    );
                     const cencoriChargeUsd =
-                        providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100);
+                        providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
+                        + (pricing.fixedFeePerRequest ?? 0);
 
                     const finalText = params.tokenMap
                         ? deTokenize(fullText, params.tokenMap)
@@ -381,7 +434,9 @@ export async function runV1ProviderExecution(
                     params.logSuccess({
                         provider: providerLogName,
                         model: meta.actualModel,
-                        status: meta.usedFallback ? 'success_fallback' : 'success',
+                        status: meta.blocked
+                            ? 'error'
+                            : meta.usedFallback ? 'success_fallback' : 'success',
                         promptTokens,
                         completionTokens,
                         totalTokens,
@@ -390,6 +445,7 @@ export async function runV1ProviderExecution(
                         markupPercentage: pricing.cencoriMarkupPercentage,
                         responseText: finalText,
                         finishReason: meta.finishReason,
+                        errorMessage: meta.errorMessage,
                     });
                     params.incrementUsage(cencoriChargeUsd);
                     params.recordEndUserUsage({
@@ -401,9 +457,13 @@ export async function runV1ProviderExecution(
                         markupPercentage: pricing.cencoriMarkupPercentage,
                     });
 
-                    params.onCompletion?.({ fullText: finalText });
-
-                    return { promptTokens, completionTokens, totalTokens, cencoriChargeUsd };
+                    return {
+                        promptTokens,
+                        completionTokens,
+                        totalTokens,
+                        cencoriChargeUsd,
+                        finalText,
+                    };
                 };
 
                 /** Terminal chunks after settlement, per wire format. */
@@ -433,7 +493,141 @@ export async function runV1ProviderExecution(
                     controller.close();
                 };
 
+                const completeBufferedStream = async (meta: {
+                    actualModel: string;
+                    actualProvider: string;
+                    usedFallback: boolean;
+                    originalProvider: string;
+                    originalModel: string;
+                    finishReason: string;
+                }) => {
+                    const finalText = params.tokenMap
+                        ? deTokenize(fullText, params.tokenMap)
+                        : fullText;
+                    const toolCallValues = Object.values(collectedToolCalls);
+                    const outputTextForGuard = [
+                        finalText,
+                        ...toolCallValues.map((toolCall) => toolCall.function.arguments),
+                    ].filter(Boolean).join('\n');
+                    const outputCheck = await runGatewayOutputGuard({
+                        supabase: params.supabase,
+                        projectId: params.gatewayCtx.projectId,
+                        apiKeyId: params.gatewayCtx.apiKeyId,
+                        environment: params.gatewayCtx.environment,
+                        outputText: outputTextForGuard,
+                        inputText: params.inputText,
+                        inputSecurity: params.inputSecurity,
+                        conversationHistory: params.messages,
+                        endUserId: params.endUserId,
+                    });
+
+                    const figures = await settleStream({
+                        actualModel: meta.actualModel,
+                        actualProvider: meta.actualProvider,
+                        usedFallback: meta.usedFallback,
+                        finishReason: meta.finishReason,
+                        blocked: !outputCheck.ok,
+                        errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+                    });
+
+                    if (!outputCheck.ok) {
+                        controller.enqueue(sse({ error: outputCheck.message }));
+                        if (!isCencoriWire) {
+                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                        }
+                        controller.close();
+                        return;
+                    }
+
+                    if (isCencoriWire) {
+                        const payload: Record<string, unknown> = {
+                            delta: figures.finalText,
+                            finish_reason: meta.finishReason,
+                        };
+                        if (meta.usedFallback) {
+                            payload.fallback_used = true;
+                            payload.original_provider = meta.originalProvider;
+                            payload.original_model = meta.originalModel;
+                        }
+                        if (toolCallValues.length > 0) {
+                            payload.tool_calls = toolCallValues;
+                            payload.toolCalls = toolCallValues;
+                        }
+                        controller.enqueue(sse(payload));
+                    } else {
+                        const delta: Record<string, unknown> = {};
+                        if (figures.finalText) delta.content = figures.finalText;
+                        if (toolCallValues.length > 0) {
+                            delta.tool_calls = toolCallValues.map((toolCall, index) => ({
+                                index,
+                                id: toolCall.id,
+                                type: toolCall.type,
+                                function: toolCall.function,
+                            }));
+                        }
+                        if (Object.keys(delta).length > 0) {
+                            controller.enqueue(
+                                sse(buildOpenAiStreamChunk(meta.actualModel, delta, null))
+                            );
+                        }
+                    }
+
+                    if (
+                        params.shadowMode
+                        && params.agentId
+                        && toolCallValues.length > 0
+                        && params.createPendingAction
+                    ) {
+                        const pendingIds: string[] = [];
+                        for (const toolCall of toolCallValues) {
+                            const id = await params.createPendingAction({
+                                tool_call_id: toolCall.id,
+                                tool: toolCall.function.name,
+                                arguments: toolCall.function.arguments,
+                            });
+                            if (id) pendingIds.push(id);
+                        }
+                        if (pendingIds.length > 0) {
+                            controller.enqueue(
+                                encoder.encode(
+                                    `event: shadow_mode\ndata: ${JSON.stringify({
+                                        type: 'shadow_approval_required',
+                                        agent_id: params.agentId,
+                                        pending_action_ids: pendingIds,
+                                        poll_url: `/api/v1/agent/actions/poll?ids=${pendingIds.join(',')}`,
+                                    })}\n\n`
+                                )
+                            );
+                        }
+                    } else if (
+                        params.agentId
+                        && toolCallValues.length > 0
+                        && params.createDispatchedAction
+                    ) {
+                        for (const toolCall of toolCallValues) {
+                            params.createDispatchedAction({
+                                tool_call_id: toolCall.id,
+                                tool: toolCall.function.name,
+                                arguments: toolCall.function.arguments,
+                            });
+                        }
+                    }
+
+                    params.onCompletion?.({ fullText: figures.finalText });
+                    finishStream(figures, {
+                        actualModel: meta.actualModel,
+                        finishReason: meta.finishReason,
+                    });
+                };
+
                 try {
+                    let lastMeta: {
+                        actualModel: string;
+                        actualProvider: string;
+                        usedFallback: boolean;
+                        originalProvider: string;
+                        originalModel: string;
+                    } | null = null;
                     for await (const chunk of streamGatewayChat({
                         supabase: params.supabase,
                         projectId: params.gatewayCtx.projectId,
@@ -443,6 +637,13 @@ export async function runV1ProviderExecution(
                         resolved,
                         requestId: params.gatewayCtx.requestId,
                     })) {
+                        lastMeta ??= {
+                            actualModel: chunk.actualModel,
+                            actualProvider: chunk.actualProvider,
+                            usedFallback: chunk.usedFallback,
+                            originalProvider: chunk.originalProvider,
+                            originalModel: chunk.originalModel,
+                        };
                         if (chunk.delta) {
                             fullText += chunk.delta;
                         }
@@ -456,173 +657,44 @@ export async function runV1ProviderExecution(
                             estimateTokenCount(fullText) >= params.maxTokens
                         ) {
                             tokenLimitReached = true;
+                            fullText = fullText.slice(0, params.maxTokens * 4);
                         }
 
                         if (chunk.toolCalls) {
-                            for (const tc of chunk.toolCalls) {
-                                const idx = 0;
-                                if (!collectedToolCalls[idx]) {
-                                    collectedToolCalls[idx] = {
+                            for (const [index, tc] of chunk.toolCalls.entries()) {
+                                const key = tc.id || `tool_${index}`;
+                                if (!collectedToolCalls[key]) {
+                                    collectedToolCalls[key] = {
                                         id: tc.id,
                                         type: tc.type,
                                         function: { name: '', arguments: '' },
                                     };
                                 }
-                                if (tc.id) collectedToolCalls[idx].id = tc.id;
+                                if (tc.id) collectedToolCalls[key].id = tc.id;
                                 if (tc.function?.name) {
-                                    collectedToolCalls[idx].function.name += tc.function.name;
+                                    collectedToolCalls[key].function.name += tc.function.name;
                                 }
                                 if (tc.function?.arguments) {
-                                    collectedToolCalls[idx].function.arguments += tc.function.arguments;
+                                    collectedToolCalls[key].function.arguments += tc.function.arguments;
                                 }
                             }
                         }
 
-                        const outputCheck = await runGatewayOutputGuard({
-                            supabase: params.supabase,
-                            projectId: params.gatewayCtx.projectId,
-                            apiKeyId: params.gatewayCtx.apiKeyId,
-                            environment: params.gatewayCtx.environment,
-                            outputText: fullText,
-                            inputText: params.inputText,
-                            inputSecurity: params.inputSecurity,
-                            conversationHistory: params.messages,
-                            endUserId: params.endUserId,
-                        });
-
-                        if (!outputCheck.ok) {
-                            controller.enqueue(sse({ error: outputCheck.message }));
-                            if (!isCencoriWire) {
-                                // Legacy contract: error chunks close WITHOUT
-                                // [DONE]; OpenAI mode keeps its existing
-                                // [DONE]-after-error behavior.
-                                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                            }
-                            controller.close();
-                            return;
-                        }
-
-                        const deltaContent = params.tokenMap
-                            ? deTokenize(chunk.delta, params.tokenMap)
-                            : chunk.delta;
-
-                        if (isCencoriWire) {
-                            // Legacy chunk: {delta: <string>, finish_reason}
-                            // — finish_reason passthrough, dropped by
-                            // JSON.stringify when undefined.
-                            if (deltaContent || chunk.toolCalls?.length || chunk.finishReason) {
-                                const payload: Record<string, unknown> = {
-                                    delta: deltaContent ?? '',
-                                    finish_reason: tokenLimitReached ? 'length' : chunk.finishReason,
-                                };
-                                if (!emittedFirstContent && chunk.usedFallback) {
-                                    payload.fallback_used = true;
-                                    payload.original_provider = chunk.originalProvider ?? resolved.providerName;
-                                    payload.original_model = chunk.originalModel ?? resolved.model;
-                                }
-                                if (chunk.toolCalls?.length) {
-                                    // BOTH spellings: snake for Vercel/TanStack,
-                                    // camel for Python/PHP/Rust stream parsers.
-                                    payload.tool_calls = chunk.toolCalls;
-                                    payload.toolCalls = chunk.toolCalls;
-                                }
-                                controller.enqueue(sse(payload));
-                                emittedFirstContent = true;
-                            }
-                        } else {
-                            const delta: Record<string, unknown> = {};
-                            if (deltaContent) delta.content = deltaContent;
-                            if (chunk.toolCalls?.length) {
-                                delta.tool_calls = chunk.toolCalls.map((tc, i) => ({
-                                    index: i,
-                                    id: tc.id,
-                                    type: tc.type,
-                                    function: tc.function,
-                                }));
-                            }
-
-                            if (Object.keys(delta).length > 0) {
-                                controller.enqueue(
-                                    sse(buildOpenAiStreamChunk(
-                                        chunk.actualModel,
-                                        delta,
-                                        tokenLimitReached ? 'length' : null
-                                    ))
-                                );
-                            }
-                        }
-
-                        if (tokenLimitReached) {
-                            // Cut the stream: settle accounting with
-                            // finish_reason "length" and terminate.
-                            const figures = await settleStream({
-                                actualModel: chunk.actualModel,
-                                actualProvider: chunk.actualProvider,
-                                usedFallback: chunk.usedFallback,
-                                finishReason: 'length',
-                            });
-                            finishStream(figures, {
-                                actualModel: chunk.actualModel,
-                                finishReason: 'length',
+                        if (tokenLimitReached || chunk.finishReason) {
+                            await completeBufferedStream({
+                                ...lastMeta,
+                                finishReason: tokenLimitReached ? 'length' : chunk.finishReason || 'stop',
                             });
                             return;
                         }
+                    }
 
-                        if (chunk.finishReason) {
-                            const toolCallValues = Object.values(collectedToolCalls);
-                            if (
-                                params.shadowMode &&
-                                params.agentId &&
-                                toolCallValues.length > 0 &&
-                                params.createPendingAction
-                            ) {
-                                const pendingIds: string[] = [];
-                                for (const tc of toolCallValues) {
-                                    const id = await params.createPendingAction({
-                                        tool_call_id: tc.id,
-                                        tool: tc.function.name,
-                                        arguments: tc.function.arguments,
-                                    });
-                                    if (id) pendingIds.push(id);
-                                }
-                                if (pendingIds.length > 0) {
-                                    const shadowEvent = {
-                                        type: 'shadow_approval_required',
-                                        agent_id: params.agentId,
-                                        pending_action_ids: pendingIds,
-                                        poll_url: `/api/v1/agent/actions/poll?ids=${pendingIds.join(',')}`,
-                                    };
-                                    controller.enqueue(
-                                        encoder.encode(
-                                            `event: shadow_mode\ndata: ${JSON.stringify(shadowEvent)}\n\n`
-                                        )
-                                    );
-                                }
-                            } else if (
-                                params.agentId &&
-                                toolCallValues.length > 0 &&
-                                params.createExecutedAction
-                            ) {
-                                for (const tc of toolCallValues) {
-                                    params.createExecutedAction({
-                                        tool_call_id: tc.id,
-                                        tool: tc.function.name,
-                                        arguments: tc.function.arguments,
-                                    });
-                                }
-                            }
-
-                            const figures = await settleStream({
-                                actualModel: chunk.actualModel,
-                                actualProvider: chunk.actualProvider,
-                                usedFallback: chunk.usedFallback,
-                                finishReason: chunk.finishReason,
-                            });
-                            finishStream(figures, {
-                                actualModel: chunk.actualModel,
-                                finishReason: chunk.finishReason,
-                            });
-                        }
+                    // Defensive completion for providers that close without a
+                    // terminal finish_reason chunk.
+                    if (lastMeta) {
+                        await completeBufferedStream({ ...lastMeta, finishReason: 'stop' });
+                    } else {
+                        throw new Error('Provider stream ended without output');
                     }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Stream failed';

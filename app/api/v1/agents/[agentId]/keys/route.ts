@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
-import { validateGatewayRequest, handleCorsPreFlight, type GatewayContext } from '@/lib/gateway-middleware';
+import { handleCorsPreFlight } from '@/lib/gateway-middleware';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -26,26 +26,15 @@ export async function POST(
         const { agentId } = await params;
         const providedApiKey = extractCencoriApiKeyFromHeaders(req.headers);
         const adminClient = createAdminClient();
-        let gatewayCtx: GatewayContext | null = null;
         let userId: string | null = null;
         let projectId: string;
 
         if (providedApiKey) {
-            const validation = await validateGatewayRequest(req);
-            if (!validation.success) return validation.response;
-            gatewayCtx = validation.context;
-
-            const { data: agent } = await adminClient
-                .from('agents')
-                .select('project_id')
-                .eq('id', agentId)
-                .single();
-
-            if (!agent) return respondError(404, 'Agent not found', 'agent_not_found');
-            if (agent.project_id !== gatewayCtx.projectId) {
-                return respondError(403, 'API key does not have access to this agent', 'forbidden');
-            }
-            projectId = gatewayCtx.projectId;
+            return respondError(
+                403,
+                'Creating credentials requires an authenticated organization owner session',
+                'dashboard_auth_required',
+            );
         } else {
             const authHeader = req.headers.get('Authorization');
             if (!authHeader) return respondError(401, 'Missing API key or Authorization header', 'unauthorized');
@@ -71,19 +60,38 @@ export async function POST(
             projectId = agent.project_id;
         }
 
-        const body = await req.json() as {
+        let body: {
             name?: string;
             environment?: 'production' | 'test';
             key_type?: 'secret' | 'publishable';
             allowed_domains?: string[];
         };
+        try {
+            body = await req.json();
+        } catch {
+            return respondError(400, 'Request body must be valid JSON', 'invalid_json');
+        }
 
         const name = body.name?.trim() || `Agent Key`;
         const environment = body.environment || 'production';
         const keyType = body.key_type || 'secret';
 
+        if (!['production', 'test'].includes(environment)) {
+            return respondError(400, "environment must be 'production' or 'test'", 'invalid_environment');
+        }
         if (!['secret', 'publishable'].includes(keyType)) {
             return respondError(400, "key_type must be 'secret' or 'publishable'", 'invalid_key_type');
+        }
+        if (keyType === 'publishable' && (
+            !Array.isArray(body.allowed_domains)
+            || body.allowed_domains.length === 0
+            || body.allowed_domains.some(domain => typeof domain !== 'string' || !domain.trim())
+        )) {
+            return respondError(
+                400,
+                'publishable keys require at least one valid allowed domain',
+                'invalid_allowed_domains',
+            );
         }
 
         const typePrefix = keyType === 'publishable' ? 'cpk' : 'csk';
@@ -101,10 +109,10 @@ export async function POST(
             .from('api_keys')
             .insert({
                 project_id: projectId,
-                name: `Agent ${agentId} Key`,
+                name,
                 key_prefix: fullKey.substring(0, prefixDisplayLength) + '...',
                 key_hash: keyHash,
-                created_by: userId || gatewayCtx!.projectId,
+                created_by: userId,
                 environment,
                 key_type: keyType,
                 agent_id: agentId,

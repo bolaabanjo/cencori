@@ -45,7 +45,7 @@ const createPendingAction = async (
     }
 };
 
-const createExecutedAction = async (
+const createDispatchedAction = async (
     supabase: ReturnType<typeof createAdminClient>,
     agentId: string,
     toolCall: ToolCallPayload
@@ -55,7 +55,7 @@ const createExecutedAction = async (
             agent_id: agentId,
             type: "tool_call",
             payload: toolCall,
-            status: "executed",
+            status: "dispatched",
         });
     } catch (e) {
         console.error("Failed to log action", e);
@@ -75,6 +75,90 @@ const normalizeGatewayModelId = (modelId: string): string => {
 
     return aliases[strippedModel] || strippedModel;
 };
+
+const MAX_INPUT_ITEMS = 100;
+const MAX_INLINE_FILES = 20;
+const MAX_INLINE_FILE_BYTES = 512 * 1024;
+const MAX_TOTAL_INLINE_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_TEXT_FIELD_BYTES = 1024 * 1024;
+const MAX_FILENAME_LENGTH = 255;
+
+function utf8Bytes(value: string): number {
+    return new TextEncoder().encode(value).byteLength;
+}
+
+function validateResponsesInput(input: unknown): string | null {
+    if (typeof input === 'string') {
+        if (!input.trim()) return 'Input must not be empty.';
+        if (utf8Bytes(input) > MAX_TEXT_FIELD_BYTES) {
+            return 'Input text exceeds the 1 MiB limit.';
+        }
+        return null;
+    }
+
+    if (!Array.isArray(input) || input.length === 0) {
+        return 'Missing input. Provide a string or a non-empty array of input items.';
+    }
+    if (input.length > MAX_INPUT_ITEMS) {
+        return `Input may contain at most ${MAX_INPUT_ITEMS} items.`;
+    }
+
+    let fileCount = 0;
+    let totalFileBytes = 0;
+    for (const rawItem of input) {
+        if (!rawItem || typeof rawItem !== 'object') return 'Every input item must be an object.';
+        const item = rawItem as Record<string, unknown>;
+
+        if (item.type === 'message') {
+            if (!['user', 'assistant', 'system'].includes(String(item.role))) {
+                return 'Message input items require a valid role.';
+            }
+            if (typeof item.content !== 'string' || utf8Bytes(item.content) > MAX_TEXT_FIELD_BYTES) {
+                return 'Message content must be a string no larger than 1 MiB.';
+            }
+        } else if (item.type === 'function_call') {
+            if (typeof item.id !== 'string' || typeof item.call_id !== 'string'
+                || typeof item.name !== 'string' || typeof item.arguments !== 'string') {
+                return 'Function call input items require string id, call_id, name, and arguments fields.';
+            }
+            if (utf8Bytes(item.arguments) > MAX_TEXT_FIELD_BYTES) {
+                return 'Function call arguments exceed the 1 MiB limit.';
+            }
+        } else if (item.type === 'function_call_output') {
+            if (typeof item.call_id !== 'string' || typeof item.output !== 'string') {
+                return 'Function call output items require string call_id and output fields.';
+            }
+            if (utf8Bytes(item.output) > MAX_TEXT_FIELD_BYTES) {
+                return 'Function call output exceeds the 1 MiB limit.';
+            }
+        } else if (item.type === 'file') {
+            fileCount += 1;
+            if (fileCount > MAX_INLINE_FILES) return `Input may contain at most ${MAX_INLINE_FILES} inline files.`;
+            if (typeof item.filename !== 'string' || !item.filename.trim()
+                || item.filename.length > MAX_FILENAME_LENGTH || /[\0\r\n]/.test(item.filename)) {
+                return 'Inline files require a valid filename no longer than 255 characters.';
+            }
+            if (typeof item.content !== 'string' || item.content.length === 0) {
+                return 'Inline file content must be a non-empty string.';
+            }
+            if (item.mime_type !== undefined && typeof item.mime_type !== 'string') {
+                return 'Inline file mime_type must be a string when provided.';
+            }
+            const fileBytes = utf8Bytes(item.content);
+            if (fileBytes > MAX_INLINE_FILE_BYTES) {
+                return 'An inline file exceeds the 512 KiB per-file limit.';
+            }
+            totalFileBytes += fileBytes;
+            if (totalFileBytes > MAX_TOTAL_INLINE_FILE_BYTES) {
+                return 'Inline files exceed the 2 MiB combined limit.';
+            }
+        } else {
+            return 'Unsupported input item type.';
+        }
+    }
+
+    return null;
+}
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -181,7 +265,23 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Parse Request Body ──
-        const body = await req.json() as ResponsesRequest;
+        let body: ResponsesRequest;
+        try {
+            body = await req.json() as ResponsesRequest;
+        } catch {
+            return respondError(400, 'Request body must be valid JSON.', 'invalid_json');
+        }
+
+        if (!body || typeof body !== 'object') {
+            return respondError(400, 'Request body must be a JSON object.', 'invalid_request');
+        }
+        if (body.model !== undefined && typeof body.model !== 'string') {
+            return respondError(400, 'Model must be a string.', 'invalid_model');
+        }
+        if (body.instructions !== undefined
+            && (typeof body.instructions !== 'string' || utf8Bytes(body.instructions) > MAX_TEXT_FIELD_BYTES)) {
+            return respondError(400, 'Instructions must be a string no larger than 1 MiB.', 'invalid_instructions');
+        }
 
         if (!body.model && !agentConfig?.model && !gatewayCtx?.defaultModel) {
             return respondError(400, "Missing model. Provide model in request body or set a default model in project settings.", 'missing_model');
@@ -193,8 +293,9 @@ export async function POST(req: NextRequest) {
         const instructions = agentConfig?.system_prompt || body.instructions;
 
         // If agent mode with no input, create a default
-        if (!input || (Array.isArray(input) && input.length === 0)) {
-            return respondError(400, "Missing input. Provide a string or array of input items.", 'missing_input');
+        const inputValidationError = validateResponsesInput(input);
+        if (inputValidationError) {
+            return respondError(400, inputValidationError, 'invalid_input');
         }
 
         // ── End-User Billing ──
@@ -267,13 +368,36 @@ export async function POST(req: NextRequest) {
         const activeGatewayCtx = gatewayCtx;
 
         // ── Convert input to unified messages for security pipeline ──
-        const inputMessages: UnifiedMessage[] = typeof input === 'string'
-            ? [{ role: 'user' as const, content: input }]
-            : input
-                .filter((item): item is { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string } =>
-                    item.type === 'message'
-                )
-                .map(item => ({ role: item.role, content: item.content }));
+        const inputMessages: UnifiedMessage[] = [];
+        if (instructions) {
+            inputMessages.push({ role: 'system', content: instructions });
+        }
+        if (typeof input === 'string') {
+            inputMessages.push({ role: 'user', content: input });
+        } else {
+            for (const item of input) {
+                if (item.type === 'message') {
+                    inputMessages.push({ role: item.role, content: item.content });
+                } else if (item.type === 'function_call') {
+                    inputMessages.push({
+                        role: 'assistant',
+                        content: '',
+                        tool_calls: [{
+                            id: item.call_id || item.id,
+                            type: 'function',
+                            function: { name: item.name, arguments: item.arguments },
+                        }],
+                    });
+                } else if (item.type === 'function_call_output') {
+                    inputMessages.push({ role: 'tool', content: item.output, toolCallId: item.call_id });
+                } else if (item.type === 'file') {
+                    inputMessages.push({
+                        role: 'user',
+                        content: `[File: ${item.filename}]${item.mime_type ? ` (${item.mime_type})` : ''}\n\n${item.content}`,
+                    });
+                }
+            }
+        }
 
         const inputPipeline = await runGatewayInputPipeline({
             supabase: adminClient,
@@ -309,7 +433,9 @@ export async function POST(req: NextRequest) {
             messages: inputPipeline.messages,
             body: {
                 ...body,
-                instructions: instructions || undefined,
+                // Instructions have already passed through the shared input
+                // pipeline and are present in `messages` above.
+                instructions: undefined,
             },
             inputText: inputPipeline.inputText,
             inputSecurity: inputPipeline.inputSecurity,
@@ -343,9 +469,9 @@ export async function POST(req: NextRequest) {
             createPendingAction: agentId
                 ? (toolCall) => createPendingAction(adminClient, agentId, toolCall)
                 : undefined,
-            createExecutedAction: agentId
+            createDispatchedAction: agentId
                 ? (toolCall) => {
-                    void createExecutedAction(adminClient, agentId, toolCall);
+                    void createDispatchedAction(adminClient, agentId, toolCall);
                 }
                 : undefined,
         });

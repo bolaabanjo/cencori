@@ -8,11 +8,12 @@
  */
 
 import type { createAdminClient } from '@/lib/supabaseAdmin';
-import { embedForMemory } from './embeddings';
+import { embedForMemory, type MemoryEmbeddingResult } from './embeddings';
 import { listSessionMemories } from './session-store';
 import { toMemoryId, type MemoryDirective, type RetrievedMemory } from './types';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
+export type MemoryEmbeddingUsage = Omit<MemoryEmbeddingResult, 'embeddings'>;
 
 export async function retrieveMemories(params: {
     supabase: SupabaseAdmin;
@@ -20,8 +21,9 @@ export async function retrieveMemories(params: {
     projectId: string;
     directive: MemoryDirective;
     queryText: string;
+    onEmbeddingUsage?: (usage: MemoryEmbeddingUsage) => void | Promise<void>;
 }): Promise<RetrievedMemory[]> {
-    const { supabase, organizationId, projectId, directive, queryText } = params;
+    const { supabase, organizationId, projectId, directive, queryText, onEmbeddingUsage } = params;
 
     try {
         if (directive.scope === 'session') {
@@ -38,19 +40,35 @@ export async function retrieveMemories(params: {
             return [];
         }
 
-        const { embeddings } = await embedForMemory(
+        const embeddingResult = await embedForMemory(
             supabase,
             projectId,
             organizationId,
             queryText
         );
+        if (onEmbeddingUsage) {
+            try {
+                await onEmbeddingUsage({
+                    totalTokens: embeddingResult.totalTokens,
+                    providerCostUsd: embeddingResult.providerCostUsd,
+                    cencoriChargeUsd: embeddingResult.cencoriChargeUsd,
+                    markupPercentage: embeddingResult.markupPercentage,
+                    model: embeddingResult.model,
+                    provider: embeddingResult.provider,
+                });
+            } catch (error) {
+                // Accounting errors must not turn memory retrieval into a
+                // chat outage, but they are never silently ignored.
+                console.error('[Memory] Failed to account for search embedding:', error);
+            }
+        }
 
         const { data, error } = await supabase.rpc('match_gateway_memories', {
             p_org_id: organizationId,
             p_project_id: projectId,
             p_scope: directive.scope,
             p_scope_key: directive.scopeKey,
-            p_query_embedding: JSON.stringify(embeddings[0]),
+            p_query_embedding: JSON.stringify(embeddingResult.embeddings[0]),
             p_threshold: directive.threshold,
             p_limit: directive.topK,
             p_namespace: directive.namespace,
