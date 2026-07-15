@@ -18,6 +18,7 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     // Cerebras (gpt-oss- conflicts with gpt- → openai)
     'gpt-oss-120b': 'cerebras',
     'zai-glm-4.7': 'cerebras',
+    'gemma-4-31b': 'cerebras',
     // HuggingFace (deepseek- prefix → deepseek, / prefix → wrong org, llama- → groq)
     'deepseek-ai/DeepSeek-V4-Flash': 'huggingface',
     'axiveri/africlaude-7b': 'huggingface',
@@ -31,6 +32,8 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'qwen/qwen3-32b': 'groq',
     'moonshotai/kimi-k2-instruct': 'groq',
     'allam-2-7b': 'groq',
+    // Maximo AI (defaults to openai)
+    'maximo-atlas-preview': 'maximo',
 };
 
 /**
@@ -133,8 +136,12 @@ export class ProviderRouter {
             return modelName;
         }
 
-        // Default to OpenAI for unknown models
-        return 'openai';
+        throw new ProviderError(
+            'router',
+            `Cannot determine a provider for model '${modelName}'. Use a known model ID or an explicit provider/model prefix.`,
+            undefined,
+            false
+        );
     }
 
     /**

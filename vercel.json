@@ -10,7 +10,7 @@
         },
         {
             "source": "/v1/completions",
-            "destination": "/api/ai/chat"
+            "destination": "/api/ai/completions"
         },
         {
             "source": "/v1/models",
@@ -23,6 +23,14 @@
         {
             "source": "/v1/responses",
             "destination": "/api/v1/responses"
+        },
+        {
+            "source": "/v1/sessions",
+            "destination": "/api/v1/sessions"
+        },
+        {
+            "source": "/v1/sessions/:path*",
+            "destination": "/api/v1/sessions/:path*"
         },
         {
             "source": "/v1/memory/:path*",
@@ -113,12 +121,6 @@
             "source": "/old-blog/:slug",
             "destination": "/new-blog/:slug",
             "permanent": true
-        }
-    ],
-    "crons": [
-        {
-            "path": "/api/cron/reset-usage",
-            "schedule": "0 0 1 * *"
         }
     ]
 }

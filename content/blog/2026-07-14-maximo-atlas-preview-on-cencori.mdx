@@ -1,0 +1,98 @@
+---
+title: "Maximo Atlas Preview Is Live on Cencori"
+slug: "maximo-atlas-preview-on-cencori"
+date: "2026-07-14"
+excerpt: "Maximo Atlas Preview — a new Opus-class coding and agent model built in Nigeria — is now available on Cencori. Free to use during the preview period, with OpenAI-compatible API, 262K context, tool calling, and reasoning."
+coverImage: "/blog/images/covers/afr.png"
+tags: ["Product", "Maximo AI", "AI Models", "Release", "Free"]
+category: "changelog"
+published: false
+---
+
+**Maximo Atlas Preview** is live on Cencori.
+
+Built by Maximo AI in Nigeria, Atlas is an Opus-class proprietary coding and agent model available now — completely free during the preview period. It delivers competitive benchmark results across software engineering, browsing, tool use, and reasoning, at a fraction of the cost of comparable frontier models.
+
+From today, you can target `maximo-atlas-preview` across the entire Cencori stack.
+
+## Why This Matters
+
+Atlas is the first Opus-class model built by an African AI team. It holds its own against frontier alternatives on benchmarks like TerminalBench (75.0%), SWE-bench Pro (61.0%), and BrowseComp (84.0%), while costing dramatically less — $0.20/$1.00 per 1M tokens after preview, and completely free until July 21.
+
+For Cencori users, this means a capable reasoning and coding model with no cost barrier during the preview window, and a strong budget option afterward.
+
+## Key Specs
+
+| | |
+|---|---|
+| **Context Window** | 262,000 tokens |
+| **Max Output** | 262,000 tokens |
+| **Pricing (Preview)** | Free |
+| **Pricing (Post-Preview)** | $0.20 / $1.00 per 1M tokens |
+| **Input** | Text + Image |
+| **Output** | Text |
+| **Capabilities** | Reasoning, Tool/Function Calling, JSON Mode, Structured Outputs, Web Search |
+
+## Using Atlas in Cencori
+
+### SDK
+
+```typescript
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const response = await cencori.ai.chat({
+  model: 'maximo-atlas-preview',
+  messages: [
+    { role: 'system', content: 'You are a senior software engineer.' },
+    { role: 'user', content: 'Review this pull request for potential issues.' }
+  ]
+});
+```
+
+### REST API
+
+```bash
+curl -X POST https://cencori.com/api/ai/chat \
+  -H "CENCORI_API_KEY: $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "maximo-atlas-preview",
+    "messages": [
+      {"role": "user", "content": "Write a Python script to analyze server logs."}
+    ]
+  }'
+```
+
+## Benchmark Highlights
+
+| Benchmark | Atlas Preview |
+|---|---|
+| TerminalBench 2.1 | 75.0% |
+| SWE-bench Pro | 61.0% |
+| BrowseComp | 84.0% |
+| SWE-bench Multilingual | 75.3% |
+| FrontierScience-Olympiad | 74.0% |
+| Claw Eval | 68.0% |
+| AA-LCR | 74.0% |
+
+## What We Shipped in Cencori
+
+- Maximo AI registered as a native provider in our model catalog
+- `maximo-atlas-preview` available across the Cencori gateway — no custom provider setup needed
+- Full support for streaming, tool calling, structured outputs, and reasoning
+- Cencori's security logging, data rules, and observability apply automatically
+
+## Notes for Production Teams
+
+- The preview is free until July 21, 2026 at 00:00 UTC. After that, pricing is $0.20/1M input tokens and $1.00/1M output tokens.
+- Atlas is an OpenAI-compatible provider. If you already call Cencori chat endpoints, switch the model ID and go.
+- The API model ID is `maximo-atlas-preview`.
+
+## References
+
+- [Maximo AI Platform](https://maximoai.co/platform)
+- [Maximo AI Privacy Policy](https://maximoai.co/privacy-policy)
+- [Maximo AI Terms of Service](https://maximoai.co/terms-of-use)
+- [Cencori Models Catalog](/docs/ai/models)

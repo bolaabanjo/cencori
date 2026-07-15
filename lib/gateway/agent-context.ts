@@ -99,11 +99,12 @@ export async function resolveAgentContext(params: {
     authenticatedProjectId: string | null;
     authenticatedUserId: string | null;
     startedAt: number;
+    agentIdOverride?: string | null;
 }): Promise<AgentResolveResult> {
     const { supabase, req, gatewayCtx, authenticatedProjectId, authenticatedUserId, startedAt } = params;
     let resolvedGatewayCtx = gatewayCtx;
 
-    let agentId: string | null = req.headers.get("X-Agent-ID");
+    let agentId: string | null = params.agentIdOverride || req.headers.get("X-Agent-ID");
 
     // Derive agent ID from API key name (format: "Agent {uuid} Key")
     if (!agentId && resolvedGatewayCtx) {

@@ -1,15 +1,17 @@
 /**
  * Text-to-Speech API Route
- * 
+ *
  * POST /api/ai/audio/speech
- * 
- * Converts text to speech using AI models.
- * Returns audio as a binary stream.
+ *
+ * Converts text to speech across multiple providers (OpenAI, Deepgram Aura,
+ * Cartesia Sonic, Spitch, ElevenLabs). Returns audio as a binary stream.
+ *
+ * Provider is inferred from `model` (backward compatible: default is OpenAI
+ * tts-1). Synthesis lives in `lib/audio/speech.ts`; this route owns the
+ * gateway pipeline (input guard, pricing, logging, usage).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { decryptApiKey } from '@/lib/encryption';
 import {
     validateGatewayRequest,
     addGatewayHeaders,
@@ -17,23 +19,16 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
-
-type Voice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
-type ResponseFormat = 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm';
-
-interface SpeechRequest {
-    model?: 'tts-1' | 'tts-1-hd';
-    input: string;
-    voice?: Voice;
-    response_format?: ResponseFormat;
-    speed?: number;
-}
-
-// TTS pricing: per 1M characters
-const TTS_PRICING: Record<string, number> = {
-    'tts-1': 15.00,     // $15/1M chars
-    'tts-1-hd': 30.00,  // $30/1M chars
-};
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
+import { getUsageUnitPricingFromDB } from '@/lib/providers/pricing';
+import {
+    generateSpeech,
+    listVoiceModels,
+    resolveProviderModel,
+    SpeechRequestError,
+    type SpeechRequest,
+} from '@/lib/audio/speech';
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -47,112 +42,109 @@ export async function POST(req: NextRequest) {
     }
     const ctx = validation.context;
 
+    // Model/provider are needed in the catch block for logging; defaults match the lib.
+    let model = 'tts-1';
+    let provider = 'openai';
+
     try {
         const body: SpeechRequest = await req.json();
-        const {
-            input,
-            model = 'tts-1',
-            voice = 'alloy',
-            response_format = 'mp3',
-            speed = 1.0,
-        } = body;
+        model = body.model ?? 'tts-1';
+        if (body.provider) provider = body.provider;
 
-        if (!input) {
+        if (typeof body.input !== 'string' || !body.input.trim()) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'bad_request', message: 'Input text is required' }, { status: 400 }),
                 { requestId: ctx.requestId }
             );
         }
 
-        if (input.length > 4096) {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'bad_request', message: 'Input text exceeds maximum length of 4096 characters' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
-        }
-
-        // Get OpenAI API key (BYOK or default)
-        let openaiKey: string | null = null;
-
-        const { data: providerKey } = await ctx.supabase
-            .from('provider_keys')
-            .select('encrypted_key, is_active')
-            .eq('project_id', ctx.projectId)
-            .eq('provider', 'openai')
-            .eq('is_active', true)
-            .single();
-
-        if (providerKey?.encrypted_key) {
-            openaiKey = decryptApiKey(providerKey.encrypted_key, ctx.organizationId);
-        } else {
-            openaiKey = process.env.OPENAI_API_KEY ?? null;
-        }
-
-        if (!openaiKey) {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'provider_not_configured', message: 'No OpenAI API key configured' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
-        }
-
-        const client = new OpenAI({ apiKey: openaiKey });
-
-        const response = await client.audio.speech.create({
-            model,
-            input,
-            voice,
-            response_format,
-            speed,
+        // ── Input guard (redaction / blocking) ──
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: body.input }],
         });
+        if (!inputPipeline.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'audio/speech',
+                model,
+                provider,
+                status: 'blocked',
+                errorMessage: inputPipeline.message,
+            });
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons },
+                    { status: inputPipeline.status }
+                ),
+                { requestId: ctx.requestId }
+            );
+        }
+        const guardedInput = inputPipeline.messages[0]?.content ?? body.input;
 
-        // Cost tracking (per-character pricing)
-        const charCount = input.length;
-        const pricePerMillion = TTS_PRICING[model] || 15.0;
-        const providerCost = (charCount / 1_000_000) * pricePerMillion;
-        const cencoriCharge = providerCost * 1.2;
+        // Resolve provider/model and confirm pricing exists BEFORE the billable
+        // provider call, so a missing pricing row fails closed.
+        const resolved = resolveProviderModel(body);
+        model = resolved.model;
+        provider = resolved.provider;
+        const pricing = await getUsageUnitPricingFromDB(resolved.provider, resolved.model, 'characters');
+
+        // ── Synthesize (validates voice/format, resolves BYOK key) ──
+        const result = await generateSpeech(ctx, { ...body, input: guardedInput });
+
+        // ── Cost tracking (per 1,000 characters) ──
+        const providerCost = (result.charCount / 1000) * pricing.unitPriceUsd;
+        const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
 
         await logGatewayRequest(ctx, {
             endpoint: 'audio/speech',
-            model,
-            provider: 'openai',
+            model: result.model,
+            provider: result.provider,
             status: 'success',
-            promptTokens: Math.ceil(charCount / 4),
-            totalTokens: Math.ceil(charCount / 4),
+            promptTokens: Math.ceil(result.charCount / 4),
+            totalTokens: Math.ceil(result.charCount / 4),
             costUsd: cencoriCharge,
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
-            markupPercentage: 20,
+            markupPercentage: pricing.cencoriMarkupPercentage,
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, cencoriCharge);
 
-        // Get the audio data
-        const audioBuffer = await response.arrayBuffer();
-
-        const contentTypes: Record<ResponseFormat, string> = {
-            mp3: 'audio/mpeg',
-            opus: 'audio/opus',
-            aac: 'audio/aac',
-            flac: 'audio/flac',
-            wav: 'audio/wav',
-            pcm: 'audio/pcm',
-        };
-
-        return new Response(audioBuffer, {
+        return new Response(result.audio, {
             headers: {
-                'Content-Type': contentTypes[response_format],
-                'Content-Length': audioBuffer.byteLength.toString(),
+                'Content-Type': result.contentType,
+                'Content-Length': result.audio.byteLength.toString(),
                 'X-Request-Id': ctx.requestId,
+                'X-Provider': result.provider,
             },
         });
-
     } catch (error) {
+        if (error instanceof SpeechRequestError) {
+            if (error.status >= 500) {
+                await logGatewayRequest(ctx, {
+                    endpoint: 'audio/speech',
+                    model,
+                    provider,
+                    status: 'error',
+                    errorMessage: error.message,
+                });
+            }
+            return addGatewayHeaders(
+                NextResponse.json({ error: error.code, message: error.message }, { status: error.status }),
+                { requestId: ctx.requestId }
+            );
+        }
+
         console.error('Speech API error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
         await logGatewayRequest(ctx, {
             endpoint: 'audio/speech',
-            model: 'tts-1',
-            provider: 'openai',
+            model,
+            provider,
             status: 'error',
             errorMessage,
         });
@@ -166,15 +158,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
     return NextResponse.json({
-        models: ['tts-1', 'tts-1-hd'],
-        voices: [
-            { id: 'alloy', description: 'Neutral and balanced' },
-            { id: 'echo', description: 'Warm and conversational' },
-            { id: 'fable', description: 'British accent, expressive' },
-            { id: 'onyx', description: 'Deep and authoritative' },
-            { id: 'nova', description: 'Friendly and upbeat' },
-            { id: 'shimmer', description: 'Clear and professional' },
-        ],
+        models: listVoiceModels(),
         formats: ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'],
     });
 }

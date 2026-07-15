@@ -18,6 +18,7 @@ import {
 import { getPricingFromDB } from './pricing';
 import { toOpenAIMessages, estimateTokenCount } from './utils';
 import { normalizeProviderError } from './errors';
+import { safeProviderFetch } from '@/lib/security/outbound-url';
 
 /**
  * Provider configuration with base URLs
@@ -72,6 +73,10 @@ export const OPENAI_COMPATIBLE_ENDPOINTS: Record<string, { baseURL: string; name
         baseURL: 'https://api.cerebras.ai/v1',
         name: 'Cerebras',
     },
+    maximo: {
+        baseURL: 'https://api.maximoai.co/v1',
+        name: 'Maximo AI',
+    },
 };
 
 /**
@@ -79,14 +84,17 @@ export const OPENAI_COMPATIBLE_ENDPOINTS: Record<string, { baseURL: string; name
  * Works with any provider that implements the OpenAI API format
  */
 export class OpenAICompatibleProvider extends AIProvider {
+    readonly supportsTools = true;
     readonly providerName: string;
     private client: OpenAI;
     private displayName: string;
+    private pricingOverride?: ModelPricing;
 
-    constructor(providerName: string, apiKey: string, customBaseURL?: string) {
+    constructor(providerName: string, apiKey: string, customBaseURL?: string, pricingOverride?: ModelPricing) {
         super();
 
         this.providerName = providerName;
+        this.pricingOverride = pricingOverride;
 
         const config = OPENAI_COMPATIBLE_ENDPOINTS[providerName];
         if (!config && !customBaseURL) {
@@ -100,6 +108,9 @@ export class OpenAICompatibleProvider extends AIProvider {
         this.client = new OpenAI({
             apiKey,
             baseURL,
+            fetch: safeProviderFetch,
+            timeout: 55_000,
+            maxRetries: 0,
             // Some providers need extra headers
             defaultHeaders: this.getDefaultHeaders(providerName),
         });
@@ -165,7 +176,8 @@ export class OpenAICompatibleProvider extends AIProvider {
                 usage.completion_tokens,
                 pricing
             );
-            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage);
+            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                + (pricing.fixedFeePerRequest ?? 0);
 
             const finishReason = completion.choices[0]?.finish_reason;
 
@@ -285,7 +297,7 @@ export class OpenAICompatibleProvider extends AIProvider {
     }
 
     async getPricing(model: string): Promise<ModelPricing> {
-        return getPricingFromDB(this.providerName, model);
+        return this.pricingOverride || getPricingFromDB(this.providerName, model);
     }
 
     async testConnection(): Promise<boolean> {

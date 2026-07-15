@@ -10,9 +10,9 @@ import {
     addGatewayHeaders,
     handleCorsPreFlight,
     logGatewayRequest,
-    incrementUsage,
 } from '@/lib/gateway-middleware';
-import { analyzeVision, parseVisionRequest, VisionValidationError } from '@/lib/vision/analyze';
+import { parseVisionRequest, VisionValidationError } from '@/lib/vision/analyze';
+import { executeGuardedVision } from '@/lib/vision/guarded';
 import { ProviderError } from '@/lib/providers/errors';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 
@@ -34,22 +34,9 @@ export async function POST(req: NextRequest) {
         request.prompt = request.prompt || DEFAULT_PROMPT;
         request.temperature = request.temperature ?? 0;
 
-        const result = await analyzeVision(ctx, request);
-
-        await logGatewayRequest(ctx, {
-            endpoint: 'vision/ocr',
-            model: result.model,
-            provider: result.provider,
-            status: 'success',
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            totalTokens: result.usage.totalTokens,
-            costUsd: result.cost.cencoriChargeUsd,
-            providerCostUsd: result.cost.providerCostUsd,
-            cencoriChargeUsd: result.cost.cencoriChargeUsd,
-            markupPercentage: result.cost.markupPercentage,
-        });
-        await incrementUsage(ctx);
+        const execution = await executeGuardedVision({ ctx, request, endpoint: 'vision/ocr' });
+        if (!execution.ok) return execution.response;
+        const result = execution.result;
 
         return addGatewayHeaders(
             NextResponse.json({ text: result.analysis, model: result.model, provider: result.provider, usage: result.usage, cost: result.cost }),

@@ -44,6 +44,7 @@ export const siteConfig = {
       shipped: "/shipped",
       privacyPolicy: "/privacy-policy",
     },
+    status: "/status",
   },
 };
 

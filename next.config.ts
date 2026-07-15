@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
     return [
       // Docs landing → first page (no index.mdx at the docs root yet)
       { source: "/docs", destination: "/docs/introduction", permanent: false },
+      // NOTE: legacy /dashboard/organizations/* redirects live in proxy.ts
+      // now (see rewriteLegacyOrganizationsPath). Keeping them here would
+      // create a double-hop because config-level redirects run before the
+      // proxy, and they only knew about the intermediate URL shape.
     ];
   },
   // Configure images to allow all local paths (Next.js 16 requirement)

@@ -99,7 +99,7 @@ export function CreditsWidget({ orgSlug }: CreditsWidgetProps) {
                         </div>
                     )}
 
-                    <Button className="w-full rounded-none" variant="outline" onClick={() => window.location.href = `/dashboard/organizations/${orgSlug}/billing`}>
+                    <Button className="w-full rounded-none" variant="outline" onClick={() => window.location.href = `/${orgSlug}/~/billing`}>
                         Top Up Credits
                     </Button>
                 </CardContent>

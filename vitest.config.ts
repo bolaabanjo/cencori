@@ -8,8 +8,21 @@ export default defineConfig({
         environment: 'jsdom',
         globals: true,
         setupFiles: ['./vitest.setup.ts'],
+        env: {
+            NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
+            SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+        },
         include: ['**/__tests__/**/*.test.{ts,tsx}', '**/*.test.{ts,tsx}'],
-        exclude: ['**/node_modules/**', 'node_modules', '.next', 'dist'],
+        exclude: [
+            '**/node_modules/**',
+            'node_modules',
+            '.next',
+            'dist',
+            'eve/**',
+            'tmp/**',
+            '.claude/**',
+            '__tests__/integration/**',
+        ],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],

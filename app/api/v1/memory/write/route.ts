@@ -17,12 +17,13 @@ import {
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
-    MEMORY_EMBEDDING_MODEL,
     appendSessionMemories,
+    buildQuotaCheckFailedBody,
     buildQuotaExceededBody,
     checkMemoryQuota,
     getProjectMemorySettings,
     parseMemoryDirective,
+    redactFact,
     writeMemories,
 } from '@/lib/memory';
 
@@ -92,17 +93,49 @@ export async function POST(req: NextRequest) {
                 ? Math.min(1, Math.max(0, body.importance))
                 : 0.5;
 
+        let expiresAt: string | null = null;
+        if (body.expiresAt !== undefined) {
+            const parsedExpiry = Date.parse(body.expiresAt);
+            if (!Number.isFinite(parsedExpiry) || parsedExpiry <= Date.now()) {
+                return respond(
+                    { error: 'bad_request', message: 'expiresAt must be a future ISO-8601 timestamp' },
+                    400
+                );
+            }
+            expiresAt = new Date(parsedExpiry).toISOString();
+        }
+
         const tier = ctx.tier as SubscriptionTier;
 
         // ── Session scope: Redis, no embedding, no quota ──
         if (directive.scope === 'session') {
-            await appendSessionMemories(
+            const redacted = await redactFact(ctx.supabase, ctx.projectId, content);
+            if (redacted.blocked) {
+                return respond(
+                    { error: 'memory_content_blocked', message: 'Memory content could not be safely stored.' },
+                    403,
+                );
+            }
+            const stored = await appendSessionMemories(
                 ctx.organizationId,
                 ctx.projectId,
                 directive.scopeKey,
-                [{ content, importance }],
+                [{ content: redacted.content, importance }],
                 settings.sessionTtlSeconds
             );
+            if (stored === false) {
+                await logGatewayRequest(ctx, {
+                    endpoint: 'memory/write',
+                    model: 'none',
+                    provider: 'redis',
+                    status: 'error',
+                    errorMessage: 'Session memory store unavailable',
+                });
+                return respond(
+                    { error: 'memory_store_unavailable', message: 'Session memory could not be stored.' },
+                    503,
+                );
+            }
 
             await logGatewayRequest(ctx, {
                 endpoint: 'memory/write',
@@ -117,7 +150,7 @@ export async function POST(req: NextRequest) {
                     id: 'mem_session',
                     scope: 'session',
                     scopeKey: directive.scopeKey,
-                    content,
+                    content: redacted.content,
                     importance,
                     createdAt: new Date().toISOString(),
                 },
@@ -128,6 +161,7 @@ export async function POST(req: NextRequest) {
         // ── User scope: quota → redact → embed → insert ──
         const quota = await checkMemoryQuota(ctx.supabase, ctx.projectId, tier);
         if (!quota.allowed) {
+            if (quota.error) return respond(buildQuotaCheckFailedBody(), 503);
             return respond(buildQuotaExceededBody(ctx.projectId, tier, quota.used, quota.limit), 429);
         }
 
@@ -141,14 +175,15 @@ export async function POST(req: NextRequest) {
             namespace: directive.namespace,
             facts: [{ content, importance }],
             metadata: { ...body.metadata, extractedFrom: 'manual' },
+            expiresAt,
         });
 
         if (result.written.length === 0) {
             // Either the fact was blocked by a data rule or the insert failed.
             await logGatewayRequest(ctx, {
                 endpoint: 'memory/write',
-                model: MEMORY_EMBEDDING_MODEL,
-                provider: 'openai',
+                model: result.embeddingModel ?? 'unknown',
+                provider: result.embeddingProvider ?? 'unknown',
                 status: 'error',
                 errorMessage: 'Memory was not written (blocked by data rules or storage failure)',
             });
@@ -163,8 +198,8 @@ export async function POST(req: NextRequest) {
 
         await logGatewayRequest(ctx, {
             endpoint: 'memory/write',
-            model: MEMORY_EMBEDDING_MODEL,
-            provider: 'openai',
+            model: result.embeddingModel ?? 'unknown',
+            provider: result.embeddingProvider ?? 'unknown',
             status: 'success',
             costUsd: result.embeddingCostUsd,
             cencoriChargeUsd: result.embeddingCostUsd,
@@ -181,6 +216,7 @@ export async function POST(req: NextRequest) {
                 namespace: directive.namespace,
                 content: written.content, // post-redaction
                 importance: written.importance,
+                expiresAt,
                 createdAt: new Date().toISOString(),
             },
             201

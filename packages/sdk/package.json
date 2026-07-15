@@ -32,6 +32,11 @@
             "import": "./dist/vision/index.mjs",
             "require": "./dist/vision/index.js"
         },
+        "./voice": {
+            "types": "./dist/voice/index.d.ts",
+            "import": "./dist/voice/index.mjs",
+            "require": "./dist/voice/index.js"
+        },
         "./documents": {
             "types": "./dist/documents/index.d.ts",
             "import": "./dist/documents/index.mjs",

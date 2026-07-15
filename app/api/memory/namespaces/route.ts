@@ -1,108 +1,89 @@
-/**
- * Memory Namespaces API Route
- * 
- * POST /api/memory/namespaces - Create a namespace
- * GET /api/memory/namespaces - List namespaces
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabaseAdmin';
-import crypto from 'crypto';
+import {
+    addGatewayHeaders,
+    handleCorsPreFlight,
+    validateGatewayRequest,
+} from '@/lib/gateway-middleware';
 
 interface CreateNamespaceRequest {
-    name: string;
+    name?: string;
     description?: string;
     embeddingModel?: string;
     dimensions?: number;
     metadata?: Record<string, unknown>;
 }
 
+const ALLOWED_EMBEDDING_MODELS = new Set([
+    'text-embedding-3-small',
+    'text-embedding-3-large',
+    'text-embedding-ada-002',
+]);
+
+export async function OPTIONS() {
+    return handleCorsPreFlight();
+}
+
 export async function POST(req: NextRequest) {
+    const validation = await validateGatewayRequest(req);
+    if (!validation.success) return validation.response;
+    const ctx = validation.context;
+    const respond = (body: unknown, status: number) => addGatewayHeaders(
+        NextResponse.json(body, { status }),
+        { requestId: ctx.requestId },
+    );
+
     try {
-        // Get API key from header
-        const apiKey = req.headers.get('CENCORI_API_KEY') || req.headers.get('Authorization')?.replace('Bearer ', '');
+        const body = await req.json() as CreateNamespaceRequest;
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        const description = typeof body.description === 'string' ? body.description.trim() : null;
+        const embeddingModel = body.embeddingModel || 'text-embedding-3-small';
+        const dimensions = body.dimensions ?? 1536;
+        const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+            ? body.metadata
+            : {};
 
-        if (!apiKey) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Missing API key' },
-                { status: 401 }
-            );
+        if (!name || name.length > 128) {
+            return respond({ error: 'bad_request', message: 'name must be 1-128 characters' }, 400);
+        }
+        if (description && description.length > 2000) {
+            return respond({ error: 'bad_request', message: 'description is too long' }, 400);
+        }
+        if (!ALLOWED_EMBEDDING_MODELS.has(embeddingModel)) {
+            return respond({ error: 'bad_request', message: 'Unsupported embeddingModel' }, 400);
+        }
+        // The deployed memories.embedding column is vector(1536).
+        if (dimensions !== 1536) {
+            return respond({ error: 'bad_request', message: 'dimensions must be 1536' }, 400);
         }
 
-        // Parse request body
-        const body: CreateNamespaceRequest = await req.json();
-        const {
-            name,
-            description,
-            embeddingModel = 'text-embedding-3-small',
-            dimensions = 1536,
-            metadata = {}
-        } = body;
-
-        if (!name) {
-            return NextResponse.json(
-                { error: 'bad_request', message: 'Name is required' },
-                { status: 400 }
-            );
-        }
-
-        // Initialize Supabase client
-        const supabase = createAdminClient();
-
-        // Validate API key and get project
-        const { data: keyData, error: keyError } = await supabase
-            .from('api_keys')
-            .select('id, project_id, key_type, is_active, projects(id, organization_id, name)')
-            .eq('key_hash', crypto.createHash('sha256').update(apiKey).digest('hex'))
-            .single();
-
-        if (keyError || !keyData || !keyData.is_active) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Invalid or inactive API key' },
-                { status: 401 }
-            );
-        }
-
-        const projectId = keyData.project_id;
-
-        // Check if namespace already exists
-        const { data: existing } = await supabase
+        const { data: existing, error: existingError } = await ctx.supabase
             .from('memory_namespaces')
             .select('id')
-            .eq('project_id', projectId)
+            .eq('project_id', ctx.projectId)
             .eq('name', name)
-            .single();
-
+            .maybeSingle();
+        if (existingError) throw new Error(existingError.message);
         if (existing) {
-            return NextResponse.json(
-                { error: 'conflict', message: 'Namespace with this name already exists' },
-                { status: 409 }
-            );
+            return respond({ error: 'conflict', message: 'Namespace with this name already exists' }, 409);
         }
 
-        // Create namespace
-        const { data: namespace, error: createError } = await supabase
+        const { data: namespace, error } = await ctx.supabase
             .from('memory_namespaces')
             .insert({
-                project_id: projectId,
+                project_id: ctx.projectId,
                 name,
                 description,
                 embedding_model: embeddingModel,
                 dimensions,
                 metadata,
             })
-            .select()
+            .select('id, name, description, embedding_model, dimensions, metadata, created_at')
             .single();
-
-        if (createError) {
-            console.error('Error creating namespace:', createError);
-            return NextResponse.json(
-                { error: 'internal_error', message: 'Failed to create namespace' },
-                { status: 500 }
-            );
+        if (error || !namespace) {
+            throw new Error(error?.message || 'Failed to create namespace');
         }
 
-        return NextResponse.json({
+        return respond({
             id: namespace.id,
             name: namespace.name,
             description: namespace.description,
@@ -110,51 +91,24 @@ export async function POST(req: NextRequest) {
             dimensions: namespace.dimensions,
             metadata: namespace.metadata,
             createdAt: namespace.created_at,
-        }, { status: 201 });
-
+        }, 201);
     } catch (error) {
-        console.error('Namespace API error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json(
-            { error: 'internal_error', message: errorMessage },
-            { status: 500 }
-        );
+        const message = error instanceof Error ? error.message : 'Namespace creation failed';
+        return respond({ error: 'internal_error', message }, 500);
     }
 }
 
 export async function GET(req: NextRequest) {
+    const validation = await validateGatewayRequest(req);
+    if (!validation.success) return validation.response;
+    const ctx = validation.context;
+    const respond = (body: unknown, status: number) => addGatewayHeaders(
+        NextResponse.json(body, { status }),
+        { requestId: ctx.requestId },
+    );
+
     try {
-        // Get API key from header
-        const apiKey = req.headers.get('CENCORI_API_KEY') || req.headers.get('Authorization')?.replace('Bearer ', '');
-
-        if (!apiKey) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Missing API key' },
-                { status: 401 }
-            );
-        }
-
-        // Initialize Supabase client
-        const supabase = createAdminClient();
-
-        // Validate API key and get project
-        const { data: keyData, error: keyError } = await supabase
-            .from('api_keys')
-            .select('id, project_id, key_type, is_active')
-            .eq('key_hash', crypto.createHash('sha256').update(apiKey).digest('hex'))
-            .single();
-
-        if (keyError || !keyData || !keyData.is_active) {
-            return NextResponse.json(
-                { error: 'unauthorized', message: 'Invalid or inactive API key' },
-                { status: 401 }
-            );
-        }
-
-        const projectId = keyData.project_id;
-
-        // Get namespaces with memory count
-        const { data: namespaces, error: listError } = await supabase
+        const { data: namespaces, error } = await ctx.supabase
             .from('memory_namespaces')
             .select(`
                 id,
@@ -166,36 +120,24 @@ export async function GET(req: NextRequest) {
                 created_at,
                 memories(count)
             `)
-            .eq('project_id', projectId)
+            .eq('project_id', ctx.projectId)
             .order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
 
-        if (listError) {
-            console.error('Error listing namespaces:', listError);
-            return NextResponse.json(
-                { error: 'internal_error', message: 'Failed to list namespaces' },
-                { status: 500 }
-            );
-        }
-
-        return NextResponse.json({
-            namespaces: namespaces.map(ns => ({
-                id: ns.id,
-                name: ns.name,
-                description: ns.description,
-                embeddingModel: ns.embedding_model,
-                dimensions: ns.dimensions,
-                metadata: ns.metadata,
-                memoryCount: (ns.memories as unknown as { count: number }[])?.[0]?.count ?? 0,
-                createdAt: ns.created_at,
+        return respond({
+            namespaces: (namespaces ?? []).map(namespace => ({
+                id: namespace.id,
+                name: namespace.name,
+                description: namespace.description,
+                embeddingModel: namespace.embedding_model,
+                dimensions: namespace.dimensions,
+                metadata: namespace.metadata,
+                memoryCount: (namespace.memories as unknown as { count: number }[])?.[0]?.count ?? 0,
+                createdAt: namespace.created_at,
             })),
-        });
-
+        }, 200);
     } catch (error) {
-        console.error('Namespace API error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json(
-            { error: 'internal_error', message: errorMessage },
-            { status: 500 }
-        );
+        const message = error instanceof Error ? error.message : 'Namespace listing failed';
+        return respond({ error: 'internal_error', message }, 500);
     }
 }

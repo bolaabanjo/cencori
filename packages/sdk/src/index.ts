@@ -109,6 +109,21 @@ export {
     type VisionUsage,
     type VisionCost,
 } from './vision';
+export {
+    VoiceNamespace,
+    type TTSProvider,
+    type STTProvider,
+    type AudioFormat,
+    type TranscriptFormat,
+    type AudioInput,
+    type SpeakRequest,
+    type SpeakResult,
+    type TranscribeRequest,
+    type TranscribeResult,
+    type TranscriptSegment,
+    type TranscriptWord,
+    type VoiceModelInfo,
+} from './voice';
 export { AgentsNamespace, type Agent, type AgentConfig, type AgentListItem, type CreateAgentParams, type UpdateAgentParams, type AgentKey, type CreateAgentKeyParams } from './agents';
 export { ComputeNamespace } from './compute';
 export { WorkflowNamespace } from './workflow';

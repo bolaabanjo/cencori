@@ -21,6 +21,7 @@ from .projects import ProjectsModule
 from .sessions import SessionsModule
 from .telemetry import TelemetryModule
 from .vision import VisionModule
+from .voice import VoiceModule
 from .documents import DocumentsModule
 
 
@@ -116,6 +117,7 @@ class Cencori:
         # Initialize modules
         self.ai = AIModule(self)
         self.vision = VisionModule(self)
+        self.voice = VoiceModule(self)
         self.documents = DocumentsModule(self)
         self.agents = AgentsModule(self)
         self.memory = MemoryModule(self)

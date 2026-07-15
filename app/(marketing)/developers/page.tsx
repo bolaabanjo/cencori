@@ -97,7 +97,7 @@ const PROVIDER_SWAP = `// Same code. Any provider. Zero rewrites.
 
 await cencori.chat.completions.create({ model: 'gpt-4o', messages });
 await cencori.chat.completions.create({ model: 'claude-sonnet-4-6', messages });
-await cencori.chat.completions.create({ model: 'gemini-2.0-flash', messages });
+await cencori.chat.completions.create({ model: 'gemini-2.5-flash', messages });
 await cencori.chat.completions.create({ model: 'mistral-large-latest', messages });
 await cencori.chat.completions.create({ model: 'grok-4', messages });`;
 

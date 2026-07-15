@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { MessageSquareText, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ThumbsUpIcon from "@hugeicons/core-free-icons/ThumbsUpIcon";
 import ThumbsDownIcon from "@hugeicons/core-free-icons/ThumbsDownIcon";
+import ChatFeedbackIcon from "@hugeicons/core-free-icons/ChatFeedbackIcon";
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -48,11 +49,11 @@ export function FeedbackMenu() {
                     type="button"
                     className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                 >
-                    <MessageSquareText className="size-3.5 shrink-0" />
+                    <HugeiconsIcon icon={ChatFeedbackIcon} className="size-3.5 shrink-0" />
                     <span className="flex-1">Feedback</span>
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono bg-black dark:bg-black border dark:border-[#1a1a1a] border-[#eee]">
+            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]">
                 <div className="space-y-3">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Rate your experience</span>

@@ -1,4 +1,6 @@
 import type { ResponsesRequest } from '@/lib/gateway/v1-responses-execute';
+import type { MemoryDirectiveInput } from '@/lib/memory';
+import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'failed';
 
@@ -36,11 +38,11 @@ export interface SessionEventRecord {
 }
 
 export interface SessionEventPayloadMap {
-    'turn.started': { turn_number: number; model: string; instructions?: string; input_text?: string; input_messages?: Array<{ role: string; content: string | null }> };
+    'turn.started': { turn_number: number; model: string; instructions?: string; input_text?: string; input_messages?: Array<{ role: string; content: string | null }>; input_security?: SecurityCheckResult; input_token_map?: Record<string, string> };
     'output_text.delta': { delta: string; index?: number };
     'tool_call.started': { tool: string; arguments: Record<string, unknown>; action_id?: string };
     'tool_call.completed': { tool: string; output: unknown; action_id?: string };
-    'turn.paused': { reason: string; action_id: string; tool: string; arguments: Record<string, unknown> };
+    'turn.paused': { reason: string; action_id: string; tool: string; arguments: Record<string, unknown>; actions?: Array<{ action_id: string; tool: string; arguments: string }> };
     'turn.resumed': { action_id: string; resolution: 'approved' | 'rejected' };
     'turn.completed': { turn_number: number; output?: unknown; usage?: { input_tokens: number; output_tokens: number; total_tokens: number } };
     'turn.failed': { turn_number: number; output: { error: string }; usage: { input_tokens: number; output_tokens: number; total_tokens: number } };
@@ -65,6 +67,8 @@ export interface TurnRequestBody {
     parallel_tool_calls?: boolean;
     truncation?: 'auto' | 'disabled';
     pause_on_tool_calls?: boolean;
+    /** Gateway memory directive — presence opts the turn into memory (retrieve + write). */
+    memory?: MemoryDirectiveInput;
 }
 
 export interface SessionResponse {

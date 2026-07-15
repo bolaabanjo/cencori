@@ -221,7 +221,7 @@ describe('cencori wire format — stream', () => {
         );
     }
 
-    it('emits {delta: string} chunks, finish_reason on final content chunk, terminal metrics chunk, then [DONE]', async () => {
+    it('buffers content until output approval, then emits metrics and [DONE]', async () => {
         streamChunks([
             { delta: 'Hel' },
             { delta: 'lo' },
@@ -240,14 +240,10 @@ describe('cencori wire format — stream', () => {
 
         const c = chunks as Array<Record<string, unknown>>;
         // Content chunks: delta is a STRING (legacy), not {content}
-        expect(c[0].delta).toBe('Hel');
-        expect(c[0].finish_reason).toBeUndefined();
-        expect(c[1].delta).toBe('lo');
-        // Final content chunk carries finish_reason at top level
-        expect(c[2].delta).toBe('');
-        expect(c[2].finish_reason).toBe('stop');
+        expect(c[0].delta).toBe('Hello');
+        expect(c[0].finish_reason).toBe('stop');
         // NEW terminal metrics chunk (playground reads these)
-        const metrics = c[3];
+        const metrics = c[1];
         expect(metrics.usage).toBeDefined();
         expect((metrics.usage as Record<string, unknown>).total_tokens).toBeGreaterThan(0);
         expect(typeof metrics.cost_usd).toBe('number');
@@ -268,7 +264,7 @@ describe('cencori wire format — stream', () => {
         expect(c[0].fallback_used).toBe(true);
         expect(c[0].original_provider).toBe('anthropic');
         expect(c[0].original_model).toBe('claude-sonnet-4');
-        expect(c[1].fallback_used).toBeUndefined();
+        expect(c.slice(1).every((chunk) => chunk.fallback_used === undefined)).toBe(true);
     });
 
     it('emits both tool-call spellings in stream chunks', async () => {
@@ -310,7 +306,6 @@ describe('cencori wire format — stream', () => {
 
     it('mid-stream output block emits {error} and closes WITHOUT [DONE]', async () => {
         (runGatewayOutputGuard as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce({ ok: true })
             .mockResolvedValueOnce({
                 ok: false,
                 status: 403,

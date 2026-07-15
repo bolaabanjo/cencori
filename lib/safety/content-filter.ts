@@ -147,7 +147,8 @@ export function checkContent(text: string, config?: ContentFilterConfig): Safety
         }
     }
 
-    if (foundValidCC) {
+    const hasCardContext = /\b(?:credit|debit|payment|card(?:\s+number)?)\b/i.test(text);
+    if (foundValidCC || (ccMatches.length > 0 && hasCardContext)) {
         reasons.push('Potential credit card number detected');
         score -= 0.5;
     }

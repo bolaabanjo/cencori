@@ -52,11 +52,18 @@ export async function POST(
         if (!validation.success) return validation.response;
         gatewayCtx = validation.context;
 
-        const { action_id } = await req.json() as { action_id: string };
+        let actionIdValue: unknown;
+        try {
+            const body = await req.json() as { action_id?: unknown };
+            actionIdValue = body.action_id;
+        } catch {
+            return respondError(400, 'Request body must be valid JSON', 'invalid_json');
+        }
 
-        if (!action_id) {
+        if (typeof actionIdValue !== 'string' || !actionIdValue.trim()) {
             return respondError(400, "Missing action_id", "missing_action_id");
         }
+        const action_id = actionIdValue;
 
         const adminClient = createAdminClient();
 
@@ -95,52 +102,35 @@ export async function POST(
             return respondError(409, "action_id does not match the paused tool call", "action_id_mismatch");
         }
 
-        const { data: seqResult } = await adminClient
-            .from('session_events')
-            .select('sequence')
-            .eq('session_id', sessionId)
-            .eq('turn_number', session.last_turn_number)
-            .order('sequence', { ascending: false })
-            .limit(1);
-
-        const nextSeq = (seqResult && seqResult.length > 0 ? seqResult[0].sequence : 0) + 1;
-
-        const { error: eventError } = await adminClient.from('session_events').insert({
-            session_id: sessionId,
-            turn_number: session.last_turn_number,
-            sequence: nextSeq,
-            event_type: 'turn.resumed',
-            payload: { action_id, resolution: 'rejected' },
-        });
-
-        if (eventError) {
-            return respondError(500, eventError.message, 'event_creation_failed');
+        const { data: resolutionRows, error: resolutionError } = await adminClient.rpc(
+            'resolve_session_pause',
+            {
+                p_session_id: sessionId,
+                p_project_id: gatewayCtx.projectId,
+                p_turn_number: session.last_turn_number,
+                p_action_id: action_id,
+                p_resolution: 'rejected',
+            },
+        );
+        if (resolutionError) {
+            console.error('[Sessions] Rejection resolution failed:', resolutionError);
+            return respondError(500, 'Failed to resolve session pause', 'session_resolution_failed');
         }
-
-        // Complete the session (reject = deny the tool call, end this session)
-        const { data: updated, error: updateError } = await adminClient
-            .from('sessions')
-            .update({ status: 'completed', expires_at: null })
-            .eq('id', sessionId)
-            .eq('status', 'paused')
-            .select('id, status')
-            .single();
-
-        if (updateError) {
-            if (updateError.code === 'PGRST116') {
-                return respondError(409, 'Session was already processed by another request', 'concurrent_modification');
-            }
-            return respondError(500, updateError.message, 'session_update_failed');
+        const resolution = Array.isArray(resolutionRows) ? resolutionRows[0] : resolutionRows;
+        if (!resolution?.applied) {
+            const code = resolution?.error_code || 'concurrent_modification';
+            const status = code === 'session_not_found' ? 404 : 409;
+            return respondError(status, 'Session pause was already resolved or no longer matches', code);
         }
 
         return respond(NextResponse.json({
             id: sessionId,
             action_id,
             resolution: 'rejected',
-            status: 'completed',
+            status: 'active',
         }));
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Internal server error";
-        return respondError(500, message, 'internal_error');
+        console.error('[Sessions] Reject failed:', error);
+        return respondError(500, 'Internal server error', 'internal_error');
     }
 }

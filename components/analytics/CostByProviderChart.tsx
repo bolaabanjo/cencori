@@ -42,7 +42,7 @@ export function CostByProviderChart({ data }: CostByProviderChartProps) {
     const maxValue = items[0]?.value || 0;
 
     return (
-        <div className="rounded-xl border border-border/30 bg-card p-4">
+        <div className="bg-card p-4">
             <div className="mb-3">
                 <p className="text-xs font-medium text-muted-foreground">Cost by Provider</p>
                 <p className="text-lg font-semibold tabular-nums tracking-tight mt-0.5">

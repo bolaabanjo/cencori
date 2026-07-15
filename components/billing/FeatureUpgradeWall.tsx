@@ -27,7 +27,7 @@ export function FeatureUpgradeWall({ orgSlug, feature, message }: FeatureUpgrade
                 {message || `Upgrade your plan to unlock ${feature.toLowerCase()} for this project.`}
             </p>
             <Button asChild size="sm" className="mt-4 h-8 text-xs">
-                <Link href={`/dashboard/organizations/${orgSlug}/billing`}>
+                <Link href={`/${orgSlug}/~/billing`}>
                     Upgrade plan
                 </Link>
             </Button>

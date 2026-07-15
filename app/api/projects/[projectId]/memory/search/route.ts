@@ -8,6 +8,11 @@ import {
     parseCreditsBalance,
     shouldEnforceProjectCredits,
 } from "@/lib/project-credit-billing";
+import { decryptApiKey } from '@/lib/encryption';
+import { getPricingFromDB } from '@/lib/providers/pricing';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 /**
  * Dashboard API: Semantic search in a namespace
@@ -33,10 +38,13 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const { searchParams } = new URL(request.url);
         const namespaceName = searchParams.get("namespace");
         const query = searchParams.get("query");
-        const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 50);
+        const limit = Number(searchParams.get("limit") || "20");
 
         if (!namespaceName || !query) {
             return NextResponse.json({ error: "namespace and query params required" }, { status: 400 });
+        }
+        if (!Number.isInteger(limit) || limit < 1 || limit > 50 || query.length > 32_000) {
+            return NextResponse.json({ error: "limit must be 1-50 and query at most 32,000 characters" }, { status: 400 });
         }
 
         // Verify access
@@ -104,27 +112,46 @@ export async function GET(request: NextRequest, context: RouteParams) {
             return NextResponse.json({ error: "Namespace not found" }, { status: 404 });
         }
 
-        // Get project's OpenAI key for embeddings
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: adminClient as never,
+            projectId,
+            environment: 'production',
+            tier: tier as SubscriptionTier,
+            messages: [{ role: 'user', content: query }],
+        });
+        if (!inputPipeline.ok) {
+            return NextResponse.json(
+                { error: inputPipeline.code, message: inputPipeline.message },
+                { status: inputPipeline.status },
+            );
+        }
+        const guardedQuery = inputPipeline.messages[0]?.content ?? query;
+
+        // Get project's encrypted OpenAI key for embeddings.
         const { data: providerKey } = await adminClient
-            .from("project_provider_keys")
+            .from("provider_keys")
             .select("encrypted_key")
             .eq("project_id", projectId)
             .eq("provider", "openai")
+            .eq('is_active', true)
             .single();
 
         // Use project key or fallback to platform key
-        const openaiKey = providerKey?.encrypted_key || process.env.OPENAI_API_KEY;
+        const openaiKey = providerKey?.encrypted_key
+            ? decryptApiKey(providerKey.encrypted_key, project.organization_id)
+            : process.env.OPENAI_API_KEY;
 
         if (!openaiKey) {
             return NextResponse.json({ error: "No OpenAI API key configured" }, { status: 400 });
         }
 
-        const openai = new OpenAI({ apiKey: openaiKey });
+        await getPricingFromDB('openai', 'text-embedding-3-small');
+        const openai = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
 
         // Generate embedding for query
         const embeddingResponse = await openai.embeddings.create({
             model: "text-embedding-3-small",
-            input: query,
+            input: guardedQuery,
         });
         const queryEmbedding = embeddingResponse.data[0].embedding;
 
@@ -167,7 +194,26 @@ export async function GET(request: NextRequest, context: RouteParams) {
             return NextResponse.json({ error: "Search failed" }, { status: 500 });
         }
 
-        return NextResponse.json({ results: results || [] });
+        const safeResults = results || [];
+        const outputCheck = await runGatewayOutputGuard({
+            supabase: adminClient as never,
+            projectId,
+            environment: 'production',
+            outputText: safeResults.map((result: { content?: unknown }) =>
+                typeof result.content === 'string' ? result.content : ''
+            ).join('\n'),
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            conversationHistory: inputPipeline.messages,
+        });
+        if (!outputCheck.ok) {
+            return NextResponse.json(
+                { error: outputCheck.code, message: outputCheck.message },
+                { status: outputCheck.status },
+            );
+        }
+
+        return NextResponse.json({ results: safeResults });
     } catch (error) {
         console.error("Error in memory search:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });

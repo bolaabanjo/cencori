@@ -20,6 +20,17 @@ import type { SubscriptionTier } from "@/lib/entitlements";
 import { resolveAgentContext } from "@/lib/gateway/agent-context";
 import { executeSessionTurn, expireStaleSessions } from "@/lib/gateway/session-engine";
 import type { TurnRequestBody } from "@/lib/gateway/session-types";
+import { waitUntil } from "@vercel/functions";
+import {
+    buildMemorySystemBlock,
+    getProjectMemorySettings,
+    parseMemoryDirective,
+    retrieveMemories,
+    runChatMemoryWriteback,
+    type MemoryDirective,
+    type MemorySettings,
+    type RetrievedMemory,
+} from "@/lib/memory";
 
 const normalizeGatewayModelId = (modelId: string): string => {
     const strippedModel = modelId.startsWith("cencori/")
@@ -91,7 +102,9 @@ export async function POST(
 
         // ── Agent resolution ──
         const adminClient = createAdminClient();
-        void expireStaleSessions(adminClient as never);
+        void expireStaleSessions(adminClient as never).catch((error) => {
+            console.error('[Sessions] Opportunistic expiry failed:', error);
+        });
 
         // Fetch session first
         const { data: session, error: sessionError } = await adminClient
@@ -112,24 +125,6 @@ export async function POST(
             return respondError(409, `Session is ${session.status}, not active`, "session_not_active");
         }
 
-        // ── Atomic turn counter: CAS on last_turn_number ──
-        const { data: locked, error: lockError } = await adminClient
-            .from('sessions')
-            .update({ last_turn_number: session.last_turn_number + 1 })
-            .eq('id', sessionId)
-            .eq('last_turn_number', session.last_turn_number)
-            .select('id, last_turn_number')
-            .single();
-
-        if (lockError) {
-            if (lockError.code === 'PGRST116') {
-                return respondError(409, 'Concurrent turn detected. Session was already updated by another request.', 'concurrent_turn');
-            }
-            return respondError(500, lockError.message, 'session_lock_failed');
-        }
-
-        const newTurnNumber = locked.last_turn_number;
-
         const agentResult = await resolveAgentContext({
             supabase: adminClient,
             req,
@@ -137,6 +132,7 @@ export async function POST(
             authenticatedProjectId: gatewayCtx.projectId,
             authenticatedUserId: null,
             startedAt,
+            agentIdOverride: session.agent_id,
         });
 
         let agentId: string | null = session.agent_id || null;
@@ -274,6 +270,58 @@ export async function POST(
                 return [];
             });
 
+        // ── Memory directive (API opt-in: presence of `memory` enables it) ──
+        // Mirrors the chat-completions door so a session turn can recall
+        // user-scoped facts and persist new ones — the same memory that
+        // powers /v1/chat/completions, now on the Sessions (and Arcie) path.
+        let memoryDirective: MemoryDirective | null = null;
+        let memorySettings: MemorySettings | null = null;
+
+        if (body.memory !== undefined) {
+            memorySettings = await getProjectMemorySettings(adminClient, activeGatewayCtx.projectId);
+            if (!memorySettings.enabled) {
+                return respondError(403, "Memory is disabled for this project.", "memory_disabled");
+            }
+            const parsedDirective = parseMemoryDirective(body.memory);
+            if (!parsedDirective.ok) {
+                return respondError(400, parsedDirective.error, "invalid_memory_directive");
+            }
+            memoryDirective = parsedDirective.directive;
+        }
+
+        // Retrieval runs in parallel with the input pipeline; fail-open ([]).
+        const lastUserMessageText =
+            [...inputMessages].reverse().find((m) => m.role === "user")?.content ?? "";
+        const memoryPromise: Promise<RetrievedMemory[]> =
+            memoryDirective?.retrieve
+                ? retrieveMemories({
+                    supabase: adminClient,
+                    organizationId: activeGatewayCtx.organizationId,
+                    projectId: activeGatewayCtx.projectId,
+                    directive: memoryDirective,
+                    queryText: lastUserMessageText,
+                    onEmbeddingUsage: usage => {
+                        waitUntil(Promise.all([
+                            logGatewayRequest(activeGatewayCtx, {
+                                endpoint: "memory/search",
+                                model: usage.model,
+                                provider: usage.provider,
+                                status: "success",
+                                promptTokens: usage.totalTokens,
+                                completionTokens: 0,
+                                totalTokens: usage.totalTokens,
+                                costUsd: usage.cencoriChargeUsd,
+                                providerCostUsd: usage.providerCostUsd,
+                                cencoriChargeUsd: usage.cencoriChargeUsd,
+                                markupPercentage: usage.markupPercentage,
+                                metadata: { source: "session_memory_retrieval" },
+                            }),
+                            incrementUsage(activeGatewayCtx, usage.cencoriChargeUsd),
+                        ]).then(() => undefined));
+                    },
+                })
+                : Promise.resolve([]);
+
         const inputPipeline = await runGatewayInputPipeline({
             supabase: adminClient,
             projectId: gatewayCtx.projectId,
@@ -291,6 +339,42 @@ export async function POST(
             return respond(NextResponse.json(errorBody, { status: inputPipeline.status }), inputPipeline.code, inputPipeline.message);
         }
 
+        // ── Memory injection ──
+        // Stored facts were redacted at write time; insert them as a system
+        // block ahead of the current turn's input (after any leading system
+        // messages) so the engine positions them right before the user turn.
+        const guardedInput = inputPipeline.messages;
+        const retrievedMemories = await memoryPromise;
+        if (retrievedMemories.length > 0) {
+            const memoryMessage: UnifiedMessage = {
+                role: "system",
+                content: buildMemorySystemBlock(retrievedMemories),
+            };
+            let insertAt = 0;
+            while (insertAt < guardedInput.length && guardedInput[insertAt].role === "system") {
+                insertAt++;
+            }
+            guardedInput.splice(insertAt, 0, memoryMessage);
+        }
+
+        // ── Memory writeback (async — runs after the turn completes) ──
+        const scheduleMemoryWriteback = (assistantText: string) => {
+            if (memoryDirective?.write && memorySettings && assistantText) {
+                const directive = memoryDirective;
+                const settings = memorySettings;
+                waitUntil(
+                    runChatMemoryWriteback({
+                        supabase: adminClient,
+                        gatewayCtx: activeGatewayCtx,
+                        directive,
+                        settings,
+                        userText: inputPipeline.inputText,
+                        assistantText,
+                    })
+                );
+            }
+        };
+
         // Inject agent-configured built-in tools into the request
         const tools = [...(body.tools || [])];
         if (agentId && agentConfig?.tools && agentConfig.tools.length > 0) {
@@ -301,6 +385,26 @@ export async function POST(
                 }
             }
         }
+
+        // Reserve a turn only after authentication, validation, quota, memory,
+        // and security checks have succeeded. Invalid requests must not burn a
+        // turn number or create gaps in replay history.
+        const { data: locked, error: lockError } = await adminClient
+            .from('sessions')
+            .update({ last_turn_number: session.last_turn_number + 1 })
+            .eq('id', sessionId)
+            .eq('last_turn_number', session.last_turn_number)
+            .select('id, last_turn_number')
+            .single();
+
+        if (lockError || !locked) {
+            if (lockError?.code === 'PGRST116') {
+                return respondError(409, 'Concurrent turn detected. Session was already updated by another request.', 'concurrent_turn');
+            }
+            return respondError(500, lockError?.message || 'Failed to reserve session turn', 'session_lock_failed');
+        }
+
+        const newTurnNumber = locked.last_turn_number;
 
         // ── Execute turn ──
         const execResult = await executeSessionTurn({
@@ -315,8 +419,11 @@ export async function POST(
             temperature: body.temperature,
             max_output_tokens: body.max_output_tokens,
             response_format: body.response_format,
-            inputMessages: inputPipeline.messages,
+            inputMessages: guardedInput,
             inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            tokenMap: inputPipeline.tokenMap,
+            onCompletion: scheduleMemoryWriteback,
             pauseOnToolCalls: body.pause_on_tool_calls ?? false,
             endUserId,
             tier: (gatewayCtx.tier || "free") as SubscriptionTier,
@@ -348,6 +455,17 @@ export async function POST(
                 NextResponse.json(execResult.body, { status: execResult.status }),
                 "session_turn_failed",
                 (execResult.body as { error?: { message?: string } }).error?.message || "Turn execution failed",
+            );
+        }
+
+        if (memoryDirective) {
+            execResult.response.headers.set(
+                "X-Cencori-Memory-Retrieved",
+                String(retrievedMemories.length),
+            );
+            execResult.response.headers.set(
+                "X-Cencori-Memory-Write",
+                memoryDirective.write ? "async" : "disabled",
             );
         }
 

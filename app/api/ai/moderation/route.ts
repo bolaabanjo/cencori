@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const client = new OpenAI({ apiKey: openaiKey });
+        const client = new OpenAI({ apiKey: openaiKey, timeout: 55_000, maxRetries: 0 });
 
         const response = await client.moderations.create({ input, model });
 

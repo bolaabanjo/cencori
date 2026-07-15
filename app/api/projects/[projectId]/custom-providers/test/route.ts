@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { decryptApiKey } from '@/lib/encryption';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { safeOutboundFetch } from '@/lib/security/outbound-url';
 
 interface TestRequest {
     provider_id?: string;
@@ -93,7 +94,7 @@ export async function POST(
         const startTime = Date.now();
 
         if (apiFormat === 'openai') {
-            const response = await fetch(`${baseUrl}/chat/completions`, {
+            const response = await safeOutboundFetch(`${baseUrl}/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
@@ -105,7 +106,7 @@ export async function POST(
                     max_tokens: 5,
                 }),
                 signal: AbortSignal.timeout(30000),
-            });
+            }, { maxRedirects: 0 });
 
             const latency = Date.now() - startTime;
 
@@ -132,7 +133,7 @@ export async function POST(
             });
 
         } else if (apiFormat === 'anthropic') {
-            const response = await fetch(`${baseUrl}/messages`, {
+            const response = await safeOutboundFetch(`${baseUrl}/messages`, {
                 method: 'POST',
                 headers: {
                     'x-api-key': apiKey,
@@ -145,7 +146,7 @@ export async function POST(
                     max_tokens: 5,
                 }),
                 signal: AbortSignal.timeout(30000),
-            });
+            }, { maxRedirects: 0 });
 
             const latency = Date.now() - startTime;
 

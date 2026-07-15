@@ -6,6 +6,74 @@
 
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { ModelPricing } from './base';
+import { PricingUnavailableError } from './errors';
+
+const EXPLICITLY_FREE_MODELS = new Set([
+    // Cencori's public free-model catalog. These intentionally bypass the
+    // database pricing lookup and are never charged to the customer.
+    'groq:llama-3.3-70b-versatile',
+    'groq:llama-3.1-8b-instant',
+    'groq:groq/compound',
+    'groq:groq/compound-mini',
+    'cerebras:gpt-oss-120b',
+    'cerebras:zai-glm-4.7',
+    // Contractual Cencori preview.
+    'maximo:maximo-atlas-preview',
+]);
+
+function isExplicitlyFree(provider: string, model: string): boolean {
+    const key = `${provider}:${model}`;
+    if (key === 'maximo:maximo-atlas-preview') {
+        return Date.now() < Date.parse('2026-07-22T00:00:00Z');
+    }
+    return EXPLICITLY_FREE_MODELS.has(key);
+}
+
+export function hasStaticPricing(provider: string, model: string): boolean {
+    return isExplicitlyFree(provider, model);
+}
+
+const PRICING_CACHE_TTL_MS = 5 * 60 * 1000;
+const pricingCache = new Map<string, { pricing: ModelPricing; expiresAt: number }>();
+
+export type UsageUnit = 'characters' | 'minutes';
+
+export type UsageUnitPricing = {
+    unitPriceUsd: number;
+    cencoriMarkupPercentage: number;
+};
+
+/** Resolve non-token pricing for audio models, failing closed on missing data. */
+export async function getUsageUnitPricingFromDB(
+    provider: string,
+    model: string,
+    unit: UsageUnit,
+): Promise<UsageUnitPricing> {
+    const supabase = createAdminClient();
+    const column = unit === 'characters' ? 'price_per_1k_chars' : 'price_per_minute';
+    const { data, error } = await supabase
+        .from('model_pricing')
+        .select(`${column}, cencori_markup_percentage, pricing_expires_at`)
+        .eq('provider', provider)
+        .eq('model_name', model)
+        .eq('is_active', true)
+        .single();
+
+    const row = data as Record<string, unknown> | null;
+    const unitPriceUsd = Number(row?.[column]);
+    const cencoriMarkupPercentage = Number(row?.cencori_markup_percentage);
+    const pricingExpiresAt = typeof row?.pricing_expires_at === 'string'
+        ? Date.parse(row.pricing_expires_at)
+        : null;
+    if (error || !data
+        || !Number.isFinite(unitPriceUsd) || unitPriceUsd < 0
+        || !Number.isFinite(cencoriMarkupPercentage) || cencoriMarkupPercentage < 0
+        || (pricingExpiresAt !== null && (!Number.isFinite(pricingExpiresAt) || pricingExpiresAt <= Date.now()))) {
+        throw new PricingUnavailableError(provider, model, `${column} is missing or invalid`);
+    }
+
+    return { unitPriceUsd, cencoriMarkupPercentage };
+}
 
 /**
  * Get pricing for a model from the database
@@ -14,34 +82,8 @@ export async function getPricingFromDB(
     provider: string,
     model: string
 ): Promise<ModelPricing> {
-    const FREE_MODELS = [
-        // Groq free tier
-        'llama-3.3-70b-versatile',
-        'llama-3.1-8b-instant',
-        'llama-4-maverick',
-        'llama-4-scout',
-        'mixtral-8x7b-32768',
-        'openai/gpt-oss-120b',
-        'openai/gpt-oss-20b',
-        'qwen/qwen3-32b',
-        'moonshotai/kimi-k2-instruct',
-        'groq/compound',
-        'groq/compound-mini',
-        'allam-2-7b',
-        // HuggingFace Inference (rate-limited free)
-        'deepseek-ai/DeepSeek-V4-Flash',
-        'axiveri/africlaude-7b',
-        'meta-llama/Llama-4-Maverick',
-        'meta-llama/Llama-3.3-70B-Instruct',
-        'Qwen/Qwen2.5-72B-Instruct',
-        'mistralai/Mistral-Large-3',
-        // Cerebras free tier
-        'gpt-oss-120b',
-        'zai-glm-4.7',
-    ];
-    
     // Intercept natively free models before any DB queries for 0-latency pricing
-    if (FREE_MODELS.includes(model)) {
+    if (isExplicitlyFree(provider, model)) {
         return {
             inputPer1KTokens: 0,
             outputPer1KTokens: 0,
@@ -49,15 +91,10 @@ export async function getPricingFromDB(
         };
     }
 
-    // Intercept Claude Sonnet 5 to apply time-based promotional pricing
-    if (provider === 'anthropic' && model === 'claude-sonnet-5') {
-        const isIntroActive = new Date().getTime() < new Date("2026-09-01").getTime();
-        return {
-            inputPer1KTokens: isIntroActive ? 0.00200 : 0.00300,
-            outputPer1KTokens: isIntroActive ? 0.01000 : 0.01500,
-            cencoriMarkupPercentage: 50.00,
-        };
-    }
+    const cacheKey = `${provider}:${model}`;
+    const cached = pricingCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.pricing;
+    if (cached) pricingCache.delete(cacheKey);
 
     const supabase = createAdminClient();
 
@@ -66,78 +103,74 @@ export async function getPricingFromDB(
         .select('*')
         .eq('provider', provider)
         .eq('model_name', model)
+        .eq('is_active', true)
         .single();
 
     if (error || !data) {
-        console.warn(`[Pricing] Pricing not found for ${provider}/${model}, using defaults`);
-        return getDefaultPricing(provider);
+        // A guessed provider-wide default can materially undercharge expensive
+        // models. Fail closed until an exact price row is deployed.
+        throw new PricingUnavailableError(provider, model, error?.message);
     }
 
-    return {
-        inputPer1KTokens: parseFloat(data.input_price_per_1k_tokens),
-        outputPer1KTokens: parseFloat(data.output_price_per_1k_tokens),
-        cencoriMarkupPercentage: parseFloat(data.cencori_markup_percentage),
-    };
-}
+    const inputPer1KTokens = Number(data.input_price_per_1k_tokens);
+    const outputPer1KTokens = Number(data.output_price_per_1k_tokens);
+    const cencoriMarkupPercentage = Number(data.cencori_markup_percentage);
+    const pricingExpiresAt = typeof data.pricing_expires_at === 'string'
+        ? Date.parse(data.pricing_expires_at)
+        : null;
+    if (
+        !Number.isFinite(inputPer1KTokens)
+        || !Number.isFinite(outputPer1KTokens)
+        || !Number.isFinite(cencoriMarkupPercentage)
+        || inputPer1KTokens < 0
+        || outputPer1KTokens < 0
+        || cencoriMarkupPercentage < 0
+        || (pricingExpiresAt !== null && (!Number.isFinite(pricingExpiresAt) || pricingExpiresAt <= Date.now()))
+    ) {
+        throw new PricingUnavailableError(provider, model, 'stored pricing is invalid');
+    }
 
-/**
- * Get default pricing for a provider (fallback)
- */
-function getDefaultPricing(provider: string): ModelPricing {
-    const defaults: Record<string, ModelPricing> = {
-        openai: {
-            inputPer1KTokens: 0.0025,
-            outputPer1KTokens: 0.015,
-            cencoriMarkupPercentage: 50,
-        },
-        anthropic: {
-            inputPer1KTokens: 0.003,
-            outputPer1KTokens: 0.015,
-            cencoriMarkupPercentage: 50,
-        },
-        google: {
-            inputPer1KTokens: 0.00125,
-            outputPer1KTokens: 0.01,
-            cencoriMarkupPercentage: 0,
-        },
-        mistral: {
-            inputPer1KTokens: 0.0004,
-            outputPer1KTokens: 0.002,
-            cencoriMarkupPercentage: 50,
-        },
-        cohere: {
-            inputPer1KTokens: 0.0025,
-            outputPer1KTokens: 0.01,
-            cencoriMarkupPercentage: 50,
-        },
-        deepseek: {
-            inputPer1KTokens: 0.00014,
-            outputPer1KTokens: 0.00028,
-            cencoriMarkupPercentage: 50,
-        },
-        xai: {
-            inputPer1KTokens: 0.00125,
-            outputPer1KTokens: 0.0025,
-            cencoriMarkupPercentage: 50,
-        },
-        groq: {
-            inputPer1KTokens: 0,
-            outputPer1KTokens: 0,
-            cencoriMarkupPercentage: 0,
-        },
-        zai: {
-            inputPer1KTokens: 0.00105,
-            outputPer1KTokens: 0.0035,
-            cencoriMarkupPercentage: 50,
-        },
-        custom: {
-            inputPer1KTokens: 0,
-            outputPer1KTokens: 0,
-            cencoriMarkupPercentage: 0,
-        },
+    const optionalRate = (value: unknown): number | undefined => {
+        if (value === null || value === undefined) return undefined;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            throw new PricingUnavailableError(provider, model, 'stored optional pricing is invalid');
+        }
+        return parsed;
     };
+    const threshold = data.long_context_threshold_tokens === null
+        || data.long_context_threshold_tokens === undefined
+        ? undefined
+        : Number(data.long_context_threshold_tokens);
+    const longContextInputPer1KTokens = optionalRate(data.long_context_input_price_per_1k_tokens);
+    const longContextOutputPer1KTokens = optionalRate(data.long_context_output_price_per_1k_tokens);
+    if (threshold !== undefined && (
+        !Number.isInteger(threshold)
+        || threshold < 1
+        || longContextInputPer1KTokens === undefined
+        || longContextOutputPer1KTokens === undefined
+    )) {
+        throw new PricingUnavailableError(provider, model, 'stored long-context pricing is incomplete');
+    }
 
-    return defaults[provider] || defaults.custom;
+    const pricing: ModelPricing = {
+        inputPer1KTokens,
+        outputPer1KTokens,
+        cencoriMarkupPercentage,
+        cachedInputPer1KTokens: optionalRate(data.cached_input_price_per_1k_tokens),
+        longContextThresholdTokens: threshold,
+        longContextInputPer1KTokens,
+        longContextOutputPer1KTokens,
+        longContextCachedInputPer1KTokens: optionalRate(data.long_context_cached_input_price_per_1k_tokens),
+        pricingExpiresAt: typeof data.pricing_expires_at === 'string'
+            ? data.pricing_expires_at
+            : undefined,
+    };
+    const cacheExpiresAt = pricingExpiresAt === null
+        ? Date.now() + PRICING_CACHE_TTL_MS
+        : Math.min(pricingExpiresAt, Date.now() + PRICING_CACHE_TTL_MS);
+    pricingCache.set(cacheKey, { pricing, expiresAt: cacheExpiresAt });
+    return pricing;
 }
 
 /**
@@ -162,6 +195,7 @@ export async function updatePricing(
         }, {
             onConflict: 'provider,model_name'
         });
+    pricingCache.delete(`${provider}:${model}`);
 }
 
 /**
@@ -173,7 +207,8 @@ export async function getProviderPricing(provider: string): Promise<Record<strin
     const { data, error } = await supabase
         .from('model_pricing')
         .select('*')
-        .eq('provider', provider);
+        .eq('provider', provider)
+        .eq('is_active', true);
 
     if (error || !data) {
         return {};
@@ -182,10 +217,32 @@ export async function getProviderPricing(provider: string): Promise<Record<strin
     const pricing: Record<string, ModelPricing> = {};
 
     for (const row of data) {
+        const expiresAt = typeof row.pricing_expires_at === 'string'
+            ? Date.parse(row.pricing_expires_at)
+            : null;
+        if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+            continue;
+        }
         pricing[row.model_name] = {
             inputPer1KTokens: parseFloat(row.input_price_per_1k_tokens),
             outputPer1KTokens: parseFloat(row.output_price_per_1k_tokens),
             cencoriMarkupPercentage: parseFloat(row.cencori_markup_percentage),
+            cachedInputPer1KTokens: row.cached_input_price_per_1k_tokens == null
+                ? undefined
+                : parseFloat(row.cached_input_price_per_1k_tokens),
+            longContextThresholdTokens: row.long_context_threshold_tokens == null
+                ? undefined
+                : Number(row.long_context_threshold_tokens),
+            longContextInputPer1KTokens: row.long_context_input_price_per_1k_tokens == null
+                ? undefined
+                : parseFloat(row.long_context_input_price_per_1k_tokens),
+            longContextOutputPer1KTokens: row.long_context_output_price_per_1k_tokens == null
+                ? undefined
+                : parseFloat(row.long_context_output_price_per_1k_tokens),
+            longContextCachedInputPer1KTokens: row.long_context_cached_input_price_per_1k_tokens == null
+                ? undefined
+                : parseFloat(row.long_context_cached_input_price_per_1k_tokens),
+            pricingExpiresAt: row.pricing_expires_at || undefined,
         };
     }
 

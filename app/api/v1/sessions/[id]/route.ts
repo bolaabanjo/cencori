@@ -77,7 +77,9 @@ export async function GET(
 
     try {
         const adminClient = createAdminClient();
-        void expireStaleSessions(adminClient as never);
+        void expireStaleSessions(adminClient as never).catch((error) => {
+            console.error('[Sessions] Opportunistic expiry failed:', error);
+        });
         const { data: session, error } = await adminClient
             .from('sessions')
             .select('id, project_id, status, last_turn_number, created_at, updated_at, agent_id, metadata, total_cost_usd')

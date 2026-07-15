@@ -421,4 +421,88 @@ describe('streamGatewayChat', () => {
         expect(chunks[0].actualProvider).toBe('openai');
         expect(chunks[1].finishReason).toBe('stop');
     });
+
+    it('does not retry or fail over after the first chunk has been emitted', async () => {
+        mockGetFallbackChain.mockReturnValue(['anthropic']);
+        async function* brokenPrimary() {
+            yield { delta: 'partial', finishReason: null };
+            throw new Error('stream disconnected');
+        }
+        const fallbackStream = vi.fn(async function* () {
+            yield { delta: 'fallback', finishReason: 'stop' };
+        });
+
+        const stream = streamGatewayChat({
+            supabase: createMockSupabaseForExecutor({ enableFallback: true, maxRetries: 3 }) as never,
+            projectId: 'proj-ex',
+            organizationId: 'org-ex',
+            tier: 'pro',
+            request: { messages: [], model: 'gpt-4o', stream: true } as UnifiedChatRequest,
+            resolved: {
+                providerName: 'openai',
+                model: 'gpt-4o',
+                provider: {
+                    chat: vi.fn(),
+                    stream: () => brokenPrimary(),
+                    countTokens: vi.fn(),
+                    getPricing: vi.fn(),
+                },
+                router: {
+                    hasProvider: () => true,
+                    getProvider: () => ({
+                        chat: vi.fn(),
+                        stream: fallbackStream,
+                        countTokens: vi.fn(),
+                        getPricing: vi.fn(),
+                    }),
+                },
+            } as never,
+        });
+
+        const chunks = [];
+        await expect(async () => {
+            for await (const chunk of stream) chunks.push(chunk);
+        }).rejects.toThrow('stream disconnected');
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0].delta).toBe('partial');
+        expect(fallbackStream).not.toHaveBeenCalled();
+        expect(mockRecordFailure).toHaveBeenCalledTimes(1);
+    });
+
+    it('can fail over when a provider fails before emitting anything', async () => {
+        mockGetFallbackChain.mockReturnValue(['anthropic']);
+        async function* failedPrimary(): AsyncGenerator<never> {
+            throw new Error('primary unavailable');
+        }
+        async function* fallback() {
+            yield { delta: 'safe fallback', finishReason: 'stop' };
+        }
+
+        const stream = streamGatewayChat({
+            supabase: createMockSupabaseForExecutor({ enableFallback: true, maxRetries: 1 }) as never,
+            projectId: 'proj-ex',
+            organizationId: 'org-ex',
+            tier: 'pro',
+            request: { messages: [], model: 'gpt-4o', stream: true } as UnifiedChatRequest,
+            resolved: {
+                providerName: 'openai',
+                model: 'gpt-4o',
+                provider: {
+                    chat: vi.fn(), stream: () => failedPrimary(), countTokens: vi.fn(), getPricing: vi.fn(),
+                },
+                router: {
+                    hasProvider: () => true,
+                    getProvider: () => ({
+                        chat: vi.fn(), stream: () => fallback(), countTokens: vi.fn(), getPricing: vi.fn(),
+                    }),
+                },
+            } as never,
+        });
+
+        const chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        expect(chunks.map(chunk => chunk.delta).join('')).toBe('safe fallback');
+        expect(chunks[0].actualProvider).toBe('anthropic');
+    });
 });

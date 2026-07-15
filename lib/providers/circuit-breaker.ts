@@ -162,10 +162,12 @@ export async function recordSuccess(provider: string): Promise<void> {
     if (circuit.state === 'half-open') {
         // Test request succeeded, close the circuit
         circuit.state = 'closed';
-        circuit.failures = 0;
         console.log(`[CircuitBreaker] ${provider}: Half-Open → Closed (success)`);
     }
 
+    // The threshold tracks consecutive failures. Any successful request
+    // resets the streak, including while the circuit is already closed.
+    circuit.failures = 0;
     circuit.lastSuccess = Date.now();
     await saveCircuitState(provider, circuit);
 }
@@ -175,6 +177,7 @@ export async function recordSuccess(provider: string): Promise<void> {
  */
 export async function recordFailure(provider: string, config?: Partial<CircuitBreakerConfig>): Promise<void> {
     const cfg = { ...DEFAULT_CONFIG, ...config };
+    if (!cfg.enabled) return;
     const circuit = await getCircuitState(provider);
 
     circuit.failures++;
@@ -289,14 +292,15 @@ export function recordSuccessSync(provider: string): void {
 
     if (circuit.state === 'half-open') {
         circuit.state = 'closed';
-        circuit.failures = 0;
     }
+    circuit.failures = 0;
     circuit.lastSuccess = Date.now();
     memoryCircuits.set(provider, circuit);
 }
 
 export function recordFailureSync(provider: string, config?: Partial<CircuitBreakerConfig>): void {
     const cfg = { ...DEFAULT_CONFIG, ...config };
+    if (!cfg.enabled) return;
     const circuit = memoryCircuits.get(provider) || {
         failures: 0,
         lastFailure: 0,

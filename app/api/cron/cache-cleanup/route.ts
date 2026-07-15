@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
-export async function GET(req: NextRequest) {
+async function run(req: NextRequest) {
     // Verify cron secret
+    const cronSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!cronSecret) {
+        return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
+    }
+    if (authHeader !== `Bearer ${cronSecret}`) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -49,3 +53,6 @@ export async function GET(req: NextRequest) {
         timestamp: now,
     });
 }
+
+export const GET = run;
+export const POST = run;

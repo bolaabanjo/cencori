@@ -20,6 +20,7 @@ import { normalizeProviderError } from './errors';
 
 export class OpenAIProvider extends AIProvider {
     readonly providerName = 'openai';
+    readonly supportsTools = true;
     private client: OpenAI;
 
     constructor(apiKey?: string) {
@@ -31,7 +32,9 @@ export class OpenAIProvider extends AIProvider {
         }
 
         this.client = new OpenAI({
-            apiKey: key
+            apiKey: key,
+            timeout: 55_000,
+            maxRetries: 0,
         });
     }
 
@@ -71,7 +74,8 @@ export class OpenAIProvider extends AIProvider {
                 pricing
             );
 
-            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage);
+            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                + (pricing.fixedFeePerRequest ?? 0);
 
             // Parse finish reason
             const finishReason = completion.choices[0].finish_reason;

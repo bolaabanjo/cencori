@@ -1,11 +1,4 @@
-/**
- * Text Completions API Route
- * 
- * POST /api/ai/completions
- * 
- * Legacy text completions endpoint for backward compatibility.
- * Adapts "prompt" requests to the modern "chat" infrastructure via ProviderRouter.
- */
+/** Legacy text-completions compatibility endpoint backed by the gateway chat engine. */
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -14,344 +7,250 @@ import {
     handleCorsPreFlight,
     logGatewayRequest,
     incrementUsage,
-    GatewayContext,
 } from '@/lib/gateway-middleware';
-import { ProviderRouter } from '@/lib/providers/router';
-import {
-    GeminiProvider,
-    OpenAIProvider,
-    AnthropicProvider,
-    OpenAICompatibleProvider,
-    CohereProvider,
-    isOpenAICompatible,
-} from '@/lib/providers';
-import { decryptApiKey } from '@/lib/encryption';
-import { checkInputSecurity, checkOutputSecurity } from '@/lib/safety/multi-layer-check';
-import { getProjectSecurityConfig } from '@/lib/safety/utils';
+import { executeGatewayChat } from '@/lib/gateway/chat-executor';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { getCache, saveCache, computeCacheKey } from '@/lib/cache';
-import { getPricingFromDB } from '@/lib/providers/pricing';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
-// Initialize Router
-const router = new ProviderRouter();
+const MAX_PROMPT_BYTES = 1024 * 1024;
 
-function estimateTokenCount(text: string): number {
-    if (!text) return 0;
-    return Math.max(1, Math.ceil(text.length / 4));
-}
-
-function getCachedUsage(response: unknown, prompt: string): {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-} {
+function cachedUsage(response: unknown, prompt: string) {
     const usage = (response as {
-        usage?: {
-            prompt_tokens?: number;
-            completion_tokens?: number;
-            total_tokens?: number;
-        };
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     })?.usage;
-
-    const promptTokens = Number(usage?.prompt_tokens ?? estimateTokenCount(prompt));
+    const promptTokens = Number(usage?.prompt_tokens ?? Math.max(1, Math.ceil(prompt.length / 4)));
     const completionTokens = Number(usage?.completion_tokens ?? 0);
-    const totalTokens = Number(usage?.total_tokens ?? promptTokens + completionTokens);
-
-    return { promptTokens, completionTokens, totalTokens };
-}
-
-async function getChargeForTokens(
-    provider: string,
-    model: string,
-    promptTokens: number,
-    completionTokens: number
-): Promise<{
-    providerCost: number;
-    cencoriCharge: number;
-    markupPercentage: number;
-}> {
-    try {
-        const pricing = await getPricingFromDB(provider, model);
-        const providerCost =
-            (promptTokens / 1000) * pricing.inputPer1KTokens
-            + (completionTokens / 1000) * pricing.outputPer1KTokens;
-        const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
-
-        return {
-            providerCost,
-            cencoriCharge,
-            markupPercentage: pricing.cencoriMarkupPercentage,
-        };
-    } catch {
-        return {
-            providerCost: 0,
-            cencoriCharge: 0,
-            markupPercentage: 0,
-        };
-    }
+    return {
+        promptTokens,
+        completionTokens,
+        totalTokens: Number(usage?.total_tokens ?? promptTokens + completionTokens),
+    };
 }
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
 }
 
-/**
- * Initialize providers (Default + BYOK)
- * Copied from chat/route.ts to ensure consistent behavior
- */
-function initializeDefaultProviders() {
-    if (!router.hasProvider('google') && process.env.GEMINI_API_KEY) {
-        try { router.registerProvider('google', new GeminiProvider()); } catch (e) { console.warn('Gemini init failed', e); }
-    }
-    if (!router.hasProvider('openai') && process.env.OPENAI_API_KEY) {
-        try { router.registerProvider('openai', new OpenAIProvider()); } catch (e) { console.warn('OpenAI init failed', e); }
-    }
-    if (!router.hasProvider('anthropic') && process.env.ANTHROPIC_API_KEY) {
-        try { router.registerProvider('anthropic', new AnthropicProvider()); } catch (e) { console.warn('Anthropic init failed', e); }
-    }
-    if (!router.hasProvider('cohere') && process.env.COHERE_API_KEY) {
-        try { router.registerProvider('cohere', new CohereProvider(process.env.COHERE_API_KEY)); } catch (e) { console.warn('Cohere init failed', e); }
-    }
-}
-
-async function initializeBYOKProviders(
-    ctx: GatewayContext,
-    targetProvider: string
-): Promise<string | null> {
-    try {
-        const { data: providerKey, error } = await ctx.supabase
-            .from('provider_keys')
-            .select('encrypted_key, is_active')
-            .eq('project_id', ctx.projectId)
-            .eq('provider', targetProvider)
-            .single();
-
-        if (!error && providerKey && providerKey.is_active) {
-            const apiKey = decryptApiKey(providerKey.encrypted_key, ctx.organizationId);
-            if (targetProvider === 'google') { router.registerProvider(targetProvider, new GeminiProvider(apiKey)); return apiKey; }
-            if (targetProvider === 'openai') { router.registerProvider(targetProvider, new OpenAIProvider(apiKey)); return apiKey; }
-            if (targetProvider === 'anthropic') { router.registerProvider(targetProvider, new AnthropicProvider(apiKey)); return apiKey; }
-            if (isOpenAICompatible(targetProvider)) { router.registerProvider(targetProvider, new OpenAICompatibleProvider(targetProvider, apiKey)); return apiKey; }
-            if (targetProvider === 'cohere') { router.registerProvider(targetProvider, new CohereProvider(apiKey)); return apiKey; }
-        }
-        return null;
-    } catch (e) {
-        console.warn(`BYOK init failed for ${targetProvider}`, e);
-        return null;
-    }
-}
-
-
 export async function POST(req: NextRequest) {
-    // ── Gateway validation ──
     const validation = await validateGatewayRequest(req);
-    if (!validation.success) {
-        return validation.response;
-    }
+    if (!validation.success) return validation.response;
     const ctx = validation.context;
 
+    const respondError = (status: number, error: string, message: string) => addGatewayHeaders(
+        NextResponse.json({ error, message }, { status }),
+        { requestId: ctx.requestId },
+    );
+
     try {
-        const body = await req.json();
-        const {
-            prompt,
-            model,
-            max_tokens,
-            temperature = 0.7,
-            top_p,
-            n = 1,
-            stream = false,
-        } = body;
-
-        // Default to a chat model if none provided
-        const requestedModel = model || ctx.defaultModel || 'gpt-3.5-turbo';
-        const providerName = router.detectProvider(requestedModel);
-        const normalizedModel = router.normalizeModelName(requestedModel, providerName);
-
-        // Ensure prompt exists
-        if (!prompt || typeof prompt !== 'string') {
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'Prompt string is required' }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
+        let body: Record<string, unknown>;
+        try {
+            body = await req.json() as Record<string, unknown>;
+        } catch {
+            return respondError(400, 'invalid_json', 'Request body must be valid JSON.');
         }
 
-        // ── Input Security ──
-        const securityConfig = await getProjectSecurityConfig(ctx.supabase, ctx.projectId, ctx.tier as any);
-        const unifiedMessages = [{ role: 'user' as const, content: prompt }];
-        const inputSecurity = checkInputSecurity(prompt, unifiedMessages, securityConfig);
+        if (typeof body.prompt !== 'string' || !body.prompt.trim()) {
+            return respondError(400, 'invalid_prompt', 'prompt must be a non-empty string.');
+        }
+        if (new TextEncoder().encode(body.prompt).byteLength > MAX_PROMPT_BYTES) {
+            return respondError(413, 'prompt_too_large', 'prompt exceeds the 1 MiB limit.');
+        }
+        if (body.model !== undefined && typeof body.model !== 'string') {
+            return respondError(400, 'invalid_model', 'model must be a string.');
+        }
+        if (body.stream !== undefined && typeof body.stream !== 'boolean') {
+            return respondError(400, 'invalid_stream', 'stream must be a boolean.');
+        }
+        if (body.n !== undefined && body.n !== 1) {
+            return respondError(400, 'unsupported_n', 'Only n=1 is supported by this compatibility endpoint.');
+        }
+        if (body.top_p !== undefined) {
+            return respondError(400, 'unsupported_top_p', 'top_p is not supported by this compatibility endpoint.');
+        }
 
-        if (!inputSecurity.safe) {
+        const temperature = body.temperature === undefined ? 0.7 : Number(body.temperature);
+        const maxTokens = body.max_tokens === undefined ? undefined : Number(body.max_tokens);
+        if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+            return respondError(400, 'invalid_temperature', 'temperature must be between 0 and 2.');
+        }
+        if (maxTokens !== undefined
+            && (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 1_000_000)) {
+            return respondError(400, 'invalid_max_tokens', 'max_tokens must be a positive integer no larger than 1,000,000.');
+        }
+
+        const requestedModel = typeof body.model === 'string' && body.model.trim()
+            ? body.model.trim()
+            : ctx.defaultModel || 'gpt-3.5-turbo';
+        const tier = (ctx.tier || 'free') as SubscriptionTier;
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier,
+            messages: [{ role: 'user', content: body.prompt }],
+        });
+        if (!inputPipeline.ok) {
             await logGatewayRequest(ctx, {
                 endpoint: 'completions',
                 model: requestedModel,
                 provider: 'unknown',
                 status: 'blocked',
-                errorMessage: `Input blocked: ${inputSecurity.reasons.join(', ')}`,
+                errorMessage: inputPipeline.message,
             });
-            return addGatewayHeaders(
-                NextResponse.json({ error: 'content_filtered', message: 'Input blocked by security policy', reasons: inputSecurity.reasons }, { status: 403 }),
-                { requestId: ctx.requestId }
-            );
+            return respondError(inputPipeline.status, inputPipeline.code, inputPipeline.message);
         }
 
-        // ── Caching Check (Exact Match) ──
+        const guardedPrompt = inputPipeline.messages[0]?.content ?? body.prompt;
         const cacheKey = computeCacheKey({
             projectId: ctx.projectId,
-            model: normalizedModel,
-            prompt,
+            model: requestedModel,
+            prompt: guardedPrompt,
             temperature,
-            maxTokens: max_tokens,
+            maxTokens,
         });
 
-        // Only cache if not streaming (streaming cache is harder)
-        if (!stream) {
-            // 1. Exact Match (L1 - Fast)
+        if (body.stream !== true) {
             const cachedResponse = await getCache(cacheKey);
-            if (cachedResponse) {
-                const cachedPayload = typeof cachedResponse === 'object' && cachedResponse !== null
-                    ? cachedResponse as Record<string, unknown>
-                    : {};
-                const usage = getCachedUsage(cachedResponse, prompt);
-                const charge = await getChargeForTokens(
-                    providerName,
-                    normalizedModel,
-                    usage.promptTokens,
-                    usage.completionTokens
-                );
-
+            if (cachedResponse && typeof cachedResponse === 'object') {
+                const payload = cachedResponse as Record<string, unknown>;
+                const choices = Array.isArray(payload.choices) ? payload.choices : [];
+                const firstChoice = choices[0] && typeof choices[0] === 'object'
+                    ? choices[0] as Record<string, unknown>
+                    : null;
+                const safePayload = firstChoice && typeof firstChoice.text === 'string'
+                    ? {
+                        ...payload,
+                        choices: [{
+                            ...firstChoice,
+                            text: deTokenize(firstChoice.text, inputPipeline.tokenMap ?? new Map()),
+                        }, ...choices.slice(1)],
+                    }
+                    : payload;
+                const usage = cachedUsage(payload, guardedPrompt);
                 await logGatewayRequest(ctx, {
                     endpoint: 'completions',
-                    model: normalizedModel,
-                    provider: providerName,
+                    model: requestedModel,
+                    provider: 'cache',
                     status: 'success',
                     promptTokens: usage.promptTokens,
                     completionTokens: usage.completionTokens,
                     totalTokens: usage.totalTokens,
-                    costUsd: charge.cencoriCharge,
-                    providerCostUsd: charge.providerCost,
-                    cencoriChargeUsd: charge.cencoriCharge,
-                    markupPercentage: charge.markupPercentage,
+                    costUsd: 0,
+                    providerCostUsd: 0,
+                    cencoriChargeUsd: 0,
+                    markupPercentage: 0,
                     metadata: { cache: 'exact' },
                 });
-                await incrementUsage(ctx);
 
-                const res = NextResponse.json({
-                    ...cachedPayload,
-                    id: `cached-${typeof cachedPayload.id === 'string' ? cachedPayload.id : ctx.requestId}`,
+                const response = NextResponse.json({
+                    ...safePayload,
+                    id: `cached-${typeof payload.id === 'string' ? payload.id : ctx.requestId}`,
                     created: Math.floor(Date.now() / 1000),
                 });
-                res.headers.set('X-Cencori-Cache', 'HIT');
-                return addGatewayHeaders(res, { requestId: ctx.requestId });
+                response.headers.set('X-Cencori-Cache', 'HIT');
+                return addGatewayHeaders(response, { requestId: ctx.requestId });
             }
         }
 
-        // ── Provider Init ──
+        const resolved = await resolveGatewayProvider({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            organizationId: ctx.organizationId,
+            requestedModel,
+        });
+        const providerResponse = await executeGatewayChat({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            organizationId: ctx.organizationId,
+            tier,
+            resolved,
+            requestId: ctx.requestId,
+            request: {
+                messages: inputPipeline.messages,
+                model: requestedModel,
+                temperature,
+                maxTokens,
+                userId: ctx.projectId,
+            },
+        });
 
-        // Initialize Default & BYOK
-        initializeDefaultProviders();
-        await initializeBYOKProviders(ctx, providerName);
+        const outputGuard = await runGatewayOutputGuard({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            outputText: providerResponse.content,
+            inputText: inputPipeline.inputText,
+            inputSecurity: inputPipeline.inputSecurity,
+            conversationHistory: inputPipeline.messages,
+        });
 
-        if (!router.hasProvider(providerName)) {
-            return addGatewayHeaders(
-                NextResponse.json({ error: `Provider ${providerName} not configured` }, { status: 400 }),
-                { requestId: ctx.requestId }
-            );
+        await logGatewayRequest(ctx, {
+            endpoint: 'completions',
+            model: providerResponse.actualModel,
+            provider: providerResponse.actualProvider,
+            status: outputGuard.ok
+                ? (providerResponse.usedFallback ? 'success_fallback' : 'success')
+                : 'filtered',
+            promptTokens: providerResponse.usage.promptTokens,
+            completionTokens: providerResponse.usage.completionTokens,
+            totalTokens: providerResponse.usage.totalTokens,
+            costUsd: providerResponse.cost.cencoriChargeUsd,
+            providerCostUsd: providerResponse.cost.providerCostUsd,
+            cencoriChargeUsd: providerResponse.cost.cencoriChargeUsd,
+            markupPercentage: providerResponse.cost.markupPercentage,
+            errorMessage: outputGuard.ok ? undefined : outputGuard.message,
+        });
+        await incrementUsage(ctx, providerResponse.cost.cencoriChargeUsd);
+
+        if (!outputGuard.ok) {
+            return respondError(outputGuard.status, outputGuard.code, outputGuard.message);
         }
 
-        const provider = router.getProviderForModel(requestedModel);
-
-        const chatRequest = {
-            messages: unifiedMessages,
-            model: normalizedModel,
-            temperature,
-            maxTokens: max_tokens,
-            userId: ctx.projectId,
+        const safeContent = deTokenize(
+            providerResponse.content,
+            inputPipeline.tokenMap ?? new Map(),
+        );
+        const rawPayload = {
+            id: ctx.requestId,
+            object: 'text_completion',
+            created: Math.floor(Date.now() / 1000),
+            model: providerResponse.actualModel,
+            choices: [{
+                text: providerResponse.content,
+                index: 0,
+                finish_reason: providerResponse.finishReason,
+            }],
+            usage: {
+                prompt_tokens: providerResponse.usage.promptTokens,
+                completion_tokens: providerResponse.usage.completionTokens,
+                total_tokens: providerResponse.usage.totalTokens,
+            },
         };
 
-        // ── Execution Logic ──
-
-        if (stream) {
+        if (body.stream === true) {
+            // Buffer until output review completes; unsafe stream prefixes
+            // cannot be recalled after they reach a client.
             const encoder = new TextEncoder();
-            const streamCtx = ctx;
-
-            const readableStream = new ReadableStream({
-                async start(controller) {
-                    try {
-                        let fullContent = '';
-                        const streamGen = provider.stream(chatRequest);
-
-                        for await (const chunk of streamGen) {
-                            const text = chunk.delta;
-                            fullContent += text;
-
-                            const sseData = JSON.stringify({
-                                id: ctx.requestId,
-                                object: 'text_completion',
-                                created: Math.floor(Date.now() / 1000),
-                                model: normalizedModel,
-                                choices: [{
-                                    text: text,
-                                    index: 0,
-                                    finish_reason: chunk.finishReason || null
-                                }]
-                            });
-                            controller.enqueue(encoder.encode(`data: ${sseData}\n\n`));
-                        }
-
-                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                        controller.close();
-
-                        const promptText = unifiedMessages.map(m => m.content).join('\n');
-                        let promptTokens = 0;
-                        let completionTokens = 0;
-
-                        try {
-                            promptTokens = await provider.countTokens(promptText, normalizedModel);
-                            completionTokens = await provider.countTokens(fullContent, normalizedModel);
-                        } catch {
-                            promptTokens = estimateTokenCount(promptText);
-                            completionTokens = estimateTokenCount(fullContent);
-                        }
-
-                        const totalTokens = promptTokens + completionTokens;
-
-                        let providerCost = 0;
-                        let cencoriCharge = 0;
-                        let markupPercentage = 0;
-
-                        try {
-                            const pricing = await provider.getPricing(normalizedModel);
-                            providerCost =
-                                (promptTokens / 1000) * pricing.inputPer1KTokens
-                                + (completionTokens / 1000) * pricing.outputPer1KTokens;
-                            cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
-                            markupPercentage = pricing.cencoriMarkupPercentage;
-                        } catch {
-                            // Keep zero values if pricing lookup fails; logging should not block response.
-                        }
-
-                        await logGatewayRequest(streamCtx, {
-                            endpoint: 'completions',
-                            model: normalizedModel,
-                            provider: providerName,
-                            status: 'success',
-                            promptTokens,
-                            completionTokens,
-                            totalTokens,
-                            costUsd: cencoriCharge,
-                            providerCostUsd: providerCost,
-                            cencoriChargeUsd: cencoriCharge,
-                            markupPercentage,
-                        });
-                        await incrementUsage(streamCtx);
-
-                    } catch (error) {
-                        console.error('Stream Error', error);
-                        controller.error(error);
-                    }
-                }
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                        ...rawPayload,
+                        choices: [{
+                            ...rawPayload.choices[0],
+                            text: safeContent,
+                        }],
+                    })}\n\n`));
+                    controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    controller.close();
+                },
             });
-
-            return new Response(readableStream, {
+            return new Response(stream, {
                 headers: {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
@@ -359,71 +258,27 @@ export async function POST(req: NextRequest) {
                     'X-Request-Id': ctx.requestId,
                 },
             });
-
-        } else {
-            // Non-Streaming
-            const response = await provider.chat(chatRequest);
-
-            // Output Security
-            const outputSecurity = checkOutputSecurity(response.content, { inputText: prompt }, securityConfig);
-            if (!outputSecurity.safe) {
-                return addGatewayHeaders(
-                    NextResponse.json({ error: 'content_filtered', message: 'Output blocked' }, { status: 403 }),
-                    { requestId: ctx.requestId }
-                );
-            }
-
-            await logGatewayRequest(ctx, {
-                endpoint: 'completions',
-                model: normalizedModel,
-                provider: providerName,
-                status: 'success',
-                promptTokens: response.usage.promptTokens,
-                completionTokens: response.usage.completionTokens,
-                totalTokens: response.usage.totalTokens,
-                costUsd: response.cost.cencoriChargeUsd,
-                providerCostUsd: response.cost.providerCostUsd,
-                cencoriChargeUsd: response.cost.cencoriChargeUsd,
-                markupPercentage: response.cost.markupPercentage,
-            });
-            await incrementUsage(ctx);
-
-            // Map to Legacy JSON Format
-            const jsonResponse = {
-                id: ctx.requestId,
-                object: 'text_completion',
-                created: Math.floor(Date.now() / 1000),
-                model: normalizedModel,
-                choices: [{
-                    text: response.content,
-                    index: 0,
-                    finish_reason: response.finishReason
-                }],
-                usage: {
-                    prompt_tokens: response.usage.promptTokens,
-                    completion_tokens: response.usage.completionTokens,
-                    total_tokens: response.usage.totalTokens
-                }
-            };
-
-            // Save to Cache (Async)
-            if (!stream) {
-                // Save Exact Match (L1)
-                saveCache(cacheKey, jsonResponse).catch(e => console.error('Cache save error', e));
-
-            }
-
-            const finalRes = NextResponse.json(jsonResponse);
-            finalRes.headers.set('X-Cencori-Cache', 'MISS');
-            return addGatewayHeaders(finalRes, { requestId: ctx.requestId });
         }
 
-
+        // Store the still-tokenized provider payload. Rehydrating before the
+        // cache would let one secret-bearing prompt contaminate a later hit.
+        void saveCache(cacheKey, rawPayload).catch((error) => console.error('Cache save error', error));
+        const response = NextResponse.json({
+            ...rawPayload,
+            choices: [{ ...rawPayload.choices[0], text: safeContent }],
+        });
+        response.headers.set('X-Cencori-Cache', 'MISS');
+        return addGatewayHeaders(response, { requestId: ctx.requestId });
     } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
         console.error('Completions Error:', error);
-        return addGatewayHeaders(
-            NextResponse.json({ error: 'Internal Server Error', details: String(error) }, { status: 500 }),
-            { requestId: ctx.requestId }
-        );
+        await logGatewayRequest(ctx, {
+            endpoint: 'completions',
+            model: 'unknown',
+            provider: 'unknown',
+            status: 'error',
+            errorMessage: message,
+        });
+        return respondError(500, 'internal_error', 'Completion request failed.');
     }
 }

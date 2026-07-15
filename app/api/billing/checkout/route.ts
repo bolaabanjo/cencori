@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const returnUrl = new URL(
-    `/dashboard/organizations/${orgId}/billing`,
+    `/${orgId}/billing`,
     req.url
   );
   const cancelUrl = new URL('/pricing', req.url);

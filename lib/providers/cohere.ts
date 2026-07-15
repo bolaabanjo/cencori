@@ -15,6 +15,7 @@ import {
 import { getPricingFromDB } from './pricing';
 import { estimateTokenCount } from './utils';
 import { normalizeProviderError } from './errors';
+import { safeProviderFetch } from '@/lib/security/outbound-url';
 
 interface CohereMessage {
     role: 'USER' | 'CHATBOT' | 'SYSTEM';
@@ -103,7 +104,7 @@ export class CohereProvider extends AIProvider {
         try {
             const { chatHistory, message, preamble } = this.toCohereChatHistory(request.messages);
 
-            const response = await fetch(`${this.baseURL}/chat`, {
+            const response = await safeProviderFetch(`${this.baseURL}/chat`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
@@ -118,6 +119,7 @@ export class CohereProvider extends AIProvider {
                     temperature: request.temperature ?? 0.7,
                     max_tokens: request.maxTokens,
                 }),
+                signal: AbortSignal.timeout(55_000),
             });
 
             if (!response.ok) {
@@ -137,7 +139,8 @@ export class CohereProvider extends AIProvider {
 
             const pricing = await this.getPricing(request.model);
             const providerCost = this.calculateCost(inputTokens, outputTokens, pricing);
-            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage);
+            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                + (pricing.fixedFeePerRequest ?? 0);
 
             return {
                 content: data.text,
@@ -165,7 +168,7 @@ export class CohereProvider extends AIProvider {
         try {
             const { chatHistory, message, preamble } = this.toCohereChatHistory(request.messages);
 
-            const response = await fetch(`${this.baseURL}/chat`, {
+            const response = await safeProviderFetch(`${this.baseURL}/chat`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
@@ -181,6 +184,7 @@ export class CohereProvider extends AIProvider {
                     max_tokens: request.maxTokens,
                     stream: true,
                 }),
+                signal: AbortSignal.timeout(55_000),
             });
 
             if (!response.ok) {
@@ -236,10 +240,11 @@ export class CohereProvider extends AIProvider {
 
     async testConnection(): Promise<boolean> {
         try {
-            const response = await fetch(`${this.baseURL}/models`, {
+            const response = await safeProviderFetch(`${this.baseURL}/models`, {
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
                 },
+                signal: AbortSignal.timeout(15_000),
             });
             return response.ok;
         } catch {

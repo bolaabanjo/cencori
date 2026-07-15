@@ -62,7 +62,7 @@ export function resolveAuthRedirectTargets(
     options?: ResolveAuthRedirectOptions
 ): ResolvedAuthRedirect {
     const baseOrigin = resolveBaseOrigin(options);
-    const defaultPath = options?.defaultPath ?? "/dashboard/organizations";
+    const defaultPath = options?.defaultPath ?? "/dashboard";
     const fallbackUrl = new URL(
         defaultPath.startsWith("/") ? defaultPath : `/${defaultPath}`,
         baseOrigin

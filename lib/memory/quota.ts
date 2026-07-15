@@ -13,6 +13,7 @@ export interface MemoryQuotaStatus {
     allowed: boolean;
     used: number;
     limit: number;
+    error?: 'quota_check_failed';
 }
 
 export async function checkMemoryQuota(
@@ -27,18 +28,30 @@ export async function checkMemoryQuota(
     }
 
     try {
-        const { count } = await supabase
+        const { count, error } = await supabase
             .from('gateway_memories')
             .select('id', { count: 'exact', head: true })
             .eq('project_id', projectId);
 
+        if (error) throw error;
+
         const used = count ?? 0;
         return { allowed: used < limit, used, limit };
     } catch (error) {
-        // Fail open: a broken count must not block writes.
-        console.warn('[Memory] Quota check failed, allowing write:', error);
-        return { allowed: true, used: 0, limit };
+        // Writes fail closed: an unavailable quota service must not allow
+        // unbounded storage or silently bypass a customer's plan.
+        console.error('[Memory] Quota check failed:', error);
+        return { allowed: false, used: 0, limit, error: 'quota_check_failed' };
     }
+}
+
+export function buildQuotaCheckFailedBody() {
+    return {
+        error: {
+            code: 'memory_quota_unavailable',
+            message: 'Memory quota could not be verified. Retry shortly.',
+        },
+    };
 }
 
 /** Roadmap-specified 429 payload for memory_quota_exceeded. */

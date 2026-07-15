@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { createServerClient } from '@/lib/supabaseServer';
 import { encryptApiKey } from '@/lib/encryption';
 import { writeAuditLog } from '@/lib/audit-log';
+import { assertSafeOutboundUrl } from '@/lib/security/outbound-url';
 
 export async function PATCH(
   req: NextRequest,
@@ -51,6 +52,17 @@ export async function PATCH(
 
     if (!isOwner && membershipRole !== 'admin') {
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    }
+
+    if (baseUrl !== undefined) {
+      try {
+        await assertSafeOutboundUrl(baseUrl);
+      } catch {
+        return NextResponse.json(
+          { error: 'baseUrl must resolve to a public HTTP or HTTPS destination' },
+          { status: 400 },
+        );
+      }
     }
     
     const updateData: Record<string, unknown> = {};

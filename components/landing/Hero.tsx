@@ -99,7 +99,7 @@ export const Hero = () => {
         {/* Subheadline slot — copy TBD */}
 
         <div className="mt-12 flex flex-wrap gap-3">
-          <Link href={isAuthenticated ? "/dashboard/organizations" : "/signup"}>
+          <Link href={isAuthenticated ? "/dashboard" : "/signup"}>
             <Button className="h-7 rounded-md bg-foreground px-3 text-[11px] font-medium text-background hover:bg-foreground/90">
               {isAuthenticated ? "Dashboard" : "Get started"}
             </Button>

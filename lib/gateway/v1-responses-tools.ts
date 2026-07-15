@@ -4,6 +4,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { readResponseBuffer, safeOutboundFetch } from '@/lib/security/outbound-url';
 
 // ── File Indexing (for file_search uploads) ──
 
@@ -14,15 +15,19 @@ export async function indexFileContent(
 ): Promise<void> {
     const supabase = createAdminClient();
     const chunks = chunkText(content, 2000);
+    const uploadId = crypto.randomUUID();
 
     const records = chunks.map((chunk, i) => ({
         project_id: projectId,
+        upload_id: uploadId,
+        filename,
         content: chunk,
-        source: `file:${filename}`,
+        chunk_index: i,
+        total_chunks: chunks.length,
         metadata: { filename, chunk_index: i, total_chunks: chunks.length },
     }));
 
-    const { error } = await supabase.from('scan_chat_memory').insert(records);
+    const { error } = await supabase.from('gateway_file_chunks').insert(records);
     if (error) throw error;
 }
 
@@ -115,23 +120,33 @@ async function performWebSearch(
 ): Promise<Array<{ title: string; url: string; snippet: string }>> {
     const numResults = contextSize === 'low' ? 3 : contextSize === 'medium' ? 8 : 15;
 
-    if (SEARCH_API_KEY && SEARCH_API_ENDPOINT) {
-        try {
-            const response = await fetch(
-                `${SEARCH_API_ENDPOINT}/search?q=${encodeURIComponent(query)}&count=${numResults}`,
-                { headers: { 'Authorization': `Bearer ${SEARCH_API_KEY}` } }
-            );
-            if (response.ok) {
-                const data = await response.json() as { results?: Array<{ title: string; url: string; snippet: string }> };
-                return (data.results || []).slice(0, numResults);
-            }
-        } catch {
-            // Fall through to simulated results
-        }
+    if (!SEARCH_API_KEY) {
+        throw new Error('Web search is not configured for this deployment');
     }
 
-    // Fallback: return placeholder that tells the model results were unavailable
-    return [];
+    const endpoint = new URL('/search', SEARCH_API_ENDPOINT);
+    endpoint.searchParams.set('q', query);
+    endpoint.searchParams.set('count', String(numResults));
+    const response = await safeOutboundFetch(endpoint, {
+        headers: { 'Authorization': `Bearer ${SEARCH_API_KEY}` },
+        signal: AbortSignal.timeout(15_000),
+    }, { maxRedirects: 1 });
+    if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new Error(`Web search provider returned HTTP ${response.status}`);
+    }
+
+    const body = await readResponseBuffer(response, 2 * 1024 * 1024);
+    const data = JSON.parse(body.toString('utf8')) as {
+        results?: Array<{ title?: unknown; url?: unknown; snippet?: unknown }>;
+    };
+    if (!Array.isArray(data.results)) return [];
+    return data.results
+        .filter((item): item is { title: string; url: string; snippet: string } =>
+            typeof item.title === 'string'
+            && typeof item.url === 'string'
+            && typeof item.snippet === 'string')
+        .slice(0, numResults);
 }
 
 function formatSearchResultsForContext(
@@ -159,27 +174,18 @@ export async function executeFileSearch(
         const supabase = createAdminClient();
         const maxResults = config.max_num_results || 5;
 
-        let queryBuilder = supabase
-            .from('scan_chat_memory')
-            .select('id, content, source, created_at, metadata')
-            .eq('project_id', projectId)
-            .textSearch('content', query, { type: 'websearch' });
-
-        // Apply metadata filters when provided (e.g., { source: "file:quarterly-report.pdf" })
-        if (config.filters) {
-            for (const [key, value] of Object.entries(config.filters)) {
-                queryBuilder = queryBuilder.eq(`metadata->>${key}`, String(value));
-            }
-        }
-
-        const { data } = await queryBuilder
-            .order('created_at', { ascending: false })
-            .limit(maxResults);
+        const { data, error } = await supabase.rpc('search_gateway_file_chunks', {
+            p_project_id: projectId,
+            p_query: query,
+            p_limit: maxResults,
+            p_filters: config.filters || {},
+        });
+        if (error) throw new Error(error.message);
 
         const results = (Array.isArray(data) ? data : []).map(d => ({
-            file_name: d.source || 'memory',
+            file_name: d.filename || 'file',
             content: d.content || '',
-            score: 0,
+            score: Number(d.score) || 0,
         }));
 
         return {
@@ -218,111 +224,19 @@ function formatFileSearchResultsForContext(
 // ── Code Interpreter ──
 
 export async function executeCodeInterpreter(
-    code: string,
-    language?: string
+    _code: string,
+    _language?: string
 ): Promise<ToolCallOutput> {
     const callId = `ci_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
-    try {
-        const lang = language || detectLanguage(code);
-        const output = await runCode(code, lang);
-        return {
-            type: 'code_interpreter_call',
-            id: callId,
-            status: 'completed',
-            output: {
-                code,
-                language: lang,
-                ...output,
-            },
-        };
-    } catch (error) {
-        return {
-            type: 'code_interpreter_call',
-            id: callId,
-            status: 'failed',
-            error: error instanceof Error ? error.message : 'Code execution failed',
-        };
-    }
-}
-
-function detectLanguage(code: string): string {
-    if (code.includes('def ') || code.includes('import ') || code.includes('print(')) return 'python';
-    if (code.includes('function ') || code.includes('const ') || code.includes('let ')) return 'javascript';
-    if (code.includes('fn ') || code.includes('println!')) return 'rust';
-    return 'python';
-}
-
-async function runCode(
-    code: string,
-    language: string
-): Promise<{ stdout: string; stderr: string; execution_time_ms: number }> {
-    const start = Date.now();
-
-    if (language === 'python') {
-        const result = await runPython(code);
-        return { ...result, execution_time_ms: Date.now() - start };
-    }
-    if (language === 'javascript') {
-        const result = await runJavaScript(code);
-        return { ...result, execution_time_ms: Date.now() - start };
-    }
-
-    return { stdout: '', stderr: `Unsupported language: ${language}`, execution_time_ms: 0 };
-}
-
-async function runPython(code: string): Promise<{ stdout: string; stderr: string }> {
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-        // In development, try to run Python subprocess
-        try {
-            const { execSync } = await import('child_process');
-            const result = execSync(`python3 -c "${code.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
-                timeout: 10_000,
-                maxBuffer: 1024 * 1024,
-            });
-            return { stdout: result.toString().trim(), stderr: '' };
-        } catch (error: unknown) {
-            const err = error as { stdout?: Buffer; stderr?: Buffer; message?: string };
-            return {
-                stdout: err.stdout?.toString().trim() || '',
-                stderr: err.stderr?.toString().trim() || err.message || 'Execution failed',
-            };
-        }
-    }
-
-    // In production, log the code and return a placeholder
-    console.warn('[CodeInterpreter] Python execution not available in production');
+    // Never execute model-generated code in the application process. This tool
+    // must remain unavailable until it is backed by a separately isolated
+    // runtime with no application credentials, network access, or shared disk.
     return {
-        stdout: '[Code execution is available in development mode]',
-        stderr: '',
+        type: 'code_interpreter_call',
+        id: callId,
+        status: 'failed',
+        error: 'Code interpreter is temporarily unavailable',
     };
-}
-
-async function runJavaScript(code: string): Promise<{ stdout: string; stderr: string }> {
-    try {
-        let output = '';
-        const originalLog = console.log;
-        const originalError = console.error;
-        console.log = (...args: unknown[]) => {
-            output += args.map(a => String(a)).join(' ') + '\n';
-        };
-        console.error = (...args: unknown[]) => {
-            output += '[ERROR] ' + args.map(a => String(a)).join(' ') + '\n';
-        };
-
-        try {
-            const result = eval(code);
-            if (result !== undefined) {
-                output += String(result) + '\n';
-            }
-        } finally {
-            console.log = originalLog;
-            console.error = originalError;
-        }
-
-        return { stdout: output.trim(), stderr: '' };
-    } catch (error) {
-        return { stdout: '', stderr: error instanceof Error ? error.message : 'Execution failed' };
-    }
 }
 
 // ── Tool Orchestration ──

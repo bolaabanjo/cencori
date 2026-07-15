@@ -13,6 +13,53 @@ const respondError = (status: number, message: string, code = 'invalid_request_e
         { status }
     );
 
+type AgentCreateBody = {
+    project_id?: string;
+    name?: string;
+    description?: string;
+    config?: {
+        model?: string;
+        system_prompt?: string;
+        tools?: string[];
+        temperature?: number;
+    };
+};
+
+export async function verifyJwtProjectAccess(
+    adminClient: ReturnType<typeof createAdminClient>,
+    projectId: string,
+    userId: string,
+): Promise<NextResponse | null> {
+    const { data: project, error: projectError } = await adminClient
+        .from('projects')
+        .select('id, organization_id, organizations!inner(owner_id)')
+        .eq('id', projectId)
+        .maybeSingle();
+
+    if (projectError) {
+        console.error('[Agents API] Failed to verify project access:', projectError);
+        return respondError(500, 'Failed to verify project access', 'access_check_failed');
+    }
+    if (!project) return respondError(404, 'Project not found', 'project_not_found');
+
+    const ownerId = (project.organizations as { owner_id?: string } | null)?.owner_id;
+    if (ownerId === userId) return null;
+
+    const { data: membership, error: membershipError } = await adminClient
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', project.organization_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (membershipError) {
+        console.error('[Agents API] Failed to verify organization membership:', membershipError);
+        return respondError(500, 'Failed to verify project access', 'access_check_failed');
+    }
+    if (!membership) return respondError(403, 'Unauthorized for this project', 'forbidden');
+    return null;
+}
+
 export async function OPTIONS() {
     return handleCorsPreFlight();
 }
@@ -28,6 +75,9 @@ export async function POST(req: NextRequest) {
         if (providedApiKey) {
             const validation = await validateGatewayRequest(req);
             if (!validation.success) return validation.response;
+            if (validation.context.keyType !== 'secret') {
+                return respondError(403, 'Agent management requires a secret API key', 'secret_key_required');
+            }
             projectId = validation.context.projectId;
         } else {
             const authHeader = req.headers.get('Authorization');
@@ -38,24 +88,51 @@ export async function POST(req: NextRequest) {
             const { data: { user }, error: authError } = await userClient.auth.getUser();
             if (authError || !user) return respondError(401, 'Unauthorized', 'unauthorized');
             authenticatedUserId = user.id;
-
-            const body = await req.json() as { project_id?: string };
-            if (!body.project_id) return respondError(400, 'project_id is required for JWT-authenticated requests', 'missing_project_id');
-            projectId = body.project_id;
+            projectId = '';
         }
 
-        const body = await req.json() as {
-            name: string;
-            description?: string;
-            config?: {
-                model?: string;
-                system_prompt?: string;
-                tools?: string[];
-                temperature?: number;
-            };
-        };
+        let body: AgentCreateBody;
+        try {
+            body = await req.json() as AgentCreateBody;
+        } catch {
+            return respondError(400, 'Request body must be valid JSON', 'invalid_json');
+        }
 
-        if (!body.name?.trim()) return respondError(400, 'name is required', 'missing_name');
+        if (authenticatedUserId) {
+            if (!body.project_id) return respondError(400, 'project_id is required for JWT-authenticated requests', 'missing_project_id');
+            projectId = body.project_id;
+            const accessError = await verifyJwtProjectAccess(adminClient, projectId, authenticatedUserId);
+            if (accessError) return accessError;
+        }
+
+        if (typeof body.name !== 'string' || !body.name.trim()) {
+            return respondError(400, 'name is required', 'missing_name');
+        }
+        if (body.description !== undefined && typeof body.description !== 'string') {
+            return respondError(400, 'description must be a string', 'invalid_description');
+        }
+        if (body.config) {
+            if (body.config.model !== undefined && (typeof body.config.model !== 'string' || !body.config.model.trim())) {
+                return respondError(400, 'config.model must be a non-empty string', 'invalid_model');
+            }
+            if (body.config.system_prompt !== undefined && typeof body.config.system_prompt !== 'string') {
+                return respondError(400, 'config.system_prompt must be a string', 'invalid_system_prompt');
+            }
+            if (body.config.tools !== undefined && (
+                !Array.isArray(body.config.tools)
+                || body.config.tools.some(tool => typeof tool !== 'string')
+            )) {
+                return respondError(400, 'config.tools must be an array of strings', 'invalid_tools');
+            }
+            if (body.config.temperature !== undefined && (
+                typeof body.config.temperature !== 'number'
+                || !Number.isFinite(body.config.temperature)
+                || body.config.temperature < 0
+                || body.config.temperature > 2
+            )) {
+                return respondError(400, 'config.temperature must be between 0 and 2', 'invalid_temperature');
+            }
+        }
 
         const { data: agent, error: agentError } = await adminClient
             .from('agents')
@@ -126,6 +203,9 @@ export async function GET(req: NextRequest) {
         if (providedApiKey) {
             const validation = await validateGatewayRequest(req);
             if (!validation.success) return validation.response;
+            if (validation.context.keyType !== 'secret') {
+                return respondError(403, 'Agent management requires a secret API key', 'secret_key_required');
+            }
             gatewayCtx = validation.context;
             projectId = gatewayCtx.projectId;
         } else {
@@ -140,6 +220,9 @@ export async function GET(req: NextRequest) {
             const { searchParams } = new URL(req.url);
             projectId = searchParams.get('project_id');
             if (!projectId) return respondError(400, 'project_id query param is required for JWT-authenticated requests', 'missing_project_id');
+
+            const accessError = await verifyJwtProjectAccess(adminClient, projectId, user.id);
+            if (accessError) return accessError;
         }
 
         const { data: agents, error } = await adminClient

@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = getBaseUrl();
     const token = generateUserUnsubscribeToken(user.id);
     const unsubscribeUrl = buildUserUnsubscribeUrl(baseUrl, user.id, token);
-    const preferencesUrl = `${baseUrl}/dashboard/organizations`;
+    const preferencesUrl = `${baseUrl}/dashboard`;
 
     const html = launchTemplate({
       bannerUrl: 'https://raw.githubusercontent.com/cencori/cencori/master/public/logos/ccbanner-email.png',
@@ -95,8 +95,8 @@ export async function POST(request: NextRequest) {
       ],
       linksHeader: 'To get started:',
       links: [
-        { label: 'Create your first project', url: 'https://cencori.com/dashboard/organizations' },
-        { label: 'Generate an API key', url: 'https://cencori.com/dashboard/organizations' },
+        { label: 'Create your first project', url: 'https://cencori.com/dashboard' },
+        { label: 'Generate an API key', url: 'https://cencori.com/dashboard' },
         { label: 'Connect your application', url: 'https://cencori.com/docs/installation' },
       ],
       ctaText: 'Upgrade to Pro',

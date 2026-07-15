@@ -10,6 +10,11 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { deTokenize } from '@/lib/safety/custom-data-rules';
+import type { SubscriptionTier } from '@/lib/entitlements';
+import { createAdminClient } from '@/lib/supabaseAdmin';
 
 // Supported image generation providers
 type ImageProvider = 'openai' | 'google';
@@ -135,20 +140,6 @@ async function generateWithGoogle(apiKey: string, request: ImageGenerationReques
     return { images, model: apiModel, provider: 'google' };
 }
 
-// Fixed image pricing (per image)
-const IMAGE_PRICING: Record<string, number> = {
-    'dall-e-3': 0.04,      // $0.04/image standard 1024x1024
-    'dall-e-2': 0.02,      // $0.02/image 1024x1024
-    'gpt-image-2': 0.053,  // 1024x1024 medium from current OpenAI docs
-    'gpt-image-1': 0.04,
-    'gpt-image-1.5': 0.06,
-    'gemini-3-pro-image': 0.02,
-    'nano-banana-pro': 0.02,
-    'gemini-3.1-flash-image': 0.02,
-    'nano-banana-2': 0.02,
-    'imagen-3': 0.03,
-};
-
 export async function OPTIONS() {
     return handleCorsPreFlight();
 }
@@ -165,15 +156,139 @@ export async function POST(req: NextRequest) {
         const body = await req.json() as ImageGenerationRequest;
         const { prompt, model: requestedModel } = body;
 
-        if (!prompt) {
+        if (typeof prompt !== 'string' || !prompt.trim()) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'Missing required field: prompt' }, { status: 400 }),
                 { requestId: ctx.requestId }
             );
         }
+        if (requestedModel !== undefined && typeof requestedModel !== 'string') {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'model must be a string' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (prompt.length > 32_000) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'Prompt exceeds maximum length of 32000 characters' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (body.n !== undefined && (!Number.isInteger(body.n) || body.n < 1 || body.n > 10)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'n must be an integer between 1 and 10' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        const allowedSizes = new Set(['256x256', '512x512', '1024x1024', '1024x1792', '1792x1024', '1536x1024', '1024x1536']);
+        if (body.size !== undefined && (typeof body.size !== 'string' || !allowedSizes.has(body.size))) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'Unsupported image size' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (body.quality !== undefined
+            && !['low', 'medium', 'high', 'standard', 'hd'].includes(body.quality)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'Unsupported image quality' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (body.style !== undefined && !['vivid', 'natural'].includes(body.style)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'Unsupported image style' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (body.responseFormat !== undefined && !['url', 'b64_json'].includes(body.responseFormat)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'Unsupported responseFormat' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        const inputPipeline = await runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: prompt }],
+        });
+        if (!inputPipeline.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'images/generate',
+                model: requestedModel || 'unknown',
+                provider: 'unknown',
+                status: 'blocked',
+                errorMessage: inputPipeline.message,
+            });
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons },
+                    { status: inputPipeline.status }
+                ),
+                { requestId: ctx.requestId }
+            );
+        }
+        body.prompt = inputPipeline.messages[0]?.content ?? prompt;
 
         const { normalized: model, apiModel } = normalizeModelName(requestedModel || 'dall-e-3');
+        if (!(model in IMAGE_MODELS)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'unsupported_model', message: `Unsupported image model: ${model}` }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
         const provider = getProviderForModel(model);
+        const size = body.size || '1024x1024';
+        const quality = apiModel.startsWith('gpt-image')
+            ? (mapOpenAIQuality(body.quality) || 'medium')
+            : (body.quality || 'standard');
+        const requestedImageCount = body.n ?? 1;
+        if (requestedImageCount > 1 && apiModel !== 'dall-e-2') {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'unsupported_n', message: `${model} only supports n=1 through this endpoint.` }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (provider === 'google'
+            && (size !== '1024x1024' || quality !== 'standard' || body.style !== undefined || body.responseFormat === 'url')) {
+            return addGatewayHeaders(
+                NextResponse.json({
+                    error: 'unsupported_image_options',
+                    message: 'Google image models currently support only 1024x1024, standard quality, b64_json output, and no style option.',
+                }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        body.size = size;
+        body.quality = quality;
+
+        // Image cost varies by model, size, and quality. Require an exact
+        // deployed variant row instead of falling back to a guessed flat fee.
+        const { data: imagePricing, error: imagePricingError } = await ctx.supabase
+            .from('gateway_image_pricing')
+            .select('price_per_image, cencori_markup_percentage')
+            .eq('provider', provider)
+            .eq('model_name', model)
+            .eq('size', size)
+            .eq('quality', quality)
+            .eq('is_active', true)
+            .maybeSingle();
+        const pricePerImage = Number(imagePricing?.price_per_image);
+        const markupPercentage = Number(imagePricing?.cencori_markup_percentage);
+        if (imagePricingError || !imagePricing
+            || !Number.isFinite(pricePerImage) || pricePerImage < 0
+            || !Number.isFinite(markupPercentage) || markupPercentage < 0) {
+            return addGatewayHeaders(
+                NextResponse.json({
+                    error: 'pricing_unavailable',
+                    message: `Exact image pricing is not configured for ${model} (${size}, ${quality}).`,
+                }, { status: 503 }),
+                { requestId: ctx.requestId }
+            );
+        }
 
         // Get API key for provider (BYOK or default)
         let providerApiKey: string | undefined;
@@ -208,7 +323,7 @@ export async function POST(req: NextRequest) {
         // Generate images
         let result: ImageGenerationResponse;
         if (provider === 'openai') {
-            const client = new OpenAI({ apiKey: providerApiKey });
+            const client = new OpenAI({ apiKey: providerApiKey, timeout: 55_000, maxRetries: 0 });
             result = await generateWithOpenAI(client, body, apiModel);
         } else if (provider === 'google') {
             result = await generateWithGoogle(providerApiKey, body, apiModel);
@@ -219,24 +334,59 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Review the provider's raw revised prompt before restoring any
+        // tokenized request values.
+        const textualOutput = result.images
+            .map(image => image.revisedPrompt)
+            .filter((value): value is string => Boolean(value))
+            .join('\n');
+        const outputCheck = textualOutput
+            ? await runGatewayOutputGuard({
+                supabase: ctx.supabase,
+                projectId: ctx.projectId,
+                apiKeyId: ctx.apiKeyId,
+                environment: ctx.environment,
+                outputText: textualOutput,
+                inputText: inputPipeline.inputText,
+                inputSecurity: inputPipeline.inputSecurity,
+                conversationHistory: inputPipeline.messages,
+            })
+            : { ok: true as const };
+
         // Cost tracking (fixed per-image pricing)
-        const numImages = result.images.length || 1;
-        const pricePerImage = IMAGE_PRICING[model] || 0.04;
-        const providerCost = numImages * pricePerImage;
-        const cencoriCharge = providerCost * 1.2; // 20% markup
+        const providerCost = requestedImageCount * pricePerImage;
+        const cencoriCharge = providerCost * (1 + markupPercentage / 100);
 
         await logGatewayRequest(ctx, {
             endpoint: 'images/generate',
             model,
             provider,
-            status: 'success',
+            status: outputCheck.ok ? 'success' : 'blocked_output',
             costUsd: cencoriCharge,
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
-            markupPercentage: 20,
-            metadata: { prompt: prompt.substring(0, 1000), numImages },
+            markupPercentage,
+            metadata: { prompt_length: prompt.length, numImages: requestedImageCount, size, quality },
+            errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, cencoriCharge);
+
+        if (!outputCheck.ok) {
+            return addGatewayHeaders(
+                NextResponse.json(
+                    { error: outputCheck.code, message: outputCheck.message, reasons: outputCheck.reasons },
+                    { status: outputCheck.status }
+                ),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        result.images = result.images.map(image => ({
+            ...image,
+            revisedPrompt: image.revisedPrompt
+                ? deTokenize(image.revisedPrompt, inputPipeline.tokenMap ?? new Map())
+                : image.revisedPrompt,
+        }));
 
         return addGatewayHeaders(
             NextResponse.json(result),
@@ -263,14 +413,29 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-    const models = Object.entries(IMAGE_MODELS).map(([name, config]) => ({
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+        .from('gateway_image_pricing')
+        .select('provider, model_name, size, quality')
+        .eq('is_active', true);
+    if (error) {
+        return NextResponse.json(
+            { error: 'image_catalog_unavailable', message: 'Image pricing catalog is unavailable.' },
+            { status: 503 },
+        );
+    }
+    const variants = (data || []).filter(row => row.model_name in IMAGE_MODELS);
+    const modelNames = Array.from(new Set(variants.map(row => row.model_name)));
+    const models = modelNames.map(name => ({
         name,
-        provider: config.provider,
-        description: config.description,
+        provider: IMAGE_MODELS[name as SupportedModel].provider,
+        description: IMAGE_MODELS[name as SupportedModel].description,
+        variants: variants
+            .filter(row => row.model_name === name)
+            .map(row => ({ size: row.size, quality: row.quality })),
     }));
     return NextResponse.json({
         models,
-        providers: ['openai', 'google'],
-        note: 'Midjourney V7 is not supported as it lacks API access.',
+        providers: Array.from(new Set(models.map(model => model.provider))),
     });
 }

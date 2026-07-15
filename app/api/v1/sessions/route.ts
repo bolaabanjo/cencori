@@ -78,7 +78,9 @@ export async function GET(req: NextRequest) {
         const adminClient = createAdminClient();
 
         // Sweep expired paused sessions before listing
-        void expireStaleSessions(adminClient as never);
+        void expireStaleSessions(adminClient as never).catch((error) => {
+            console.error('[Sessions] Opportunistic expiry failed:', error);
+        });
 
         const searchParams = req.nextUrl.searchParams;
         const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
@@ -126,6 +128,25 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json() as CreateSessionRequest;
         const adminClient = createAdminClient();
+
+        if (body.agent_id) {
+            const { data: agent, error: agentError } = await adminClient
+                .from('agents')
+                .select('id, project_id, is_active')
+                .eq('id', body.agent_id)
+                .maybeSingle();
+
+            if (agentError) {
+                return respondError(500, 'Failed to verify agent', 'agent_access_check_failed');
+            }
+            if (!agent || agent.project_id !== gatewayCtx.projectId) {
+                return respondError(404, 'Agent not found', 'agent_not_found');
+            }
+            if (!agent.is_active) {
+                return respondError(409, 'Agent is not active', 'agent_inactive');
+            }
+        }
+
         const { data: session, error } = await adminClient.from('sessions').insert({
             project_id: gatewayCtx.projectId,
             organization_id: gatewayCtx.organizationId,

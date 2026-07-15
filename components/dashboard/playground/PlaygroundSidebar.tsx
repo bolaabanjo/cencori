@@ -58,7 +58,7 @@ export function PlaygroundSidebar({
                 type="button"
                 onClick={onToggle}
                 className={cn(
-                    "fixed left-4 md:left-[calc(var(--sidebar-width,0px)+1rem)] top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex items-center justify-center h-9 w-9 rounded-full border shadow-md transition-all cursor-pointer",
+                    "absolute left-4 top-16 md:top-1/2 md:-translate-y-1/2 z-50 flex items-center justify-center h-9 w-9 rounded-full border shadow-md transition-all cursor-pointer",
                     open
                         ? "bg-foreground text-background border-foreground"
                         : "bg-background text-muted-foreground/70 border-border/40 hover:text-foreground hover:border-border/60"
@@ -68,7 +68,7 @@ export function PlaygroundSidebar({
                 <PanelLeftIcon className="h-4 w-4" />
             </button>
             {open && (
-                <div className="fixed left-[calc(1rem+2.25rem+0.75rem)] md:left-[calc(var(--sidebar-width,0px)+1rem+2.25rem+0.75rem)] top-16 md:top-1/2 md:-translate-y-1/2 z-50 w-72 max-h-[75vh] rounded-2xl border border-border/40 bg-popover/95 backdrop-blur-xl shadow-2xl p-4 flex flex-col gap-3 overflow-y-auto animate-in fade-in slide-in-from-left-2 duration-150">
+                <div className="absolute left-[calc(1rem+2.25rem+0.75rem)] top-16 md:top-1/2 md:-translate-y-1/2 z-50 w-72 max-h-[75vh] rounded-2xl border border-border/40 bg-popover/95 backdrop-blur-xl shadow-2xl p-4 flex flex-col gap-3 overflow-y-auto animate-in fade-in slide-in-from-left-2 duration-150">
                     {showSignupPrompt ? (
                         <div className="flex flex-col items-center gap-3 py-8 text-center">
                             <div className="flex items-center justify-center h-10 w-10 rounded-full bg-muted/50">

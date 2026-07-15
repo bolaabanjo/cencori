@@ -141,8 +141,8 @@ export default function ScanLayout({ children }: ScanLayoutProps) {
         : "/login?redirect=/scan";
 
     const dashboardHref = isScanSubdomainHost
-        ? "https://cencori.com/dashboard/organizations"
-        : "/dashboard/organizations";
+        ? "https://cencori.com/dashboard"
+        : "/dashboard";
 
     const docsHref = isScanSubdomainHost
         ? "https://cencori.com/docs/security/scan/web-dashboard"

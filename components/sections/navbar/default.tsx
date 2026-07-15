@@ -312,29 +312,29 @@ export default function Navbar({
                         </div>
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/account/profile")}>
                         <CircleUserRound className="mr-2 h-4 w-4" />
                         <span className="text-xs">Profile</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/billing")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard")}>
                         <CreditCard className="mr-2 h-4 w-4" />
                         <span className="text-xs">Billing</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/account/settings")}>
                         <Settings className="mr-2 h-4 w-4" />
                         <span className="text-xs"> Account Settings</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/organizations")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard")}>
 
                         <span className="text-xs cursor-pointer">Dashboard</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/team")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard")}>
                         <Users className="mr-2 h-4 w-4" />
                         <span className="text-xs">Team</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/invite-user")}>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard")}>
                         <UserPlus className="mr-2 h-4 w-4" />
                         <span className="text-xs">Invite User</span>
                       </DropdownMenuItem>

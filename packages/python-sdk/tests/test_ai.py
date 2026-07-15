@@ -87,7 +87,7 @@ class TestEmbeddings:
         """Test embeddings with single input."""
         client = Cencori(api_key=api_key)
 
-        with patch.object(client, "_request", return_value=mock_embedding_response):
+        with patch.object(client, "_request", return_value=mock_embedding_response) as mock:
             response = client.ai.embeddings(
                 input="Hello world",
                 model="text-embedding-3-small",
@@ -97,6 +97,7 @@ class TestEmbeddings:
         assert len(response.embeddings) == 1
         assert response.embeddings[0] == [0.1, 0.2, 0.3, 0.4, 0.5]
         assert response.usage.total_tokens == 5
+        assert mock.call_args.args[:2] == ("POST", "/api/ai/embeddings")
 
     def test_embeddings_multiple_inputs(self, api_key: str) -> None:
         """Test embeddings with multiple inputs."""

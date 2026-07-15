@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        const ids = idsParam.split(",").filter(Boolean);
+        const ids = Array.from(new Set(idsParam.split(",").map(id => id.trim()).filter(Boolean)));
         if (ids.length === 0 || ids.length > 20) {
             return respond(
                 NextResponse.json({ error: "Provide 1-20 action IDs" }, { status: 400 }),
@@ -174,6 +174,14 @@ export async function GET(req: NextRequest) {
                 organizationOwnerId: organization?.owner_id || null,
             };
         });
+
+        if (scopedActions.length !== ids.length) {
+            return respond(
+                NextResponse.json({ error: 'One or more actions were not found' }, { status: 404 }),
+                'action_not_found',
+                'One or more actions were not found',
+            );
+        }
 
         if (apiLogContext) {
             const hasCrossProjectAction = scopedActions.some(

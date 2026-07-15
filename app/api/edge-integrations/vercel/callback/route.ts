@@ -64,8 +64,8 @@ export async function GET(req: NextRequest) {
     const { payload, signatureValid } = parseVercelInstallState(searchParams.get('state'));
 
     const fallbackPath = payload.orgSlug && payload.projectSlug
-        ? `/dashboard/organizations/${payload.orgSlug}/projects/${payload.projectSlug}/edge`
-        : '/dashboard/organizations';
+        ? `/${payload.orgSlug}/${payload.projectSlug}/edge`
+        : '/dashboard';
     const redirectPath = sanitizeRedirectPath(payload.redirect, fallbackPath);
 
     if (error) {

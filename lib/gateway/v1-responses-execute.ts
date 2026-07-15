@@ -5,7 +5,12 @@
  */
 
 import { NextResponse } from 'next/server';
-import type { UnifiedMessage, Tool, UnifiedChatRequest } from '@/lib/providers/base';
+import {
+    calculateProviderTokenCost,
+    type UnifiedMessage,
+    type Tool,
+    type UnifiedChatRequest,
+} from '@/lib/providers/base';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
@@ -15,6 +20,7 @@ import type { QuotaCheckResult } from '@/lib/end-user-billing';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import {
     preProcessBuiltInTools,
     executeCodeInterpreter,
@@ -140,7 +146,7 @@ type V1ResponseExecuteParams = {
     agentId?: string | null;
     shadowMode?: boolean;
     createPendingAction?: (toolCall: ToolCallPayload) => Promise<string | null>;
-    createExecutedAction?: (toolCall: ToolCallPayload) => void;
+    createDispatchedAction?: (toolCall: ToolCallPayload) => void;
 };
 
 export type V1ResponseExecuteResult =
@@ -320,6 +326,7 @@ export async function runV1ResponsesExecution(
     params: V1ResponseExecuteParams
 ): Promise<V1ResponseExecuteResult> {
     const { gatewayCtx, model, body, inputSecurity, inputText, tokenMap, tier } = params;
+    const effectiveTokenMap = new Map(tokenMap ?? []);
 
     try {
         const resolved = await resolveGatewayProvider({
@@ -332,6 +339,15 @@ export async function runV1ResponsesExecution(
         // Separate function tools from built-in tools
         const { functionTools, builtInTools } = extractTools(body.tools);
 
+        // Make files supplied on this request searchable during this request,
+        // before built-in file_search is pre-processed.
+        if (builtInTools.some(tool => tool.type === 'file_search') && typeof body.input !== 'string') {
+            const fileItems = body.input.filter((i): i is { type: 'file'; filename: string; content: string; mime_type?: string } => i.type === 'file');
+            for (const file of fileItems) {
+                await indexFileContent(gatewayCtx.projectId, file.filename, file.content);
+            }
+        }
+
         // Pre-process built-in tools (web search, file search)
         const userInputText = typeof body.input === 'string' ? body.input : '';
         const preProcessResult = builtInTools.length > 0
@@ -342,12 +358,35 @@ export async function runV1ResponsesExecution(
               )
             : { systemContext: '', toolOutputs: [] as ToolCallOutput[] };
 
-        const messages = params.messages ?? parseInputToMessages(body.input, body.instructions);
-
-        // When pre-parsed messages are provided, instructions must be injected manually
-        if (params.messages && body.instructions) {
-            messages.unshift({ role: 'system', content: body.instructions });
+        // Search/file results are untrusted external input and can contain
+        // prompt injection or project-rule matches. Scan and transform them
+        // before they become a privileged system message.
+        if (preProcessResult.systemContext) {
+            const contextPipeline = await runGatewayInputPipeline({
+                supabase: params.supabase,
+                projectId: gatewayCtx.projectId,
+                apiKeyId: gatewayCtx.apiKeyId,
+                environment: gatewayCtx.environment,
+                tier,
+                messages: [{ role: 'user', content: preProcessResult.systemContext }],
+                endUserId: params.endUserId,
+            });
+            if (!contextPipeline.ok) {
+                preProcessResult.systemContext = '';
+                for (const output of preProcessResult.toolOutputs) {
+                    output.status = 'failed';
+                    output.error = 'Retrieved context was blocked by the project security policy';
+                    delete output.output;
+                }
+            } else {
+                preProcessResult.systemContext = contextPipeline.messages[0]?.content ?? '';
+                // Do not merge the external context's token map. Tokens from
+                // web/file results must stay redacted in model output rather
+                // than being rehydrated into newly fetched sensitive data.
+            }
         }
+
+        const messages = params.messages ?? parseInputToMessages(body.input, body.instructions);
 
         // Inject built-in tool context as system message
         if (preProcessResult.systemContext) {
@@ -362,20 +401,24 @@ export async function runV1ResponsesExecution(
 
         // Resolve previous_response_id: fetch prior response and prepend its output
         if (body.previous_response_id) {
-            const prior = getResponse(body.previous_response_id);
+            const prior = await getResponse(params.supabase, gatewayCtx.projectId, body.previous_response_id);
             if (prior) {
+                const priorMessages: UnifiedMessage[] = [];
                 for (const item of prior.output) {
                     if (item.type === 'message' && item.content?.[0]?.text) {
-                        messages.push({ role: 'assistant', content: item.content[0].text });
+                        priorMessages.push({ role: 'assistant', content: item.content[0].text });
                     }
                     if (item.type === 'function_call') {
-                        messages.push({
+                        priorMessages.push({
                             role: 'assistant',
                             content: '',
                             toolCallId: item.call_id || item.id,
                         });
                     }
                 }
+                let insertAt = 0;
+                while (insertAt < messages.length && messages[insertAt].role === 'system') insertAt++;
+                messages.splice(insertAt, 0, ...priorMessages);
             }
         }
 
@@ -395,6 +438,21 @@ export async function runV1ResponsesExecution(
             };
             functionTools.push(schemaTool);
             forceSchemaResult = true;
+        }
+
+        if (functionTools.length > 0 && resolved.provider.supportsTools === false) {
+            return {
+                ok: false,
+                status: 400,
+                body: {
+                    error: {
+                        message: `Tool calling is not implemented for provider '${resolved.providerName}'.`,
+                        type: 'invalid_request_error',
+                        code: 'tools_not_supported_by_provider',
+                    },
+                    status: 'failed',
+                },
+            };
         }
 
         const chatRequest: UnifiedChatRequest = {
@@ -434,20 +492,8 @@ export async function runV1ResponsesExecution(
             });
 
             let content = result.content;
-            if (tokenMap) {
-                content = deTokenize(content, tokenMap);
-            }
-
-            // Index file uploads for file_search
-            if (typeof body.input !== 'string') {
-                const fileItems = body.input.filter((i): i is { type: 'file'; filename: string; content: string; mime_type?: string } => i.type === 'file');
-                for (const file of fileItems) {
-                    try {
-                        await indexFileContent(gatewayCtx.projectId, file.filename, file.content);
-                    } catch {
-                        // File indexing is best-effort
-                    }
-                }
+            if (effectiveTokenMap.size > 0) {
+                content = deTokenize(content, effectiveTokenMap);
             }
 
             // Extract structured output from tool call if response_format was json_schema
@@ -458,13 +504,17 @@ export async function runV1ResponsesExecution(
                 }
             }
 
-            // Output guard
+            // Guard both visible text and model-generated tool arguments.
+            const outputTextForGuard = [
+                content,
+                ...(result.toolCalls || []).map(call => call.function.arguments || ''),
+            ].filter(Boolean).join('\n');
             const outputCheck = await runGatewayOutputGuard({
                 supabase: params.supabase,
                 projectId: gatewayCtx.projectId,
                 apiKeyId: gatewayCtx.apiKeyId,
                 environment: gatewayCtx.environment,
-                outputText: content,
+                outputText: outputTextForGuard,
                 inputText,
                 inputSecurity,
                 conversationHistory: messages,
@@ -472,6 +522,28 @@ export async function runV1ResponsesExecution(
             });
 
             if (!outputCheck.ok) {
+                const providerLogName = resolved.customProviderTag || result.actualProvider;
+                params.logSuccess({
+                    provider: providerLogName,
+                    model: result.actualModel,
+                    status: 'error',
+                    promptTokens: result.usage.promptTokens,
+                    completionTokens: result.usage.completionTokens,
+                    totalTokens: result.usage.totalTokens,
+                    providerCostUsd: result.cost.providerCostUsd,
+                    cencoriChargeUsd: result.cost.cencoriChargeUsd,
+                    markupPercentage: result.cost.markupPercentage,
+                    errorMessage: outputCheck.message,
+                });
+                params.incrementUsage(result.cost.cencoriChargeUsd);
+                params.recordEndUserUsage({
+                    promptTokens: result.usage.promptTokens,
+                    completionTokens: result.usage.completionTokens,
+                    totalTokens: result.usage.totalTokens,
+                    providerCostUsd: result.cost.providerCostUsd,
+                    cencoriChargeUsd: result.cost.cencoriChargeUsd,
+                    markupPercentage: result.cost.markupPercentage,
+                });
                 return {
                     ok: false,
                     status: outputCheck.status,
@@ -512,9 +584,9 @@ export async function runV1ResponsesExecution(
                             arguments: tc.arguments,
                         });
                     }
-                } else if (params.createExecutedAction) {
+                } else if (params.createDispatchedAction) {
                     for (const tc of openAiToolCalls) {
-                        params.createExecutedAction({
+                        params.createDispatchedAction({
                             tool_call_id: tc.id,
                             tool: tc.name,
                             arguments: tc.arguments,
@@ -557,21 +629,16 @@ export async function runV1ResponsesExecution(
                 metadata: body.metadata,
             });
 
-            if (body.store !== false) storeResponse(json);
+            if (body.store !== false) {
+                await storeResponse(
+                    params.supabase,
+                    gatewayCtx.projectId,
+                    gatewayCtx.organizationId,
+                    json,
+                );
+            }
 
             return { ok: true, response: NextResponse.json(json) };
-        }
-
-        // Index file uploads for file_search
-        if (typeof body.input !== 'string') {
-            const fileItems = body.input.filter((i): i is { type: 'file'; filename: string; content: string; mime_type?: string } => i.type === 'file');
-            for (const file of fileItems) {
-                try {
-                    await indexFileContent(gatewayCtx.projectId, file.filename, file.content);
-                } catch {
-                    // best-effort
-                }
-            }
         }
 
         // ── Streaming ──
@@ -594,14 +661,6 @@ export async function runV1ResponsesExecution(
                     })) {
                         if (chunk.delta) {
                             fullText += chunk.delta;
-                            controller.enqueue(
-                                encoder.encode(
-                                    buildResponsesStreamChunk({
-                                        type: 'response.output_text.delta',
-                                        data: { delta: chunk.delta, index: 0 },
-                                    })
-                                )
-                            );
                         }
 
                         if (chunk.toolCalls) {
@@ -618,6 +677,124 @@ export async function runV1ResponsesExecution(
                         }
 
                         if (chunk.finishReason) {
+                            if (effectiveTokenMap.size > 0) {
+                                fullText = deTokenize(fullText, effectiveTokenMap);
+                            }
+
+                            // Extract structured output before scanning so the
+                            // actual client-visible payload is protected.
+                            if (forceSchemaResult && schemaToolName) {
+                                const schemaCall = Object.values(collectedToolCalls).find(tc => tc.name === schemaToolName);
+                                if (schemaCall?.arguments) {
+                                    fullText = schemaCall.arguments;
+                                }
+                            }
+
+                            const toolCallValues = Object.values(collectedToolCalls).filter(
+                                tc => !(forceSchemaResult && schemaToolName && tc.name === schemaToolName)
+                            );
+                            const outputTextForGuard = [
+                                fullText,
+                                ...toolCallValues.map(tc => tc.arguments),
+                            ].filter(Boolean).join('\n');
+                            const outputCheck = await runGatewayOutputGuard({
+                                supabase: params.supabase,
+                                projectId: gatewayCtx.projectId,
+                                apiKeyId: gatewayCtx.apiKeyId,
+                                environment: gatewayCtx.environment,
+                                outputText: outputTextForGuard,
+                                inputText,
+                                inputSecurity,
+                                conversationHistory: messages,
+                                endUserId: params.endUserId,
+                            });
+
+                            const streamProvider =
+                                chunk.actualProvider !== resolved.providerName
+                                && resolved.router.hasProvider(chunk.actualProvider)
+                                    ? resolved.router.getProvider(chunk.actualProvider)
+                                    : resolved.provider;
+                            let promptTokens = 0;
+                            let completionTokens = 0;
+                            try {
+                                promptTokens = await streamProvider.countTokens(
+                                    messages.map(m => m.content).join(' '),
+                                    chunk.actualModel
+                                );
+                                completionTokens = await streamProvider.countTokens(
+                                    fullText,
+                                    chunk.actualModel
+                                );
+                            } catch {
+                                promptTokens = Math.max(1, Math.ceil(messages.map(m => m.content).join(' ').length / 4));
+                                completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+                            }
+                            const totalTokens = promptTokens + completionTokens;
+                            const pricing = await streamProvider.getPricing(chunk.actualModel);
+                            const providerCostUsd = calculateProviderTokenCost(
+                                promptTokens,
+                                completionTokens,
+                                pricing
+                            );
+                            const cencoriChargeUsd =
+                                providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
+                                + (pricing.fixedFeePerRequest ?? 0);
+
+                            if (!outputCheck.ok) {
+                                const providerLogName = resolved.customProviderTag || chunk.actualProvider;
+                                params.logSuccess({
+                                    provider: providerLogName,
+                                    model: chunk.actualModel,
+                                    status: 'error',
+                                    promptTokens,
+                                    completionTokens,
+                                    totalTokens,
+                                    providerCostUsd,
+                                    cencoriChargeUsd,
+                                    markupPercentage: pricing.cencoriMarkupPercentage,
+                                    errorMessage: outputCheck.message,
+                                });
+                                params.incrementUsage(cencoriChargeUsd);
+                                params.recordEndUserUsage({
+                                    promptTokens,
+                                    completionTokens,
+                                    totalTokens,
+                                    providerCostUsd,
+                                    cencoriChargeUsd,
+                                    markupPercentage: pricing.cencoriMarkupPercentage,
+                                });
+
+                                const failedResponse = buildResponsesJson({
+                                    model: chunk.actualModel,
+                                    content: '',
+                                    toolOutputs: collectedBuiltinToolOutputs,
+                                    usage: { promptTokens, completionTokens, totalTokens },
+                                    status: 'failed',
+                                    metadata: body.metadata,
+                                });
+                                controller.enqueue(encoder.encode(buildResponsesStreamChunk({
+                                    type: 'response.done',
+                                    data: {
+                                        response: failedResponse,
+                                        error: { code: outputCheck.code, message: outputCheck.message },
+                                    },
+                                })));
+                                controller.close();
+                                return;
+                            }
+
+                            // Output is buffered until the guard approves it;
+                            // no unsafe prefix can escape before a later block.
+                            if (fullText) {
+                                controller.enqueue(
+                                    encoder.encode(
+                                        buildResponsesStreamChunk({
+                                            type: 'response.output_text.delta',
+                                            data: { delta: fullText, index: 0 },
+                                        })
+                                    )
+                                );
+                            }
                             // Send output_text.done
                             controller.enqueue(
                                 encoder.encode(
@@ -661,18 +838,7 @@ export async function runV1ResponsesExecution(
                                 }
                             }
 
-                            // Extract structured output from schema tool call
-                            if (forceSchemaResult && schemaToolName) {
-                                const schemaCall = Object.values(collectedToolCalls).find(tc => tc.name === schemaToolName);
-                                if (schemaCall?.arguments) {
-                                    fullText = schemaCall.arguments;
-                                }
-                            }
-
                             // Send function call results (skip the schema tool if used for response_format)
-                            const toolCallValues = Object.values(collectedToolCalls).filter(
-                                tc => !(forceSchemaResult && schemaToolName && tc.name === schemaToolName)
-                            );
                             for (const tc of toolCallValues) {
                                 controller.enqueue(
                                     encoder.encode(
@@ -698,9 +864,9 @@ export async function runV1ResponsesExecution(
                                             arguments: tc.arguments,
                                         });
                                     }
-                                } else if (params.createExecutedAction) {
+                                } else if (params.createDispatchedAction) {
                                     for (const tc of toolCallValues) {
-                                        params.createExecutedAction({
+                                        params.createDispatchedAction({
                                             tool_call_id: tc.id,
                                             tool: tc.name,
                                             arguments: tc.arguments,
@@ -708,30 +874,6 @@ export async function runV1ResponsesExecution(
                                     }
                                 }
                             }
-
-                            // Calculate costs
-                            let promptTokens = 0;
-                            let completionTokens = 0;
-                            try {
-                                promptTokens = await resolved.provider.countTokens(
-                                    messages.map(m => m.content).join(' '),
-                                    chunk.actualModel
-                                );
-                                completionTokens = await resolved.provider.countTokens(
-                                    fullText,
-                                    chunk.actualModel
-                                );
-                            } catch {
-                                promptTokens = Math.max(1, Math.ceil(messages.map(m => m.content).join(' ').length / 4));
-                                completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-                            }
-                            const totalTokens = promptTokens + completionTokens;
-                            const pricing = await resolved.provider.getPricing(chunk.actualModel);
-                            const providerCostUsd =
-                                (promptTokens / 1000) * pricing.inputPer1KTokens
-                                + (completionTokens / 1000) * pricing.outputPer1KTokens;
-                            const cencoriChargeUsd =
-                                providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100);
 
                             const providerLogName = resolved.customProviderTag || chunk.actualProvider;
                             params.logSuccess({
@@ -772,7 +914,14 @@ export async function runV1ResponsesExecution(
                                 metadata: body.metadata,
                             });
 
-                            if (body.store !== false) storeResponse(response);
+                            if (body.store !== false) {
+                                await storeResponse(
+                                    params.supabase,
+                                    gatewayCtx.projectId,
+                                    gatewayCtx.organizationId,
+                                    response,
+                                );
+                            }
 
                             controller.enqueue(
                                 encoder.encode(

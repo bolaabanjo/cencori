@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { safeOutboundFetch } from '@/lib/security/outbound-url';
 
 interface WebhookPayload {
     event: string;
@@ -37,7 +38,7 @@ export async function deliverWebhook(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(webhook.url, {
+            const response = await safeOutboundFetch(webhook.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -47,7 +48,7 @@ export async function deliverWebhook(
                 },
                 body: JSON.stringify(payload),
                 signal: AbortSignal.timeout(10000), // 10 second timeout
-            });
+            }, { maxRedirects: 0 });
 
             if (response.ok) {
                 return { success: true, statusCode: response.status, attempts: attempt };

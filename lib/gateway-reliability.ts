@@ -4,6 +4,7 @@ import {
     InvalidRequestError,
     ModelNotFoundError,
     normalizeProviderError,
+    PricingUnavailableError,
     ProviderError,
     RateLimitError,
     ServiceUnavailableError,
@@ -191,6 +192,15 @@ export function mapProviderErrorToHttpResponse(
         return {
             status: 503,
             error: 'provider_unavailable',
+            message,
+            provider: providerError.provider,
+        };
+    }
+
+    if (providerError instanceof PricingUnavailableError) {
+        return {
+            status: 503,
+            error: 'pricing_unavailable',
             message,
             provider: providerError.provider,
         };

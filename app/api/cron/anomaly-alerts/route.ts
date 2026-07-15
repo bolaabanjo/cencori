@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { triggerAnomalyWebhook } from '@/lib/webhooks/trigger';
 import { createWebhookEvent, signPayload } from '@/lib/webhooks/deliver';
+import { safeOutboundFetch } from '@/lib/security/outbound-url';
 
 function mean(arr: number[]): number {
     if (arr.length === 0) return 0;
@@ -157,7 +158,7 @@ async function detectAnomalies(
     return alerts.sort((a, b) => ({ critical: 0, warning: 1, info: 2 }[a.severity] - { critical: 0, warning: 1, info: 2 }[b.severity]));
 }
 
-export async function POST(req: NextRequest) {
+async function run(req: NextRequest) {
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.get('authorization');
 
@@ -238,7 +239,7 @@ export async function POST(req: NextRequest) {
 
                     const secret = process.env.CRON_SECRET || 'default';
                     try {
-                        await fetch(settings.alert_webhook_url, {
+                        await safeOutboundFetch(settings.alert_webhook_url, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -248,7 +249,7 @@ export async function POST(req: NextRequest) {
                             },
                             body: JSON.stringify(payload),
                             signal: AbortSignal.timeout(10000),
-                        });
+                        }, { maxRedirects: 0 });
                     } catch {
                         // best-effort delivery
                     }
@@ -267,9 +268,5 @@ export async function POST(req: NextRequest) {
     }
 }
 
-export async function GET(req: NextRequest) {
-    if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json({ error: 'GET not allowed in production' }, { status: 405 });
-    }
-    return POST(req);
-}
+export const GET = run;
+export const POST = run;

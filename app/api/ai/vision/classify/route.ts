@@ -10,9 +10,9 @@ import {
     addGatewayHeaders,
     handleCorsPreFlight,
     logGatewayRequest,
-    incrementUsage,
 } from '@/lib/gateway-middleware';
-import { analyzeVision, parseVisionRequest, VisionValidationError } from '@/lib/vision/analyze';
+import { parseVisionRequest, VisionValidationError } from '@/lib/vision/analyze';
+import { executeGuardedVision } from '@/lib/vision/guarded';
 import { ProviderError } from '@/lib/providers/errors';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 
@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
         request.responseFormat = 'json';
         request.temperature = request.temperature ?? 0;
 
-        const result = await analyzeVision(ctx, request);
+        const execution = await executeGuardedVision({ ctx, request, endpoint: 'vision/classify' });
+        if (!execution.ok) return execution.response;
+        const result = execution.result;
 
         // Try to parse — fall back to raw string if the model returned non-JSON
         let classification: unknown = result.analysis;
@@ -49,21 +51,6 @@ export async function POST(req: NextRequest) {
                 try { classification = JSON.parse(match[0]); } catch { /* keep raw */ }
             }
         }
-
-        await logGatewayRequest(ctx, {
-            endpoint: 'vision/classify',
-            model: result.model,
-            provider: result.provider,
-            status: 'success',
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            totalTokens: result.usage.totalTokens,
-            costUsd: result.cost.cencoriChargeUsd,
-            providerCostUsd: result.cost.providerCostUsd,
-            cencoriChargeUsd: result.cost.cencoriChargeUsd,
-            markupPercentage: result.cost.markupPercentage,
-        });
-        await incrementUsage(ctx);
 
         return addGatewayHeaders(
             NextResponse.json({

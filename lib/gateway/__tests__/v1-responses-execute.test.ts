@@ -1,14 +1,19 @@
 /**
  * @vitest-environment node
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NextResponse } from 'next/server';
+
+vi.mock('@/lib/supabaseAdmin', () => ({
+    createAdminClient: vi.fn(),
+}));
 
 // The main execution function needs heavy mocking, so we test the pure helpers
 // that are extracted into the v1-responses-execute module
 
 // Re-import the helpers from the module
 import type { ResponseInputItem, ResponsesTool } from '@/lib/gateway/v1-responses-execute';
+import { executeCodeInterpreter } from '@/lib/gateway/v1-responses-tools';
 
 // ── Helper: parseInputToMessages ──
 // The function is not exported — we test via the module's behavior
@@ -226,6 +231,21 @@ describe('v1-responses-execute helpers', () => {
             expect(functionTools[0].type).toBe('function');
             expect(builtInTools).toHaveLength(3);
             expect(builtInTools.map(t => t.type).sort()).toEqual(['code_interpreter', 'file_search', 'web_search_preview']);
+        });
+    });
+
+    describe('code interpreter safety', () => {
+        it('never executes model-generated code in the application process', async () => {
+            delete (globalThis as { __cencoriCodeExecuted?: boolean }).__cencoriCodeExecuted;
+
+            const result = await executeCodeInterpreter(
+                'globalThis.__cencoriCodeExecuted = true',
+                'javascript',
+            );
+
+            expect(result.status).toBe('failed');
+            expect(result.error).toBe('Code interpreter is temporarily unavailable');
+            expect((globalThis as { __cencoriCodeExecuted?: boolean }).__cencoriCodeExecuted).toBeUndefined();
         });
     });
 });

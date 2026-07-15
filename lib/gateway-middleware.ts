@@ -502,7 +502,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                         error: 'Credit balance exhausted',
                         message: 'Your organization has run out of credits. Top up to continue.',
                         balance: 0,
-                        top_up_url: '/dashboard/organizations',
+                        top_up_url: '/billing',
                     },
                     { status: 403 }
                 ),
@@ -678,8 +678,8 @@ export function addGatewayHeaders(response: NextResponse, options: HeaderOptions
 
     // CORS headers
     response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, CENCORI_API_KEY, X-Cencori-User-IP, X-Cencori-User-Country, X-Cencori-Prompt, X-Cencori-Prompt-Vars');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, CENCORI_API_KEY, X-Agent-ID, X-Skip-Cache, X-Public-Playground, X-Playground-Project-ID, X-Playground-Environment, X-Cencori-User-IP, X-Cencori-User-Country, X-Cencori-Prompt, X-Cencori-Prompt-Vars');
     response.headers.set('Access-Control-Expose-Headers', 'X-Request-Id, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-Cache, X-Cencori-Cache, X-Cache-Similarity');
 
     return response;
@@ -691,8 +691,8 @@ export function addGatewayHeaders(response: NextResponse, options: HeaderOptions
 export function handleCorsPreFlight(): NextResponse {
     const response = new NextResponse(null, { status: 204 });
     response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, CENCORI_API_KEY, X-Cencori-User-IP, X-Cencori-User-Country, X-Cencori-Prompt, X-Cencori-Prompt-Vars');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, CENCORI_API_KEY, X-Agent-ID, X-Skip-Cache, X-Public-Playground, X-Playground-Project-ID, X-Playground-Environment, X-Cencori-User-IP, X-Cencori-User-Country, X-Cencori-Prompt, X-Cencori-Prompt-Vars');
     response.headers.set('Access-Control-Max-Age', '86400');
     return response;
 }

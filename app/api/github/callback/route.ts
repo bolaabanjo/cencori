@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.redirect(
       buildRedirect(orgSlug
-        ? `/dashboard/organizations/${orgSlug}/projects/import/github?error=${encodedGithubError}`
+        ? `/${orgSlug}/~/projects/import/github?error=${encodedGithubError}`
         : `/dashboard?error=${encodedGithubError}`)
     );
   }
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.redirect(
       buildRedirect(orgSlug
-        ? `/dashboard/organizations/${orgSlug}/projects/import/github?success=installation_requested`
+        ? `/${orgSlug}/~/projects/import/github?success=installation_requested`
         : '/dashboard?success=installation_requested')
     );
   }
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
 
     if (orgSlug) {
       return NextResponse.redirect(
-        buildRedirect(`/dashboard/organizations/${orgSlug}/projects/import/github?success=installation_requested`)
+        buildRedirect(`/${orgSlug}/~/projects/import/github?success=installation_requested`)
       );
     }
 
@@ -103,7 +103,7 @@ export async function GET(req: NextRequest) {
     if (isScanSource) {
       return NextResponse.redirect(buildRedirect('/scan/import?error=callback_failed'));
     }
-    return NextResponse.redirect(buildRedirect(orgSlug ? `/dashboard/organizations/${orgSlug}/projects?error=github_callback_failed` : '/dashboard/organizations'));
+    return NextResponse.redirect(buildRedirect(orgSlug ? `/${orgSlug}/~/projects?error=github_callback_failed` : '/dashboard'));
   }
 
   // Get current user
@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
           return NextResponse.redirect(buildRedirect(`/scan/import?error=account_type_mismatch`));
         }
         return NextResponse.redirect(buildRedirect(
-          `/dashboard/organizations/${orgSlug}/projects/import/github?error=account_type_mismatch&expected=${expectedAccountType}&actual=${actualAccountType}`
+          `/${orgSlug}/~/projects/import/github?error=account_type_mismatch&expected=${expectedAccountType}&actual=${actualAccountType}`
         ));
       }
 
@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
           return NextResponse.redirect(buildRedirect(`/scan/import?error=account_name_mismatch`));
         }
         return NextResponse.redirect(buildRedirect(
-          `/dashboard/organizations/${orgSlug}/projects/import/github?error=account_name_mismatch&expected=${expectedAccountLogin}&actual=${accountLogin}`
+          `/${orgSlug}/~/projects/import/github?error=account_name_mismatch&expected=${expectedAccountLogin}&actual=${accountLogin}`
         ));
       }
 
@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
         if (isScanSource) {
           return NextResponse.redirect(buildRedirect('/scan/import?error=installation_failed'));
         }
-        return NextResponse.redirect(buildRedirect(`/dashboard/organizations/${orgSlug}/projects?error=installation_failed`));
+        return NextResponse.redirect(buildRedirect(`/${orgSlug}/~/projects?error=installation_failed`));
       }
 
       // Installation saved to github_app_installations.
@@ -239,7 +239,7 @@ export async function GET(req: NextRequest) {
       if (isScanSource) {
         return NextResponse.redirect(buildRedirect('/scan/import?error=installation_validation_failed'));
       }
-      return NextResponse.redirect(buildRedirect(`/dashboard/organizations/${orgSlug}/projects?error=installation_validation_failed`));
+      return NextResponse.redirect(buildRedirect(`/${orgSlug}/~/projects?error=installation_validation_failed`));
     }
 
   } else {
@@ -247,7 +247,7 @@ export async function GET(req: NextRequest) {
     if (isScanSource) {
       return NextResponse.redirect(buildRedirect('/scan/import?error=callback_failed'));
     }
-    return NextResponse.redirect(buildRedirect(orgSlug ? `/dashboard/organizations/${orgSlug}/projects?error=github_callback_failed` : '/dashboard/organizations'));
+    return NextResponse.redirect(buildRedirect(orgSlug ? `/${orgSlug}/~/projects?error=github_callback_failed` : '/dashboard'));
   }
 
   // Redirect based on source
@@ -256,7 +256,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (orgSlug) {
-    return NextResponse.redirect(buildRedirect(`/dashboard/organizations/${orgSlug}/projects/import/github?success=github_connected`));
+    return NextResponse.redirect(buildRedirect(`/${orgSlug}/~/projects/import/github?success=github_connected`));
   }
 
   return NextResponse.redirect(buildRedirect('/dashboard'));

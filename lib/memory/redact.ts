@@ -31,9 +31,10 @@ export async function redactFact(
             blocked: inputResult.shouldBlock === true,
         };
     } catch (error) {
-        // Rules failure => passthrough (rules are additive protection; the
-        // extraction prompt already avoids verbatim sensitive content).
-        console.warn('[Memory] Redaction failed, storing unprocessed:', error);
-        return { content: text, redactions: 0, blocked: false };
+        // Fail closed. Memory is durable and may be recalled into unrelated
+        // future prompts, so raw content must never persist when redaction is
+        // unavailable.
+        console.error('[Memory] Redaction failed; dropping fact:', error);
+        return { content: '', redactions: 0, blocked: true };
     }
 }

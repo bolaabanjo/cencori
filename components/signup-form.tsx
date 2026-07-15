@@ -2,19 +2,18 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabaseClient";
 import { resolveAuthRedirectTargets } from "@/lib/auth-redirect";
 import {
-  clearSignupNewsletterOptInPending,
   clearSignupWelcomeEmailPending,
-  markSignupNewsletterOptInPending,
   markSignupWelcomeEmailPending,
 } from "@/lib/auth-welcome";
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 
 function isNetworkError(err: unknown): boolean {
   if (!(err instanceof TypeError)) return false;
@@ -39,7 +38,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [newsletterOptIn, setNewsletterOptIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const navigateAfterAuth = (target: string) => {
     if (/^https?:\/\//i.test(target)) {
@@ -81,10 +81,10 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
       }
 
       const { oauthRedirectTo, navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
-        defaultPath: "/dashboard/organizations",
+        defaultPath: "/dashboard",
       });
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: oauthRedirectTo },
@@ -97,13 +97,16 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
       }
 
       markSignupWelcomeEmailPending();
-      if (newsletterOptIn) {
-        markSignupNewsletterOptInPending();
-      } else {
-        clearSignupNewsletterOptInPending();
-      }
 
-      navigateAfterAuth(navigationTarget);
+      const userId = signUpData.user?.id ?? "";
+
+      await fetch("/api/verify/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, userId }),
+      });
+
+      router.push(`/signup/verify?email=${encodeURIComponent(email)}&userId=${userId}`);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -116,28 +119,21 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setLoading(true);
     try {
       const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
-        defaultPath: "/dashboard/organizations",
+        defaultPath: "/dashboard",
       });
 
       markSignupWelcomeEmailPending();
-      if (newsletterOptIn) {
-        markSignupNewsletterOptInPending();
-      } else {
-        clearSignupNewsletterOptInPending();
-      }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo: oauthRedirectTo },
       });
       if (oauthError) {
         clearSignupWelcomeEmailPending();
-        clearSignupNewsletterOptInPending();
         setError(oauthError.message);
         setLoading(false);
       }
     } catch (err) {
       clearSignupWelcomeEmailPending();
-      clearSignupNewsletterOptInPending();
       setError(friendlyError(err));
       setLoading(false);
     }
@@ -145,11 +141,16 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
 
   return (
     <form
-      className={cn("flex flex-col gap-6", className)}
+      className={cn("flex flex-col gap-5", className)}
       onSubmit={handleSubmit}
       {...props}
     >
-      <div>
+      <div className="flex justify-center mb-2">
+        <Link href="/" className="flex items-center gap-2 font-medium">
+          <Logo variant="mark" className="h-6" />
+        </Link>
+      </div>
+      <div className="text-center">
         <h1 className="text-lg font-medium">Create an account</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Enter your details below to get started
@@ -180,40 +181,51 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
           <label htmlFor="password" className="text-sm font-medium">
             Password
           </label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="At least 8 characters"
-            required
-            minLength={8}
-            autoComplete="new-password"
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="At least 8 characters"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="confirm-password" className="text-sm font-medium">
             Confirm Password
           </label>
-          <Input
-            id="confirm-password"
-            name="confirm-password"
-            type="password"
-            required
-            autoComplete="new-password"
-          />
+          <div className="relative">
+            <Input
+              id="confirm-password"
+              name="confirm-password"
+              type={showConfirmPassword ? "text" : "password"}
+              required
+              autoComplete="new-password"
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              tabIndex={-1}
+            >
+              {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
-
-        <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer">
-          <Checkbox
-            checked={newsletterOptIn}
-            onCheckedChange={(checked) => setNewsletterOptIn(checked === true)}
-            className="mt-0.5"
-          />
-          <span className="leading-snug">
-            Send me product updates and security research from Cencori. Unsubscribe in one click any time.
-          </span>
-        </label>
 
         <Button type="submit" disabled={loading}>
           {loading ? "Creating\u2026" : "Create Account"}
@@ -260,7 +272,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
             Google
           </Button>
 
-          <p className="mt-1 text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link
               href={redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : "/login"}

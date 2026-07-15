@@ -39,8 +39,10 @@ export async function enqueueUsageRecord(task: UsageTask): Promise<void> {
         await redis.rpush(USAGE_QUEUE_KEY, JSON.stringify(task));
     } catch (err) {
         console.error('[Queue] Failed to enqueue usage record:', err);
-        // Fallback: try to log it at least
-        console.log('[Queue] LOST USAGE DATA:', JSON.stringify(task));
+        // Redis degradation must not silently lose billable usage. Fall back
+        // to the durable database write on this request.
+        const { recordEndUserUsageAsync } = await import('./end-user-billing');
+        await recordEndUserUsageAsync(task);
     }
 }
 

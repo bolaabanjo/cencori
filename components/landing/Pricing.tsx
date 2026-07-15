@@ -387,11 +387,11 @@ export function Pricing() {
             return;
         }
         if (tier === "free") {
-            window.location.href = "/dashboard/organizations";
+            window.location.href = "/dashboard";
             return;
         }
         if (!orgId) {
-            window.location.href = "/dashboard/organizations";
+            window.location.href = "/dashboard";
             return;
         }
         setLoadingTier(tier);
@@ -405,10 +405,10 @@ export function Pricing() {
             if (data.checkoutUrl) {
                 window.location.href = data.checkoutUrl;
             } else {
-                window.location.href = "/dashboard/organizations";
+                window.location.href = "/dashboard";
             }
         } catch {
-            window.location.href = "/dashboard/organizations";
+            window.location.href = "/dashboard";
         } finally {
             setLoadingTier(null);
         }

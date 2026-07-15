@@ -49,7 +49,7 @@ export function FailoverMetrics({ projectId, environment, timeRange }: FailoverM
 
     if (isLoading) {
         return (
-            <div className="rounded-xl border border-border/30 bg-card p-4">
+            <div className="border border-border/30 bg-card p-4">
                 <Skeleton className="h-3.5 w-32 mb-3" />
                 <Skeleton className="h-6 w-20 mb-4" />
                 <div className="space-y-2">
@@ -79,7 +79,7 @@ export function FailoverMetrics({ projectId, environment, timeRange }: FailoverM
     }
 
     return (
-        <div className="rounded-xl border border-border/30 bg-card p-4">
+        <div className="border border-border/30 bg-card p-4">
             <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-medium text-muted-foreground">Provider Failover</p>
                 {hasFallbacks && (

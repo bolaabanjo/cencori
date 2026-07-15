@@ -33,7 +33,13 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
     const [feedbackText, setFeedbackText] = useState("");
 
     const getOrgSlug = () => {
-        const match = pathname.match(/organizations\/([^/]+)/);
+        if (pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+            return null;
+        }
+        if (pathname.startsWith("/account/") || pathname === "/account") {
+            return null;
+        }
+        const match = pathname.match(/^\/([^/]+)/);
         return match ? match[1] : null;
     };
 
@@ -63,14 +69,14 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                                     <DropdownMenuItem
                                         key={org.id}
                                         className="text-xs cursor-pointer"
-                                        onClick={() => router.push(`/dashboard/organizations/${org.slug}/projects`)}
+                                        onClick={() => router.push(`/${org.slug}/~/projects`)}
                                     >
                                         {org.name}
                                     </DropdownMenuItem>
                                 ))}
                                 <DropdownMenuItem
                                     className="text-xs cursor-pointer text-primary"
-                                    onClick={() => router.push("/dashboard/organizations/new")}
+                                    onClick={() => router.push("/onboarding")}
                                 >
                                     + New organization
                                 </DropdownMenuItem>
@@ -98,7 +104,7 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                             <DropdownMenuContent align="start" className="w-48">
                                 <DropdownMenuItem
                                     className="text-xs cursor-pointer"
-                                    onClick={() => router.push(`/dashboard/organizations/${orgSlug}/projects`)}
+                                    onClick={() => router.push(`/${orgSlug}/~/projects`)}
                                 >
                                     All projects
                                 </DropdownMenuItem>
@@ -106,14 +112,14 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                                     <DropdownMenuItem
                                         key={proj.id}
                                         className="text-xs cursor-pointer"
-                                        onClick={() => router.push(`/dashboard/organizations/${orgSlug}/projects/${proj.slug}`)}
+                                        onClick={() => router.push(`/${orgSlug}/${proj.slug}`)}
                                     >
                                         {proj.name}
                                     </DropdownMenuItem>
                                 ))}
                                 <DropdownMenuItem
                                     className="text-xs cursor-pointer text-primary"
-                                    onClick={() => router.push(`/dashboard/organizations/${orgSlug}/projects/new`)}
+                                    onClick={() => router.push(`/${orgSlug}/~/projects/new`)}
                                 >
                                     + New project
                                 </DropdownMenuItem>
@@ -246,11 +252,11 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                             </div>
                         )}
                         <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/profile")}>
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/profile")}>
                             <CircleUserRound className="mr-2 h-3.5 w-3.5" />
                             Profile
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
+                        <DropdownMenuItem className="text-xs py-1.5 cursor-pointer" onClick={() => router.push("/account/settings")}>
                             <Settings className="mr-2 h-3.5 w-3.5" />
                             Settings
                         </DropdownMenuItem>

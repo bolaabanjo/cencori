@@ -14,6 +14,7 @@ import {
 } from './base';
 import { toOpenAIMessages, toAnthropicMessages, estimateTokenCount } from './utils';
 import { normalizeProviderError } from './errors';
+import { safeOutboundFetch } from '@/lib/security/outbound-url';
 
 export interface CustomProviderConfig {
     baseUrl: string;
@@ -39,14 +40,14 @@ export class CustomProvider extends AIProvider {
         try {
             const body = this.formatRequest(request);
 
-            const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+            const response = await safeOutboundFetch(`${this.config.baseUrl}/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {}),
                 },
                 body: JSON.stringify(body),
-            });
+            }, { maxRedirects: 0 });
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -65,14 +66,14 @@ export class CustomProvider extends AIProvider {
         try {
             const body = this.formatRequest(request, true);
 
-            const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+            const response = await safeOutboundFetch(`${this.config.baseUrl}/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {}),
                 },
                 body: JSON.stringify(body),
-            });
+            }, { maxRedirects: 0 });
 
             if (!response.ok) {
                 throw new Error(`Custom provider error: ${response.statusText}`);
@@ -134,9 +135,9 @@ export class CustomProvider extends AIProvider {
 
     async testConnection(): Promise<boolean> {
         try {
-            const response = await fetch(this.config.baseUrl, {
+            const response = await safeOutboundFetch(this.config.baseUrl, {
                 headers: this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {},
-            });
+            }, { maxRedirects: 0 });
             return response.ok || response.status === 404; // 404 is OK, means server is reachable
         } catch {
             return false;
@@ -224,7 +225,8 @@ export class CustomProvider extends AIProvider {
             },
             cost: {
                 providerCostUsd: providerCost,
-                cencoriChargeUsd: providerCost, // No markup for custom providers by default
+                cencoriChargeUsd: this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                    + (pricing.fixedFeePerRequest ?? 0),
                 markupPercentage: pricing.cencoriMarkupPercentage,
             },
             latencyMs: Date.now() - startTime,

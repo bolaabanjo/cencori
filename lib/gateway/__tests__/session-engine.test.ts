@@ -126,8 +126,9 @@ describe('executeSessionTurn', () => {
         expect(allData).toContain('event: turn.started');
         expect(allData).toContain('event: output_text.delta');
         expect(allData).toContain('event: turn.completed');
-        expect(allData).toContain('"delta":"Hello "');
-        expect(allData).toContain('"delta":"world"');
+        // Session output is buffered until the output guard approves the
+        // complete response, so no unsafe prefix is emitted early.
+        expect(allData).toContain('"delta":"Hello world"');
         expect(allData).not.toContain('turn.paused');
         expect(allData).not.toContain('turn.failed');
     });
@@ -442,7 +443,9 @@ describe('expireStaleSessions', () => {
             }),
         };
 
-        await expect(expireStaleSessions(supabase as never)).resolves.toBeUndefined();
+        await expect(expireStaleSessions(supabase as never)).rejects.toThrow(
+            'Failed to expire stale sessions: DB connection failed'
+        );
     });
 });
 

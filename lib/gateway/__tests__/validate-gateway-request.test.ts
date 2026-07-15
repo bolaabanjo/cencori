@@ -11,6 +11,7 @@ const mockCheckRateLimit = vi.fn();
 const mockCheckSpendCap = vi.fn();
 const mockGetCachedCreditsBalance = vi.fn();
 const mockSupabaseFrom = vi.fn();
+const mockProcessUsageQueue = vi.fn();
 
 vi.mock('@vercel/functions', () => ({
     geolocation: vi.fn(() => ({})),
@@ -38,7 +39,7 @@ vi.mock('@/lib/credits', () => ({
 }));
 
 vi.mock('@/lib/queue', () => ({
-    processUsageQueue: vi.fn(),
+    processUsageQueue: (...args: unknown[]) => mockProcessUsageQueue(...args),
 }));
 
 vi.mock('@/lib/supabaseAdmin', () => ({
@@ -106,6 +107,7 @@ describe('validateGatewayRequest', () => {
         vi.clearAllMocks();
         mockGetCachedApiKeyConfig.mockResolvedValue(null);
         mockGetCachedCreditsBalance.mockResolvedValue(null);
+        mockProcessUsageQueue.mockResolvedValue(0);
         mockCheckRateLimit.mockResolvedValue({
             allowed: true,
             status: 'ok',

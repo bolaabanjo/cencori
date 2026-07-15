@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { updateBillingDetails } from '@/app/dashboard/organizations/[orgSlug]/billing/actions';
+import { updateBillingDetails } from '@/app/(app)/[orgSlug]/~/billing/actions';
 import { toast } from 'sonner';
 import { useTransition } from 'react';
 import { CountrySelector } from './CountrySelector';

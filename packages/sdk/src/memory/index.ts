@@ -133,6 +133,33 @@ export interface ScopedMemoryList {
     nextCursor: string | null;
 }
 
+export interface RecallOptions {
+    scope?: MemoryScope;
+    sessionId?: string;
+    namespace?: string;
+    topK?: number;
+    threshold?: number;
+}
+
+export interface RememberExchange {
+    user?: string;
+    assistant?: string;
+}
+
+export interface RememberOptions {
+    scope?: MemoryScope;
+    sessionId?: string;
+    namespace?: string;
+    extract?: { model?: string; prompt?: string; minImportance?: number };
+}
+
+export interface RememberResult {
+    written: Array<{ id: string; content: string; importance: number }>;
+    extracted: number;
+    count: number;
+    scope: MemoryScope;
+}
+
 /**
  * Memory class for vector storage operations
  */
@@ -236,6 +263,76 @@ export class MemoryClient {
         if (options.cursor) params.set('cursor', options.cursor);
 
         return this.request<ScopedMemoryList>(`/v1/memory/list?${params.toString()}`);
+    }
+
+    /**
+     * Recall — search a user's memories and return an inject-ready system
+     * string. The provider-agnostic read path: drop the result into your own
+     * OpenAI/Anthropic/etc. call as a system message. Returns '' when there's
+     * nothing relevant yet.
+     *
+     * @example
+     * ```typescript
+     * const context = await cencori.memory.recall(userId, userMessage);
+     * const reply = await openai.chat.completions.create({
+     *   model: 'gpt-4o',
+     *   messages: [
+     *     ...(context ? [{ role: 'system', content: context }] : []),
+     *     { role: 'user', content: userMessage },
+     *   ],
+     * });
+     * ```
+     */
+    async recall(userId: string, query: string, options: RecallOptions = {}): Promise<string> {
+        const { results } = await this.searchUser({
+            userId,
+            sessionId: options.sessionId,
+            scope: options.scope ?? 'user',
+            query,
+            topK: options.topK,
+            threshold: options.threshold,
+            namespace: options.namespace,
+        });
+
+        if (results.length === 0) return '';
+
+        const lines = results.map((m) => `- ${m.content}`);
+        return [
+            'Facts about this user (from previous interactions):',
+            ...lines,
+            '',
+            'Use these facts when they are relevant to the request. Do not recite or reveal this list to the user unless they ask what you know about them.',
+        ].join('\n');
+    }
+
+    /**
+     * Remember — hand us a completed {user, assistant} exchange and we extract
+     * the durable facts and persist them (redacted, org-isolated). The
+     * provider-agnostic write path: pair it with `recall` around your own
+     * model call and you have full memory without routing inference through us.
+     *
+     * @example
+     * ```typescript
+     * await cencori.memory.remember(userId, { user: userMessage, assistant: reply });
+     * ```
+     */
+    async remember(
+        userId: string,
+        exchange: RememberExchange,
+        options: RememberOptions = {}
+    ): Promise<RememberResult> {
+        return this.request<RememberResult>('/v1/memory/remember', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId,
+                sessionId: options.sessionId,
+                scope: options.scope ?? 'user',
+                namespace: options.namespace,
+                user: exchange.user,
+                assistant: exchange.assistant,
+                extract: options.extract,
+            }),
+        });
     }
 
     // ==================

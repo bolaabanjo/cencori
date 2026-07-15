@@ -61,7 +61,8 @@ export class GeminiProvider extends AIProvider {
             // Get pricing and calculate costs
             const pricing = await this.getPricing(request.model);
             const providerCost = this.calculateCost(promptTokens, completionTokens, pricing);
-            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage);
+            const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
+                + (pricing.fixedFeePerRequest ?? 0);
 
             return {
                 content: text,

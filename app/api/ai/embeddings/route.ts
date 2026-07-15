@@ -14,6 +14,7 @@ import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { decryptApiKey } from '@/lib/encryption';
 import { getPricingFromDB } from '@/lib/providers/pricing';
+import { calculateProviderTokenCost } from '@/lib/providers/base';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
 import {
     validateGatewayRequest,
@@ -27,6 +28,9 @@ import {
     logGatewayEvent,
     mapProviderErrorToHttpResponse,
 } from '@/lib/gateway-reliability';
+import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import type { SubscriptionTier } from '@/lib/entitlements';
+import { safeProviderFetch } from '@/lib/security/outbound-url';
 
 // Supported embedding providers
 type EmbeddingProvider = 'openai' | 'google' | 'cohere';
@@ -40,7 +44,7 @@ interface EmbeddingRequest {
 
 interface EmbeddingResponse {
     data: Array<{
-        embedding: number[];
+        embedding: number[] | string;
         index: number;
     }>;
     model: string;
@@ -102,10 +106,11 @@ async function generateWithGoogle(apiKey: string, request: EmbeddingRequest, mod
 
 async function generateWithCohere(apiKey: string, request: EmbeddingRequest, model: string): Promise<EmbeddingResponse> {
     const inputs = Array.isArray(request.input) ? request.input : [request.input];
-    const response = await fetch('https://api.cohere.ai/v1/embed', {
+    const response = await safeProviderFetch('https://api.cohere.ai/v1/embed', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, texts: inputs, input_type: 'search_document', truncate: 'END' }),
+        signal: AbortSignal.timeout(55_000),
     });
     if (!response.ok) {
         const error = await response.json();
@@ -135,16 +140,91 @@ export async function POST(req: NextRequest) {
     let requestedModel = 'unknown';
 
     try {
-        const body: EmbeddingRequest = await req.json();
-        const { input, model = 'text-embedding-3-small', dimensions, encodingFormat } = body;
-        requestedModel = model;
-
-        if (!input || (Array.isArray(input) && input.length === 0)) {
+        let body: EmbeddingRequest;
+        try {
+            body = await req.json() as EmbeddingRequest;
+        } catch {
             return addGatewayHeaders(
-                NextResponse.json({ error: 'bad_request', message: 'Input is required' }, { status: 400 }),
+                NextResponse.json({ error: 'invalid_json', message: 'Request body must be valid JSON' }, { status: 400 }),
                 { requestId: ctx.requestId }
             );
         }
+        const { input, model = 'text-embedding-3-small', dimensions, encodingFormat } = body;
+        requestedModel = model;
+
+        const inputs = typeof input === 'string' ? [input] : input;
+        if (!Array.isArray(inputs) || inputs.length === 0 || inputs.length > 32
+            || inputs.some(value => typeof value !== 'string' || !value.trim()
+                || new TextEncoder().encode(value).byteLength > 32 * 1024)
+            || inputs.reduce((total, value) => total + new TextEncoder().encode(value).byteLength, 0) > 1024 * 1024) {
+            return addGatewayHeaders(
+                NextResponse.json({
+                    error: 'bad_request',
+                    message: 'input must contain 1-32 non-empty strings, each at most 32 KiB and at most 1 MiB combined',
+                }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (typeof model !== 'string' || !(model in EMBEDDING_MODELS)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'unsupported_model', message: 'Unsupported embedding model' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        const modelConfig = EMBEDDING_MODELS[model as SupportedModel];
+        if (dimensions !== undefined
+            && (!Number.isInteger(dimensions) || dimensions < 1 || dimensions > modelConfig.dimensions)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: `dimensions must be between 1 and ${modelConfig.dimensions}` }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (encodingFormat !== undefined && !['float', 'base64'].includes(encodingFormat)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: 'encodingFormat must be float or base64' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (encodingFormat === 'base64' && modelConfig.provider !== 'openai') {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: 'base64 encoding is only supported for OpenAI embeddings' }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+        if (dimensions !== undefined
+            && (!model.startsWith('text-embedding-3') && dimensions !== modelConfig.dimensions)) {
+            return addGatewayHeaders(
+                NextResponse.json({ error: 'bad_request', message: `${model} does not support custom dimensions` }, { status: 400 }),
+                { requestId: ctx.requestId }
+            );
+        }
+
+        const guardedResults = await Promise.all(inputs.map(value => runGatewayInputPipeline({
+            supabase: ctx.supabase,
+            projectId: ctx.projectId,
+            apiKeyId: ctx.apiKeyId,
+            environment: ctx.environment,
+            tier: (ctx.tier || 'free') as SubscriptionTier,
+            messages: [{ role: 'user', content: value }],
+        })));
+        const blocked = guardedResults.find(result => !result.ok);
+        if (blocked && !blocked.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'embeddings',
+                model,
+                provider: 'unknown',
+                status: 'blocked',
+                errorMessage: blocked.message,
+            });
+            return addGatewayHeaders(
+                NextResponse.json({ error: blocked.code, message: blocked.message }, { status: blocked.status }),
+                { requestId: ctx.requestId }
+            );
+        }
+        const guardedInput = guardedResults.map(result =>
+            result.ok ? (result.messages[0]?.content ?? '') : ''
+        );
+        const providerInput = typeof input === 'string' ? guardedInput[0] : guardedInput;
 
         // Determine provider
         provider = getProviderForModel(model);
@@ -177,20 +257,23 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // Resolve exact pricing before creating a billable upstream request.
+        const pricing = await getPricingFromDB(provider, model);
+
         // Generate embeddings
         let result: EmbeddingResponse;
         switch (provider) {
             case 'openai': {
-                const client = new OpenAI({ apiKey: providerApiKey });
-                result = await generateWithOpenAI(client, { input, model, dimensions, encodingFormat }, model);
+                const client = new OpenAI({ apiKey: providerApiKey, timeout: 55_000, maxRetries: 0 });
+                result = await generateWithOpenAI(client, { input: providerInput, model, dimensions, encodingFormat }, model);
                 break;
             }
             case 'google': {
-                result = await generateWithGoogle(providerApiKey, { input, model, dimensions }, model);
+                result = await generateWithGoogle(providerApiKey, { input: providerInput, model, dimensions }, model);
                 break;
             }
             case 'cohere': {
-                result = await generateWithCohere(providerApiKey, { input, model, dimensions }, model);
+                result = await generateWithCohere(providerApiKey, { input: providerInput, model, dimensions }, model);
                 break;
             }
             default:
@@ -201,9 +284,9 @@ export async function POST(req: NextRequest) {
         }
 
         // Cost tracking
-        const pricing = await getPricingFromDB(provider, model);
-        const providerCost = (result.usage.total_tokens / 1000) * pricing.inputPer1KTokens;
-        const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100);
+        const providerCost = calculateProviderTokenCost(result.usage.total_tokens, 0, pricing);
+        const cencoriCharge = providerCost * (1 + pricing.cencoriMarkupPercentage / 100)
+            + (pricing.fixedFeePerRequest ?? 0);
 
         await logGatewayRequest(ctx, {
             endpoint: 'embeddings',
@@ -223,7 +306,7 @@ export async function POST(req: NextRequest) {
                 embeddingDimensions: result.data[0]?.embedding.length ?? null,
             },
         });
-        await incrementUsage(ctx);
+        await incrementUsage(ctx, cencoriCharge);
         incrementGatewayCounter('provider_request_success', {
             route,
             requestId: ctx.requestId,

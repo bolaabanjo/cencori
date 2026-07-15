@@ -315,9 +315,9 @@ export function CommandPalette({
             icon: <Home className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}`,
-              ),
-            keywords: ["dashboard", "home", "main"],
+`/${orgSlug}/${projectSlug}`,
+            ),
+          keywords: ["dashboard", "home", "main"],
           },
           {
             id: "playground",
@@ -325,7 +325,7 @@ export function CommandPalette({
             icon: <Play className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/playground`,
+                `/${orgSlug}/${projectSlug}/playground`,
               ),
             keywords: ["test", "chat", "try", "sandbox", "experiment"],
           },
@@ -335,7 +335,7 @@ export function CommandPalette({
             icon: <Key className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/settings?tab=api`,
+                `/${orgSlug}/${projectSlug}/settings?tab=api`,
               ),
             keywords: ["token", "secret", "credentials", "key"],
           },
@@ -345,7 +345,7 @@ export function CommandPalette({
             icon: <ObservabilityIcon className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/observability`,
+                `/${orgSlug}/${projectSlug}/observability`,
               ),
             keywords: [
               "observability",
@@ -363,7 +363,7 @@ export function CommandPalette({
             icon: <ScrollText className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/logs`,
+                `/${orgSlug}/${projectSlug}/logs`,
               ),
             keywords: ["history", "requests", "debug", "trace"],
           },
@@ -373,7 +373,7 @@ export function CommandPalette({
             icon: <ShieldCheckIcon className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/security`,
+                `/${orgSlug}/${projectSlug}/security`,
               ),
             keywords: ["protection", "firewall", "rules", "safety"],
           },
@@ -383,7 +383,7 @@ export function CommandPalette({
             icon: <Settings className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/${projectSlug}/settings`,
+                `/${orgSlug}/${projectSlug}/settings`,
               ),
             keywords: ["configure", "options", "preferences"],
           },
@@ -402,7 +402,7 @@ export function CommandPalette({
             label: "All Projects",
             icon: <FolderKanban className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/projects`),
+              navigate(`/${orgSlug}/~/projects`),
             keywords: ["list", "browse", "view"],
           },
           {
@@ -410,7 +410,7 @@ export function CommandPalette({
             label: "Create new project",
             icon: <Plus className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/projects/new`),
+              navigate(`/${orgSlug}/~/projects/new`),
             keywords: ["add", "create", "start"],
           },
           {
@@ -419,7 +419,7 @@ export function CommandPalette({
             icon: <GitHubLogo className="h-3.5 w-3.5" />,
             action: () =>
               navigate(
-                `/dashboard/organizations/${orgSlug}/projects/import/github`,
+                `/${orgSlug}/~/projects/import/github`,
               ),
             keywords: ["repository", "repo", "git", "clone"],
           },
@@ -428,7 +428,7 @@ export function CommandPalette({
             label: "Organization Analytics",
             icon: <ChartBarIcon className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/analytics`),
+              navigate(`/${orgSlug}/analytics`),
             keywords: ["stats", "metrics", "usage"],
           },
           {
@@ -436,7 +436,7 @@ export function CommandPalette({
             label: "AI Providers",
             icon: <Cpu className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/providers`),
+              navigate(`/${orgSlug}/~/providers`),
             keywords: ["openai", "anthropic", "claude", "gpt", "models"],
           },
           {
@@ -444,14 +444,14 @@ export function CommandPalette({
             label: "Integrations",
             icon: <Plug className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/integrations`),
+              navigate(`/${orgSlug}/~/integrations`),
             keywords: ["connect", "apps", "services"],
           },
           {
             id: "teams",
             label: "Team Members",
             icon: <UserGroupIcon className="h-3.5 w-3.5" />,
-            action: () => navigate(`/dashboard/organizations/${orgSlug}/teams`),
+            action: () => navigate(`/${orgSlug}/~/teams`),
             keywords: ["users", "invite", "members", "access"],
           },
           {
@@ -459,7 +459,7 @@ export function CommandPalette({
             label: "Billing & Usage",
             icon: <CreditCard className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/billing`),
+              navigate(`/${orgSlug}/~/billing`),
             keywords: ["payment", "invoice", "plan", "subscription", "upgrade"],
           },
           {
@@ -467,7 +467,7 @@ export function CommandPalette({
             label: "Organization Settings",
             icon: <Settings className="h-3.5 w-3.5" />,
             action: () =>
-              navigate(`/dashboard/organizations/${orgSlug}/settings`),
+              navigate(`/${orgSlug}/settings`),
             keywords: ["configure", "options"],
           },
         ],
@@ -483,14 +483,14 @@ export function CommandPalette({
           id: "switch-org",
           label: "Switch organization",
           icon: <Building2 className="h-3.5 w-3.5" />,
-          action: () => navigate("/dashboard/organizations"),
+          action: () => navigate("/dashboard"),
           keywords: ["change", "select", "workspace"],
         },
         {
           id: "new-org",
           label: "Create organization",
           icon: <Plus className="h-3.5 w-3.5" />,
-          action: () => navigate("/dashboard/organizations/new"),
+          action: () => navigate("/onboarding"),
           keywords: ["add", "workspace", "team"],
         },
       ],
@@ -633,7 +633,7 @@ export function CommandPalette({
           id: "status",
           label: "System Status",
           icon: <SignalIcon className="h-3.5 w-3.5" />,
-          action: () => openExternal("https://status.cencori.com"),
+          action: () => window.open("/status", "_self"),
           keywords: ["uptime", "health", "incidents"],
         },
         {
