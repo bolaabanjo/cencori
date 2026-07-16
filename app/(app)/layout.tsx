@@ -312,7 +312,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                           <ChevronsUpDown size={12} className="text-muted-foreground/60" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
+                      <DropdownMenuContent className="w-66 p-1 font-mono" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
@@ -363,7 +363,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
                           <ChevronsUpDown size={12} className="text-muted-foreground/60" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" side="bottom" align="start" forceMount>
+                      <DropdownMenuContent className="w-66 p-1 font-mono" side="bottom" align="start" forceMount>
                         <div className="px-1.5 py-1">
                           <div className="relative">
                             <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />

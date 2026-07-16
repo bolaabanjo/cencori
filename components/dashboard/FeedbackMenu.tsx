@@ -53,7 +53,7 @@ export function FeedbackMenu() {
                     <span className="flex-1">Feedback</span>
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]">
+            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono">
                 <div className="space-y-3">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Rate your experience</span>
@@ -61,18 +61,18 @@ export function FeedbackMenu() {
                             <button
                                 onClick={() => setSelected(selected === "negative" ? null : "negative")}
                                 className={`flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer ${
-                                    selected === "negative" ? "bg-white/20" : "bg-white/10 hover:bg-white/20"
+                                    selected === "negative" ? "bg-foreground/20" : "bg-foreground/10 hover:bg-foreground/20"
                                 }`}
                             >
-                                <HugeiconsIcon icon={ThumbsDownIcon} className="!h-4 !w-4 text-white" />
+                                <HugeiconsIcon icon={ThumbsDownIcon} className="!h-4 !w-4 text-foreground" />
                             </button>
                             <button
                                 onClick={() => setSelected(selected === "positive" ? null : "positive")}
                                 className={`flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer ${
-                                    selected === "positive" ? "bg-white/20" : "bg-white/10 hover:bg-white/20"
+                                    selected === "positive" ? "bg-foreground/20" : "bg-foreground/10 hover:bg-foreground/20"
                                 }`}
                             >
-                                <HugeiconsIcon icon={ThumbsUpIcon} className="!h-4 !w-4 text-white" />
+                                <HugeiconsIcon icon={ThumbsUpIcon} className="!h-4 !w-4 text-foreground" />
                             </button>
                         </div>
                     </div>
