@@ -65,6 +65,16 @@ describe('parseMemoryDirective', () => {
         expect(low.ok && low.directive.threshold).toBe(0);
     });
 
+    it('flags whether the threshold was explicitly supplied', () => {
+        const implicit = parseMemoryDirective({ userId: 'u' });
+        const explicit = parseMemoryDirective({ userId: 'u', threshold: 0.42 });
+        expect(implicit.ok && implicit.directive.thresholdExplicit).toBe(false);
+        expect(explicit.ok && explicit.directive.thresholdExplicit).toBe(true);
+        // An explicit 0 must still count as explicit (retrieval must not override it).
+        const zero = parseMemoryDirective({ userId: 'u', threshold: 0 });
+        expect(zero.ok && zero.directive.thresholdExplicit).toBe(true);
+    });
+
     it('respects explicit retrieve/write false', () => {
         const result = parseMemoryDirective({ userId: 'u', retrieve: false, write: false });
         expect(result.ok && result.directive.retrieve).toBe(false);

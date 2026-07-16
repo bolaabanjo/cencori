@@ -10,7 +10,12 @@
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { embedForMemory, type MemoryEmbeddingResult } from './embeddings';
 import { listSessionMemories } from './session-store';
-import { toMemoryId, type MemoryDirective, type RetrievedMemory } from './types';
+import {
+    DEFAULT_RETRIEVAL_THRESHOLD,
+    toMemoryId,
+    type MemoryDirective,
+    type RetrievedMemory,
+} from './types';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 export type MemoryEmbeddingUsage = Omit<MemoryEmbeddingResult, 'embeddings'>;
@@ -63,13 +68,20 @@ export async function retrieveMemories(params: {
             }
         }
 
+        // When the caller didn't set an explicit threshold, calibrate the cutoff
+        // to the embedding provider that actually produced the query vector —
+        // Gemini scores lower than OpenAI, so a fixed default drops relevant hits.
+        const effectiveThreshold = directive.thresholdExplicit
+            ? directive.threshold
+            : DEFAULT_RETRIEVAL_THRESHOLD[embeddingResult.provider];
+
         const { data, error } = await supabase.rpc('match_gateway_memories', {
             p_org_id: organizationId,
             p_project_id: projectId,
             p_scope: directive.scope,
             p_scope_key: directive.scopeKey,
             p_query_embedding: JSON.stringify(embeddingResult.embeddings[0]),
-            p_threshold: directive.threshold,
+            p_threshold: effectiveThreshold,
             p_limit: directive.topK,
             p_namespace: directive.namespace,
         });
