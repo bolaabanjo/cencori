@@ -34,6 +34,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import posthog from "posthog-js";
 import { cn } from "@/lib/utils";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import {
+  clearDashboardUserCache,
+  readDashboardUserCache,
+  writeDashboardUserCache,
+  type DashboardUser,
+} from "@/lib/auth/dashboard-user-cache";
 
 const CommandPalette = dynamic(
   () => import("@/components/dashboard/CommandPalette").then((mod) => mod.CommandPalette),
@@ -46,23 +53,38 @@ const UpdateToast = dynamic(
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<unknown | null>(null);
+  // Same-tab navigation preserves sessionStorage, so a returning user can keep
+  // the existing shell visible while Supabase verifies the session again.
+  const [authState, setAuthState] = useState<{
+    loading: boolean;
+    user: DashboardUser | null;
+  }>(() => {
+    const cachedUser = readDashboardUserCache();
+    return { loading: cachedUser === null, user: cachedUser };
+  });
 
   useEffect(() => {
     let mounted = true;
     async function check() {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session?.user) {
+        clearDashboardUserCache();
+        if (mounted) {
+          setAuthState({ loading: true, user: null });
+        }
         router.replace("/login");
         return;
       }
 
       const sessionUser = session.user;
+      const dashboardUser: DashboardUser = {
+        email: sessionUser.email,
+        user_metadata: sessionUser.user_metadata,
+      };
+      writeDashboardUserCache(dashboardUser);
 
       if (mounted) {
-        setUser(sessionUser);
-        setLoading(false);
+        setAuthState({ loading: false, user: dashboardUser });
         // Identify user in PostHog
         try {
           posthog.identify(sessionUser.id, {
@@ -75,9 +97,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     check();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (event === "SIGNED_OUT") {
+        clearDashboardUserCache();
+        if (mounted) {
+          setAuthState({ loading: true, user: null });
+        }
         router.replace("/login");
+      } else if (session?.user) {
+        const dashboardUser: DashboardUser = {
+          email: session.user.email,
+          user_metadata: session.user.user_metadata,
+        };
+        writeDashboardUserCache(dashboardUser);
+        if (mounted) {
+          setAuthState({ loading: false, user: dashboardUser });
+        }
       }
     });
 
@@ -87,15 +122,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [router]);
 
-  if (loading) return null;
+  if (authState.loading) return null;
 
-  // Fix type issue: ensure 'user' is typed
-  type UserType = {
-    email?: string | null;
-    user_metadata?: Record<string, unknown>;
-  };
-
-  const typedUser = (user ?? {}) as UserType;
+  const typedUser = authState.user ?? {};
   const meta = typedUser.user_metadata ?? {};
   const avatar = (meta.avatar_url as string | null) ?? (meta.picture as string | null) ?? null;
   const name =
