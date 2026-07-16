@@ -53,7 +53,7 @@ export function FeedbackMenu() {
                     <span className="flex-1">Feedback</span>
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono">
+            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-3 font-mono dark:bg-black">
                 <div className="space-y-3">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Rate your experience</span>

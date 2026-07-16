@@ -331,7 +331,7 @@ export default function OrganizationLayoutClient({
                                     <span className="flex-1">Help & Resources</span>
                                 </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono max-h-none overflow-visible">
+                            <DropdownMenuContent align="start" side="top" sideOffset={4} className="w-80 p-1 font-mono dark:bg-black max-h-none overflow-visible">
                                 <DropdownMenuItem asChild className="text-sm py-1.5 cursor-pointer">
                                     <Link href="/docs/troubleshooting" className="flex justify-between w-full items-center">
                                         Troubleshooting
