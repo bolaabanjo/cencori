@@ -78,7 +78,7 @@ export function UserMenu() {
                     <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black" side="top" sideOffset={4} align="start" forceMount>
+            <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black dark:border-white/20" side="top" sideOffset={4} align="start" forceMount>
                 <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
                     <p className="text-xs font-semibold truncate text-popover-foreground leading-tight">{fullName || email}</p>
                     {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
