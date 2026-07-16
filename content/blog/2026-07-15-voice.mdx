@@ -1,0 +1,69 @@
+---
+title: "Voice on Cencori"
+slug: "cencori-voice"
+date: "2026-07-15"
+excerpt: "Text-to-speech and speech-to-text across OpenAI, Deepgram, Cartesia, ElevenLabs, AssemblyAI, and Spitch — including native Yoruba, Hausa, and Igbo. One API, provider inferred from the model, billing and PII redaction built in."
+coverImage: "/blog/images/covers/voice.png"
+
+tags: ["Product", "Voice"]
+category: "product"
+published: true
+---
+
+Every AI platform wraps text-to-speech and speech-to-text. That's table stakes. What's missing is voice through a **billable, logged, PII-redacted gateway with BYOK across providers** — so switching from OpenAI to Deepgram to a West-African language model is a one-line change, not a rewrite.
+
+That's Cencori Voice, shipping today.
+
+## One API, every provider
+
+Pick a model and the gateway routes to the right provider. You never pass a provider name.
+
+```typescript
+// Text-to-speech
+const { audio } = await cencori.voice.speak({
+  input: 'Hello, welcome to Cencori.',
+  model: 'aura-asteria-en',   // Deepgram
+});
+
+// Speech-to-text
+const { text } = await cencori.voice.transcribe({
+  audio: fileBytes,
+  model: 'nova-3',            // Deepgram
+});
+```
+
+**TTS:** OpenAI, Deepgram Aura, Cartesia Sonic, ElevenLabs, and Spitch.
+**STT:** OpenAI Whisper, Deepgram Nova-3, AssemblyAI, and Spitch — with speaker diarization and SRT/VTT subtitles.
+
+## Native African languages
+
+Spitch does what none of the big providers do: native **Yoruba, Hausa, Igbo, and Amharic**, both directions. If you're building for West-African users — WhatsApp voice notes, IVR, voicemail — this is the piece that was missing.
+
+```typescript
+const { audio } = await cencori.voice.speak({
+  input: 'Bawo ni, e ku aaro.',
+  model: 'spitch-tts',
+  language: 'yo',
+});
+```
+
+## Ships in every SDK — and as UI
+
+The `voice` namespace is live in all five SDKs: TypeScript, Python, Go, PHP, and Rust. And because shipping an endpoint without the UI is only half the job, there are drop-in React components too:
+
+```tsx
+import { VoiceRecorder, SpeakButton } from 'cencori/react';
+
+<VoiceRecorder model="nova-3" onTranscript={setText} />
+<SpeakButton text={reply} model="aura-asteria-en" />
+```
+
+## Ops built in
+
+Because it's the same gateway as chat and vision, every request is billed (per-character for TTS, per-minute for STT), logged with the provider and cost, PII-redacted on the way in, and BYOK-ready per project. Spend caps and cost tracking apply automatically.
+
+## What's next
+
+This is the non-realtime foundation. Next is **realtime voice** — a WebSocket API with sub-500ms latency, interruption handling, and tool calling mid-conversation, sitting in front of OpenAI Realtime and Gemini Live with the same model-agnostic shape.
+
+Get started in the [Voice docs](/docs/ai/endpoints/audio).
