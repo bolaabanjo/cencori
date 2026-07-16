@@ -53,18 +53,18 @@ const UpdateToast = dynamic(
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  // Same-tab navigation preserves sessionStorage, so a returning user can keep
-  // the existing shell visible while Supabase verifies the session again.
   const [authState, setAuthState] = useState<{
     loading: boolean;
     user: DashboardUser | null;
-  }>(() => {
-    const cachedUser = readDashboardUserCache();
-    return { loading: cachedUser === null, user: cachedUser };
-  });
+  }>({ loading: true, user: null });
 
   useEffect(() => {
     let mounted = true;
+    const cachedUser = readDashboardUserCache();
+    if (cachedUser) {
+      setAuthState({ loading: false, user: cachedUser });
+    }
+
     async function check() {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session?.user) {
