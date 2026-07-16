@@ -13,7 +13,7 @@ interface UsageLimitBannerProps {
 }
 
 interface OrgUsage {
-    subscription_tier: string;
+    subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     monthly_requests_used: number;
     monthly_request_limit: number;
 }
@@ -48,7 +48,7 @@ export function UsageLimitBanner({ orgId, orgSlug }: UsageLimitBannerProps) {
     if (subscription_tier === 'enterprise') return null;
 
     const isAtLimit = pct >= 100;
-    const isTeam = subscription_tier === 'team';
+    const canUpgrade = subscription_tier === 'free';
 
     const reason = isAtLimit
         ? `You've used all ${monthly_request_limit.toLocaleString()} requests on your ${subscription_tier} plan this month. API calls are now blocked.`
@@ -82,7 +82,7 @@ export function UsageLimitBanner({ orgId, orgSlug }: UsageLimitBannerProps) {
                     <span className="font-medium tabular-nums">{Math.min(pct, 100)}%</span>
                 </div>
 
-                {!isTeam && (
+                {canUpgrade && (
                     <Button
                         size="sm"
                         variant="default"
@@ -102,14 +102,17 @@ export function UsageLimitBanner({ orgId, orgSlug }: UsageLimitBannerProps) {
                 </button>
             </div>
 
-            <UpgradeDialog
-                open={upgradeOpen}
-                onOpenChange={setUpgradeOpen}
-                orgId={orgId}
-                orgSlug={orgSlug}
-                reason={reason}
-                recommendedTier={subscription_tier === 'pro' ? 'team' : 'pro'}
-            />
+            {canUpgrade && (
+                <UpgradeDialog
+                    open={upgradeOpen}
+                    onOpenChange={setUpgradeOpen}
+                    orgId={orgId}
+                    orgSlug={orgSlug}
+                    currentTier="free"
+                    reason={reason}
+                    recommendedTier="pro"
+                />
+            )}
         </>
     );
 }

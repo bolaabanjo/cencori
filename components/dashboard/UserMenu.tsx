@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import posthog from "posthog-js";
+import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 
 type ProfileData = {
     first_name?: string;
@@ -23,9 +24,20 @@ type ProfileData = {
     avatar_url?: string | null;
 };
 
-export function UserMenu() {
+type UserMenuProps = {
+    organization?: {
+        id: string;
+        name: string;
+        slug: string;
+        subscriptionTier: string;
+    };
+};
+
+export function UserMenu({ organization }: UserMenuProps) {
     const router = useRouter();
     const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [upgradeOpen, setUpgradeOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -58,74 +70,104 @@ export function UserMenu() {
     const email = profile?.email || "";
     const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ");
     const displayName = fullName || email;
+    const currentTier = organization?.subscriptionTier === "pro" || organization?.subscriptionTier === "team"
+        ? organization.subscriptionTier
+        : "free";
+    const canUpgrade = currentTier === "free";
+    const upgradeLabel = "Upgrade to Pro";
+
+    const openUpgrade = () => {
+        if (!organization || !canUpgrade) return;
+        setMenuOpen(false);
+        setUpgradeOpen(true);
+    };
 
     return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
-                    aria-label="User menu"
-                >
-                    <span className="size-6 shrink-0 rounded-full overflow-hidden">
-                        {displayAvatar ? (
-                            <img src={displayAvatar} alt="User avatar" className="w-full h-full object-cover" />
-                        ) : (
-                            <GradientAvatar seed="Bola " size={24} />
-                        )}
-                    </span>
-                    <span className="flex-1 truncate text-xs">{displayName}</span>
-                    <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
-                </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black dark:border-white/10" side="top" sideOffset={4} align="start" forceMount>
-                <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
-                    <p className="text-xs font-semibold truncate text-popover-foreground leading-tight">{fullName || email}</p>
-                    {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
-                </div>
-                <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/profile")}>
-                    Profile
-                    <CircleUserRound className="h-3.5 w-3.5 ml-auto" />
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/settings")}>
-                    Settings
-                    <Settings className="h-3.5 w-3.5 ml-auto" />
-                </DropdownMenuItem>
-                <div className="my-1 border-t border-border/40" />
-                <div className="px-2 py-1.5">
+        <>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger asChild>
                     <button
-                        onClick={() => router.push("/dashboard")}
-                        className="flex w-full items-center justify-center h-8 rounded-md bg-foreground text-xs font-semibold text-background hover:opacity-90 transition-opacity cursor-pointer dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
+                        aria-label="User menu"
                     >
-                        Upgrade to Pro
+                        <span className="size-6 shrink-0 rounded-full overflow-hidden">
+                            {displayAvatar ? (
+                                <img src={displayAvatar} alt="User avatar" className="w-full h-full object-cover" />
+                            ) : (
+                                <GradientAvatar seed="Bola " size={24} />
+                            )}
+                        </span>
+                        <span className="flex-1 truncate text-xs">{displayName}</span>
+                        <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
                     </button>
-                </div>
-                <div className="my-1 border-t border-border/40" />
-                <div className="flex items-center justify-between px-2 py-1.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Theme</p>
-                    <ThemeSwitcher />
-                </div>
-                <div className="my-1 border-t border-border/40" />
-                <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/")}>
-                    Homepage
-                    <span className="size-3.5 shrink-0">
-                        <Logo variant="mark" className="h-full w-full" />
-                    </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                    className="text-xs py-1.5 cursor-pointer flex justify-between text-red-500 focus:text-red-500"
-                    onClick={async () => {
-                        sessionStorage.removeItem("cencori:org-project-cache");
-                        await supabase.auth.signOut();
-                        posthog.reset();
-                        router.push("/login");
-                    }}
-                >
-                    Log out
-                    <LogOut className="h-3.5 w-3.5" />
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black dark:border-white/10" side="top" sideOffset={4} align="start" forceMount>
+                    <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
+                        <p className="text-xs font-semibold truncate text-popover-foreground leading-tight">{fullName || email}</p>
+                        {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
+                    </div>
+                    <p className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">Account</p>
+                    <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/profile")}>
+                        Profile
+                        <CircleUserRound className="h-3.5 w-3.5 ml-auto" />
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/account/settings")}>
+                        Settings
+                        <Settings className="h-3.5 w-3.5 ml-auto" />
+                    </DropdownMenuItem>
+                    <div className="my-1 border-t border-border/40" />
+                    {canUpgrade && (
+                        <div className="px-2 py-1.5">
+                            <button
+                                type="button"
+                                onClick={openUpgrade}
+                                disabled={!organization}
+                                className="flex h-8 w-full cursor-pointer items-center justify-center rounded-md bg-foreground text-xs font-semibold text-background transition-[opacity,transform,background-color] duration-200 hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-100"
+                            >
+                                {upgradeLabel}
+                            </button>
+                        </div>
+                    )}
+                    <div className="my-1 border-t border-border/40" />
+                    <div className="flex items-center justify-between px-2 py-1.5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Theme</p>
+                        <ThemeSwitcher />
+                    </div>
+                    <div className="my-1 border-t border-border/40" />
+                    <DropdownMenuItem className="text-xs py-1.5 cursor-pointer flex justify-between" onClick={() => router.push("/")}>
+                        Homepage
+                        <span className="size-3.5 shrink-0">
+                            <Logo variant="mark" className="h-full w-full" />
+                        </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        className="text-xs py-1.5 cursor-pointer flex justify-between text-red-500 focus:text-red-500"
+                        onClick={async () => {
+                            sessionStorage.removeItem("cencori:org-project-cache");
+                            await supabase.auth.signOut();
+                            posthog.reset();
+                            router.push("/login");
+                        }}
+                    >
+                        Log out
+                        <LogOut className="h-3.5 w-3.5" />
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            {organization && canUpgrade && (
+                <UpgradeDialog
+                    open={upgradeOpen}
+                    onOpenChange={setUpgradeOpen}
+                    orgId={organization.id}
+                    orgSlug={organization.slug}
+                    orgName={organization.name}
+                    currentTier={currentTier}
+                    recommendedTier="pro"
+                    checkoutMode="direct"
+                />
+            )}
+        </>
     );
 }

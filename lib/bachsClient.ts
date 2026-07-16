@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { CENCORI_PAID_PLANS } from '@/lib/billing/plans';
 
 const BACHS_API_BASE =
   process.env.BACHS_API_BASE ||
@@ -37,9 +38,11 @@ export interface BachsProductCartItem {
 export interface CreateCheckoutSessionInput {
   product_cart: BachsProductCartItem[];
   customer: BachsCustomerInput;
-  return_url: string;
+  success_url: string;
   cancel_url: string;
   metadata?: Record<string, string>;
+  reference?: string;
+  expires_in_minutes?: number;
 }
 
 export interface BachsCheckoutSession {
@@ -48,7 +51,7 @@ export interface BachsCheckoutSession {
   status: string;
   expires_at: string;
   created_at: string;
-  embed_code?: string;
+  reference?: string;
 }
 
 export interface BachsCustomer {
@@ -75,32 +78,80 @@ export interface BachsCharge {
   created_at: string;
 }
 
-export interface BachsWebhookEvent {
+export interface BachsWebhookCustomer {
   id: string;
-  type:
-    | 'collection.succeeded'
-    | 'collection.failed'
-    | 'collection.abandoned'
-    | 'collection.underpaid';
+  email: string;
+  name?: string;
+}
+
+export interface BachsCollectionData {
+  charge_id: string | null;
+  checkout_id: string | null;
+  reference: string | null;
+  status: string;
+  amount: string;
+  currency: string;
+  settlement_amount?: string;
+  settlement_currency?: string;
+  payment_method?: string;
+  processing_fee?: string | null;
+  product_cart: BachsProductCartItem[] | null;
+  customer: BachsWebhookCustomer;
+  metadata: Record<string, string>;
+  reason?: string;
+}
+
+export interface BachsSubscriptionData {
+  subscription_id: string;
+  customer: {
+    customer_id: string;
+    email: string;
+    name?: string;
+  };
+  product_id: string;
+  status: 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'paused';
+  collection_method: string;
+  currency: string;
+  amount: string;
+  billing_cycle: {
+    interval: 'day' | 'week' | 'month' | 'year';
+    frequency: number;
+  };
+  quantity: number;
+  current_period_start: string;
+  current_period_end: string;
+  next_billed_at: string | null;
+  trial_end: string | null;
+  cancel_at_period_end: boolean;
+  canceled_at: string | null;
+  created_at: string;
+  items: unknown[];
+  metadata: Record<string, string>;
+}
+
+type BachsWebhookEnvelope = {
+  id: string;
   created_at: string;
   organization_id: string;
-  data: {
-    charge_id: string;
-    checkout_id: string;
-    reference: string;
-    status: string;
-    amount: string;
-    currency: string;
-    settlement_amount?: string;
-    settlement_currency?: string;
-    payment_method?: string;
-    processing_fee?: string;
-    product_cart: BachsProductCartItem[];
-    customer: BachsCustomer;
-    metadata: Record<string, string>;
-    reason?: string;
-  };
-}
+};
+
+export type BachsWebhookEvent = BachsWebhookEnvelope & (
+  | {
+      type:
+        | 'collection.succeeded'
+        | 'collection.failed'
+        | 'collection.abandoned'
+        | 'collection.underpaid';
+      data: BachsCollectionData;
+    }
+  | {
+      type:
+        | 'customer.subscription.created'
+        | 'customer.subscription.updated'
+        | 'customer.subscription.deleted';
+      data: BachsSubscriptionData;
+    }
+);
 
 export interface BachsPayin {
   id: string;
@@ -238,8 +289,18 @@ export const BACHS_CONFIG = {
 
 export const TIER_LIMITS = {
   free: { requestsPerMonth: 1_000, seats: 1, priceMonthly: 0, priceAnnual: 0 },
-  pro: { requestsPerMonth: 10_000, seats: 5, priceMonthly: 4900, priceAnnual: 49000 },
-  team: { requestsPerMonth: 100_000, seats: Infinity, priceMonthly: 14900, priceAnnual: 149000 },
+  pro: {
+    requestsPerMonth: CENCORI_PAID_PLANS.pro.requestLimit,
+    seats: 5,
+    priceMonthly: CENCORI_PAID_PLANS.pro.prices.month,
+    priceAnnual: CENCORI_PAID_PLANS.pro.prices.year,
+  },
+  team: {
+    requestsPerMonth: CENCORI_PAID_PLANS.team.requestLimit,
+    seats: Infinity,
+    priceMonthly: CENCORI_PAID_PLANS.team.prices.month,
+    priceAnnual: CENCORI_PAID_PLANS.team.prices.year,
+  },
   enterprise: { requestsPerMonth: Infinity, seats: Infinity, priceMonthly: null, priceAnnual: null },
 } as const;
 

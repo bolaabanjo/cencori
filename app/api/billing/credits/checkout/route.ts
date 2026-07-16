@@ -46,11 +46,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const returnUrl = new URL(
-    `/${orgId}/billing`,
-    req.url
-  );
-  const cancelUrl = new URL('/pricing', req.url);
+  const { data: organization, error: orgError } = await supabase
+    .from('organizations')
+    .select('slug')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  if (orgError || !organization?.slug) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  }
+
+  const successUrl = new URL(`/${organization.slug}/~/billing`, req.url);
+  const cancelUrl = new URL(successUrl);
+  cancelUrl.searchParams.set('checkout', 'cancelled');
 
   try {
     const session = await createCheckoutSession({
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         name: user.user_metadata?.full_name || user.email.split('@')[0] || 'Customer',
       },
-      return_url: returnUrl.toString(),
+      success_url: successUrl.toString(),
       cancel_url: cancelUrl.toString(),
       metadata: {
         org_id: orgId,

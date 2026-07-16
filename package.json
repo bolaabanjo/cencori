@@ -40,6 +40,8 @@
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "@sendbyte/node": "^0.2.1",
     "@shikijs/transformers": "^4.2.0",
+    "@stripe/react-stripe-js": "^6.8.0",
+    "@stripe/stripe-js": "^9.10.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.75.0",

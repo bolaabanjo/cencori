@@ -122,12 +122,12 @@ const securityHeaders: Record<string, string> = {
   // Content Security Policy - prevent XSS and data injection
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://checkout.stripe.com https://checkout.bachs.io https://www.googletagmanager.com https://*.i.posthog.com https://vercel.live https://*.vercel-scripts.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.bachs.io https://sandbox-api.bachs.io https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://vercel.live wss://vercel.live",
-    "frame-src 'self' https://checkout.bachs.io https://www.youtube.com https://youtube.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://checkout.stripe.com https://r.stripe.com https://api.bachs.io https://sandbox-api.bachs.io https://checkout.bachs.io https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.i.posthog.com https://vercel.live wss://vercel.live",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://checkout.bachs.io https://www.youtube.com https://youtube.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

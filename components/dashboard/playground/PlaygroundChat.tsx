@@ -1085,6 +1085,7 @@ export function PlaygroundChat({
                     onOpenChange={setIsUpgradeDialogOpen}
                     orgId={orgId ?? ""}
                     orgSlug={orgSlug ?? ""}
+                    currentTier={subscriptionTier === "pro" || subscriptionTier === "team" ? subscriptionTier : "free"}
                     reason="Upgrade to Pro to test premium models directly in the playground."
                 />
             )}

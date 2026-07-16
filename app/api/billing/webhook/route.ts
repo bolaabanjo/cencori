@@ -9,17 +9,24 @@ import {
   getCreditTopupCreditsByProductId,
   netCreditsAfterFee,
   computePeriodEnd,
+  TIER_LIMITS,
+  type BachsCollectionData,
+  type BachsSubscriptionData,
   type BachsWebhookEvent,
 } from '@/lib/bachsClient';
 import { addCredits } from '@/lib/credits';
+import {
+  buildOrganizationSubscriptionUpdate,
+  type SubscriptionLifecycleEventType,
+} from '@/lib/billing/subscription-reconciliation';
 
 export const runtime = 'nodejs';
 
 async function handleCollectionSucceeded(
-  data: BachsWebhookEvent['data'],
+  data: BachsCollectionData,
   supabase: ReturnType<typeof createAdminClient>
 ) {
-  const productId = data.product_cart[0]?.product_id;
+  const productId = data.product_cart?.[0]?.product_id;
   if (!productId) {
     console.warn('[Bachs Webhook] No product_id in product_cart', data.charge_id);
     return;
@@ -63,11 +70,12 @@ async function handleCollectionSucceeded(
       const { error } = await supabase
         .from('organizations')
         .update({
+          billing_provider: 'bachs',
           subscription_tier: tier,
           subscription_status: 'active',
+          monthly_request_limit: TIER_LIMITS[tier].requestsPerMonth,
           subscription_current_period_start: now.toISOString(),
           subscription_current_period_end: periodEnd.toISOString(),
-          subscription_id: data.checkout_id,
           bachs_customer_id: data.customer.id,
         })
         .eq('id', orgId);
@@ -167,7 +175,7 @@ async function handleCollectionSucceeded(
 }
 
 async function handleCollectionFailed(
-  data: BachsWebhookEvent['data'],
+  data: BachsCollectionData,
   supabase: ReturnType<typeof createAdminClient>
 ) {
   const customerId = data.customer.id;
@@ -175,11 +183,11 @@ async function handleCollectionFailed(
 
   const { data: org } = await supabase
     .from('organizations')
-    .select('id')
+    .select('id, billing_provider')
     .eq('bachs_customer_id', customerId)
     .maybeSingle();
 
-  if (org) {
+  if (org && org.billing_provider !== 'stripe') {
     await supabase
       .from('organizations')
       .update({ subscription_status: 'past_due' })
@@ -197,6 +205,124 @@ async function handleCollectionFailed(
       .from('scan_subscriptions')
       .update({ status: 'past_due' })
       .eq('user_id', scanSub.user_id);
+  }
+}
+
+async function resolveSubscriptionOrganizationId(
+  data: BachsSubscriptionData,
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<string | null> {
+  if (data.metadata?.org_id) return data.metadata.org_id;
+
+  const { data: subscriptionOrg } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('subscription_id', data.subscription_id)
+    .maybeSingle();
+  if (subscriptionOrg?.id) return subscriptionOrg.id;
+
+  const { data: customerOrg } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('bachs_customer_id', data.customer.customer_id)
+    .maybeSingle();
+
+  return customerOrg?.id || null;
+}
+
+async function handleSubscriptionLifecycle(
+  data: BachsSubscriptionData,
+  eventType: SubscriptionLifecycleEventType,
+  supabase: ReturnType<typeof createAdminClient>
+) {
+  const productType = getProductTypeFromId(data.product_id);
+
+  if (productType === 'subscription') {
+    const orgId = await resolveSubscriptionOrganizationId(data, supabase);
+    if (!orgId) {
+      console.warn('[Bachs Webhook] Could not resolve org for subscription event', {
+        subscriptionId: data.subscription_id,
+        eventType,
+      });
+      return;
+    }
+
+    const tier = getSubscriptionTierFromProductId(data.product_id);
+    const update = buildOrganizationSubscriptionUpdate(data, eventType, tier);
+    if (!update) {
+      console.warn('[Bachs Webhook] Unknown subscription product', data.product_id);
+      return;
+    }
+
+    const { data: organization } = await supabase
+      .from('organizations')
+      .select('billing_provider')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (organization?.billing_provider === 'stripe') {
+      console.warn('[Bachs Webhook] Ignoring legacy subscription event for Stripe organization', {
+        orgId,
+        subscriptionId: data.subscription_id,
+        eventType,
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('organizations')
+      .update(update)
+      .eq('id', orgId);
+
+    if (error) {
+      console.error('[Bachs Webhook] Failed to reconcile subscription', error);
+    }
+    return;
+  }
+
+  if (productType === 'scan_subscription') {
+    const scanTier = getScanTierByProductId(data.product_id);
+    if (!scanTier) {
+      console.warn('[Bachs Webhook] Unknown scan subscription product', data.product_id);
+      return;
+    }
+
+    let userId = data.metadata?.user_id;
+    if (!userId) {
+      const { data: existing } = await supabase
+        .from('scan_subscriptions')
+        .select('user_id')
+        .or(
+          `subscription_id.eq.${data.subscription_id},bachs_customer_id.eq.${data.customer.customer_id}`
+        )
+        .maybeSingle();
+      userId = existing?.user_id;
+    }
+
+    if (!userId) {
+      console.warn('[Bachs Webhook] Could not resolve user for scan subscription event', {
+        subscriptionId: data.subscription_id,
+        eventType,
+      });
+      return;
+    }
+
+    const { error } = await supabase.from('scan_subscriptions').upsert(
+      {
+        user_id: userId,
+        subscription_id: data.subscription_id,
+        bachs_customer_id: data.customer.customer_id,
+        scan_tier: scanTier,
+        status: data.status,
+        current_period_start: data.current_period_start,
+        current_period_end: data.current_period_end,
+      },
+      { onConflict: 'user_id' }
+    );
+
+    if (error) {
+      console.error('[Bachs Webhook] Failed to reconcile scan subscription', error);
+    }
   }
 }
 
@@ -238,13 +364,21 @@ export async function POST(req: NextRequest) {
       case 'collection.abandoned':
       case 'collection.underpaid':
         break;
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+        await handleSubscriptionLifecycle(event.data, event.type, supabase);
+        break;
     }
+
+    const chargeId = 'charge_id' in event.data ? event.data.charge_id : null;
+    const checkoutId = 'checkout_id' in event.data ? event.data.checkout_id : null;
 
     await supabase.from('webhook_events').insert({
       event_id: event.id,
       event_type: event.type,
-      charge_id: event.data.charge_id || null,
-      checkout_id: event.data.checkout_id || null,
+      charge_id: chargeId,
+      checkout_id: checkoutId,
       processed_at: new Date().toISOString(),
     });
   } catch (error) {

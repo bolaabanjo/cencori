@@ -19,7 +19,7 @@ interface Invoice {
     orderId?: string;
     date: string;
     amount: number;
-    status: 'paid' | 'pending' | 'refunded';
+    status: 'paid' | 'pending' | 'failed' | 'refunded';
     pdfUrl: string | null;
     currency?: string;
 }

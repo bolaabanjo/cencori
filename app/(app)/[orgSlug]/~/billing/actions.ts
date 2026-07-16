@@ -4,8 +4,9 @@ import { createServerClient } from "@/lib/supabaseServer";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { adjustCredits } from "@/lib/credits";
 import { revalidatePath } from "next/cache";
-import { listPayins, getProductId } from "@/lib/bachsClient";
+import { listPayins } from "@/lib/bachsClient";
 import type { BachsPayin } from "@/lib/bachsClient";
+import { getStripeBillingClient } from "@/lib/stripe-billing";
 
 type OrgBillingDetails = {
     id: string;
@@ -14,6 +15,8 @@ type OrgBillingDetails = {
     owner_id: string;
     billing_email: string | null;
     bachs_customer_id: string | null;
+    stripe_customer_id: string | null;
+    billing_provider: 'stripe' | 'bachs' | 'polar' | null;
     subscription_id: string | null;
     subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     billing_frozen?: boolean | null;
@@ -34,7 +37,7 @@ export type BillingInvoice = {
     orderId: string;
     date: string;
     amount: number;
-    status: 'paid' | 'pending' | 'refunded';
+    status: 'paid' | 'pending' | 'failed' | 'refunded';
     pdfUrl: string | null;
 };
 
@@ -65,10 +68,6 @@ export type BillingOperationsState = {
     events: BillingAuditEvent[];
 };
 
-function getAppBaseUrl() {
-    return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
-}
-
 async function getAuthorizedOrgBillingDetails(orgSlug: string): Promise<{ org: OrgBillingDetails } | { error: string }> {
     const supabase = await createServerClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -79,7 +78,7 @@ async function getAuthorizedOrgBillingDetails(orgSlug: string): Promise<{ org: O
 
     const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, subscription_id, subscription_tier')
+        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, stripe_customer_id, billing_provider, subscription_id, subscription_tier')
         .eq('slug', orgSlug)
         .maybeSingle();
 
@@ -123,7 +122,7 @@ async function getAuthorizedOrgOperatorContext(orgSlug: string): Promise<Operato
 
     const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, subscription_id, subscription_tier, billing_frozen, billing_freeze_reason, billing_frozen_at')
+        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, stripe_customer_id, billing_provider, subscription_id, subscription_tier, billing_frozen, billing_freeze_reason, billing_frozen_at')
         .eq('slug', orgSlug)
         .maybeSingle();
 
@@ -200,10 +199,40 @@ export async function getInvoices(orgSlug: string) {
             return [];
         }
 
-        const customerId = orgResult.org.bachs_customer_id;
-        if (!customerId) {
-            return [];
+        const stripeCustomerId = orgResult.org.stripe_customer_id;
+        if (stripeCustomerId) {
+            try {
+                const stripe = getStripeBillingClient();
+                const invoices = await stripe.invoices.list({
+                    customer: stripeCustomerId,
+                    limit: 20,
+                });
+
+                return invoices.data.map((invoice): BillingInvoice => {
+                    const status: BillingInvoice['status'] = invoice.status === 'paid'
+                        ? 'paid'
+                        : invoice.status === 'open' || invoice.status === 'draft'
+                            ? 'pending'
+                            : invoice.status === 'void'
+                                ? 'refunded'
+                                : 'failed';
+
+                    return {
+                        id: invoice.number || invoice.id,
+                        orderId: invoice.id,
+                        date: new Date(invoice.created * 1000).toISOString(),
+                        amount: (invoice.amount_paid || invoice.amount_due) / 100,
+                        status,
+                        pdfUrl: invoice.invoice_pdf || invoice.hosted_invoice_url || null,
+                    };
+                });
+            } catch (stripeError) {
+                console.error("Error fetching Stripe invoices:", stripeError);
+            }
         }
+
+        const customerId = orgResult.org.bachs_customer_id;
+        if (!customerId) return [];
 
         const response = await listPayins({ customer_id: customerId, per_page: 20 });
 
@@ -233,47 +262,41 @@ export async function getInvoices(orgSlug: string) {
 }
 
 export async function getPaymentMethods(
-    _orgSlug: string
+    orgSlug: string
 ): Promise<BillingPaymentMethod[]> {
-    return [];
-}
-
-export async function getCustomerPortalUrl(orgSlug: string) {
     try {
         const orgResult = await getAuthorizedOrgBillingDetails(orgSlug);
-        if ('error' in orgResult) {
-            return null;
+        if ('error' in orgResult || !orgResult.org.stripe_customer_id) {
+            return [];
         }
 
-        const billingReturnUrl = `${getAppBaseUrl()}/${orgResult.org.slug}/billing`;
+        const stripe = getStripeBillingClient();
+        const customerId = orgResult.org.stripe_customer_id;
+        const [customer, methods] = await Promise.all([
+            stripe.customers.retrieve(customerId),
+            stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+        ]);
+        const defaultPaymentMethod = !customer.deleted
+            ? customer.invoice_settings.default_payment_method
+            : null;
+        const defaultPaymentMethodId = typeof defaultPaymentMethod === 'string'
+            ? defaultPaymentMethod
+            : defaultPaymentMethod?.id || null;
 
-        if (orgResult.org.subscription_tier === 'pro' || orgResult.org.subscription_tier === 'team' || orgResult.org.subscription_tier === 'free') {
-            const checkoutTier = orgResult.org.subscription_tier === 'team' ? 'team' : 'pro';
-            const { checkout_url } = await fetch(
-                `${process.env.BACHS_API_BASE || (process.env.NODE_ENV === 'production' ? 'https://api.bachs.io/v1' : 'https://sandbox-api.bachs.io/v1')}/checkout-sessions`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${process.env.BACHS_API_KEY}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        product_cart: [{ product_id: getProductId(checkoutTier, 'month'), quantity: 1 }],
-                        customer: { email: orgResult.org.billing_email || '', name: orgResult.org.name || orgResult.org.slug },
-                        return_url: billingReturnUrl,
-                        cancel_url: billingReturnUrl,
-                        metadata: { org_id: orgResult.org.id, org_slug: orgResult.org.slug, purchase_type: 'subscription' },
-                    }),
-                }
-            ).then(r => r.json()).catch(() => ({ checkout_url: null }));
-
-            return checkout_url || null;
-        }
-
-        return null;
+        return methods.data.flatMap((method): BillingPaymentMethod[] => {
+            if (!method.card) return [];
+            return [{
+                id: method.id,
+                brand: method.card.brand,
+                last4: method.card.last4,
+                expMonth: method.card.exp_month,
+                expYear: method.card.exp_year,
+                isDefault: method.id === defaultPaymentMethodId,
+            }];
+        });
     } catch (error) {
-        console.error("Error creating billing session:", error);
-        return null;
+        console.error("Error fetching Stripe payment methods:", error);
+        return [];
     }
 }
 

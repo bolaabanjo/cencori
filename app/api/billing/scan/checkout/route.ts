@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   const { tier = 'scan' } = await req.json();
 
-  const returnUrl = new URL('/dashboard/scan', req.url);
+  const returnUrl = new URL('/scan-app', req.url);
   const cancelUrl = new URL('/pricing', req.url);
 
   try {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         name: user.user_metadata?.full_name || user.email.split('@')[0] || 'Customer',
       },
-      return_url: returnUrl.toString(),
+      success_url: returnUrl.toString(),
       cancel_url: cancelUrl.toString(),
       metadata: {
         user_id: user.id,

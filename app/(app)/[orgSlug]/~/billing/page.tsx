@@ -6,11 +6,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
-import { getInvoices, getCustomerPortalUrl, getPaymentMethods } from './actions';
+import { getInvoices, getPaymentMethods } from './actions';
 import { CreditCard, Info } from 'lucide-react';
 import { motion, AnimatePresence } from "framer-motion";
 import Link from 'next/link';
 import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
+import { CENCORI_PAID_PLANS, isPaidPlanTier, type PaidPlanTier } from '@/lib/billing/plans';
 
 // Import modular components
 import { UsageOverview } from "@/components/dashboard/billing/UsageOverview";
@@ -114,11 +115,6 @@ function useBillingData(orgSlug: string) {
         queryFn: () => getInvoices(orgSlug)
     });
 
-    const portalUrlQuery = useQuery({
-        queryKey: ["orgPortalUrl", orgSlug],
-        queryFn: () => getCustomerPortalUrl(orgSlug)
-    });
-
     const paymentMethodsQuery = useQuery({
         queryKey: ["orgPaymentMethods", orgSlug],
         queryFn: () => getPaymentMethods(orgSlug)
@@ -129,39 +125,69 @@ function useBillingData(orgSlug: string) {
         projects: projectsQuery.data || [],
         transactions: creditsQuery.data || [],
         invoices: invoicesQuery.data || [],
-        portalUrl: portalUrlQuery.data,
         paymentMethods: paymentMethodsQuery.data || [],
         isLoading: orgQuery.isLoading
             || projectsQuery.isLoading
             || invoicesQuery.isLoading
-            || portalUrlQuery.isLoading
             || paymentMethodsQuery.isLoading,
+        refetchOrg: orgQuery.refetch,
         error: orgQuery.error
             || projectsQuery.error
             || invoicesQuery.error
-            || portalUrlQuery.error
             || paymentMethodsQuery.error
     };
 }
 
+type CheckoutNotice =
+    | { kind: 'confirming'; expectedTier: PaidPlanTier | null }
+    | { kind: 'cancelled' }
+    | null;
+
 export default function BillingPage({ params }: PageProps) {
     const { orgSlug } = use(params);
     const searchParams = useSearchParams();
-    const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+    const [checkoutNotice, setCheckoutNotice] = useState<CheckoutNotice>(null);
+    const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+    const { org, projects, transactions, invoices, paymentMethods, isLoading, error, refetchOrg } = useBillingData(orgSlug);
+    const checkoutId = searchParams.get('checkout_session_id') || searchParams.get('checkout_id');
+    const checkoutCancelled = searchParams.get('checkout') === 'cancelled';
+    const checkoutConfirmed = checkoutNotice?.kind === 'confirming'
+        && checkoutNotice.expectedTier !== null
+        && org?.subscription_tier === checkoutNotice.expectedTier
+        && org.subscription_status === 'active';
 
     useEffect(() => {
-        if (searchParams.get('success') === 'true') {
-            setShowSuccessMessage(true);
-            const timer = setTimeout(() => {
-                setShowSuccessMessage(false);
-                window.history.replaceState({}, '', window.location.pathname);
-            }, 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [searchParams]);
+        if (checkoutId) {
+            const storedTier = sessionStorage.getItem(`cencori:stripe-checkout:${checkoutId}`)
+                || sessionStorage.getItem(`cencori:checkout:${checkoutId}`);
+            setCheckoutNotice({
+                kind: 'confirming',
+                expectedTier: isPaidPlanTier(storedTier) ? storedTier : null,
+            });
 
-    const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-    const { org, projects, transactions, invoices, portalUrl, paymentMethods, isLoading, error } = useBillingData(orgSlug);
+            void refetchOrg();
+            const refreshTimer = window.setInterval(() => void refetchOrg(), 2_000);
+            const stopTimer = window.setTimeout(() => window.clearInterval(refreshTimer), 10_000);
+            window.history.replaceState({}, '', window.location.pathname);
+
+            return () => {
+                window.clearInterval(refreshTimer);
+                window.clearTimeout(stopTimer);
+            };
+        }
+
+        if (checkoutCancelled) {
+            setCheckoutNotice({ kind: 'cancelled' });
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    }, [checkoutCancelled, checkoutId, refetchOrg]);
+
+    useEffect(() => {
+        if (checkoutConfirmed && checkoutId) {
+            sessionStorage.removeItem(`cencori:stripe-checkout:${checkoutId}`);
+            sessionStorage.removeItem(`cencori:checkout:${checkoutId}`);
+        }
+    }, [checkoutConfirmed, checkoutId]);
 
     if (isLoading) {
         return (
@@ -224,16 +250,26 @@ export default function BillingPage({ params }: PageProps) {
                 <h1 className="text-base font-medium">Billing</h1>
             </div>
             <AnimatePresence>
-                {showSuccessMessage && (
+                {checkoutNotice && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.98 }}
                         className="mb-6"
                     >
-                        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded border border-emerald-500/20 bg-emerald-500/[0.03] text-emerald-600 dark:text-emerald-400">
+                        <div className={`flex items-center gap-2.5 rounded border px-4 py-2.5 ${
+                            checkoutNotice.kind === 'cancelled'
+                                ? 'border-border/50 bg-secondary/20 text-muted-foreground'
+                                : checkoutConfirmed
+                                    ? 'border-emerald-500/20 bg-emerald-500/[0.03] text-emerald-600 dark:text-emerald-400'
+                                    : 'border-amber-500/20 bg-amber-500/[0.03] text-amber-600 dark:text-amber-400'
+                        }`}>
                             <div className="text-[10px] font-bold uppercase tracking-wider">
-                                Transaction verified — Subscription updated
+                                {checkoutNotice.kind === 'cancelled'
+                                    ? 'Checkout cancelled — no changes were made'
+                                    : checkoutConfirmed
+                                        ? 'Subscription active — your new plan is ready'
+                                        : 'Payment submitted — activating your subscription'}
                             </div>
                         </div>
                     </motion.div>
@@ -253,10 +289,8 @@ export default function BillingPage({ params }: PageProps) {
                     tier={org.subscription_tier}
                     status={org.subscription_status}
                     currentPeriodEnd={org.subscription_current_period_end}
-                    price={org.subscription_tier === 'pro' ? 49 : org.subscription_tier === 'team' ? 149 : 0}
-                    actionUrl={org.subscription_tier !== 'free' ? portalUrl : undefined}
-                    actionLabel={portalUrl && org.subscription_tier !== 'free' ? 'Manage Subscription' : 'Upgrade Plan'}
-                    actionExternal={Boolean(portalUrl)}
+                    price={isPaidPlanTier(org.subscription_tier) ? CENCORI_PAID_PLANS[org.subscription_tier].prices.month / 100 : 0}
+                    actionLabel={org.subscription_tier === 'free' ? 'Upgrade Plan' : 'Current Plan'}
                     onAction={org.subscription_tier === 'free' ? () => setShowUpgradeDialog(true) : undefined}
                 />
 
@@ -270,7 +304,6 @@ export default function BillingPage({ params }: PageProps) {
 
                 <PaymentMethods
                     methods={paymentMethods}
-                    portalUrl={portalUrl}
                 />
 
                 <CostControl orgSlug={orgSlug} projects={formattedProjects} />
@@ -282,6 +315,8 @@ export default function BillingPage({ params }: PageProps) {
                     onOpenChange={setShowUpgradeDialog}
                     orgId={org.id}
                     orgSlug={orgSlug}
+                    orgName={org.name}
+                    currentTier={org.subscription_tier === 'pro' || org.subscription_tier === 'team' ? org.subscription_tier : 'free'}
                 />
 
                 <BillingCommunication

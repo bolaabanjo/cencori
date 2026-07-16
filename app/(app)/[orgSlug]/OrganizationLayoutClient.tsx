@@ -380,7 +380,14 @@ export default function OrganizationLayoutClient({
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <FeedbackMenu />
-                        <UserMenu />
+                        <UserMenu
+                            organization={organization ? {
+                                id: organization.id,
+                                name: organization.name,
+                                slug: organization.slug,
+                                subscriptionTier: organization.subscription_tier,
+                            } : undefined}
+                        />
                     </SidebarFooter>
                 </Sidebar>
             )}

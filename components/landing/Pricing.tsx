@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/currency";
+import { CENCORI_PAID_PLANS } from "@/lib/billing/plans";
 
 type Tier = "free" | "pro" | "team" | "enterprise";
 type BillingPeriod = "monthly" | "annual";
@@ -50,11 +51,14 @@ const tiers: Array<{
         displayName: "Pro",
         description: "For professional developers and growing products.",
         price: {
-            USD: { monthly: 49, annual: 490 },
+            USD: {
+                monthly: CENCORI_PAID_PLANS.pro.prices.month / 100,
+                annual: CENCORI_PAID_PLANS.pro.prices.year / 100,
+            },
             NGN: { monthly: 39000, annual: 390000 }
         },
         features: [
-            "50,000 requests/month",
+            `${CENCORI_PAID_PLANS.pro.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
             "End-user billing",
             "Full security pipeline",
@@ -70,11 +74,14 @@ const tiers: Array<{
         displayName: "Team",
         description: "For scaling startups and production teams.",
         price: {
-            USD: { monthly: 149, annual: 1490 },
+            USD: {
+                monthly: CENCORI_PAID_PLANS.team.prices.month / 100,
+                annual: CENCORI_PAID_PLANS.team.prices.year / 100,
+            },
             NGN: { monthly: 150000, annual: 1500000 }
         },
         features: [
-            "250,000 requests/month",
+            `${CENCORI_PAID_PLANS.team.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
             "End-user billing",
             "Full security pipeline",

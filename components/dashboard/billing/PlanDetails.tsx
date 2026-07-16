@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { CENCORI_PAID_PLANS } from '@/lib/billing/plans';
 
 interface PlanProps {
     tier: string;
@@ -28,26 +29,15 @@ export function PlanDetails({
     onAction
 }: PlanProps) {
     const freeFeatures = [
-        "Unlimited requests",
+        "1,000 requests each month",
         "100+ AI models",
         "Streaming & tool calling",
         "Bring your own keys (BYOK)",
     ];
     
-    const proFeatures = [
-        "Everything in Free",
-        "Security scanning",
-        "Failover & routing",
-        "Semantic cache",
-        "Request logs & analytics",
-    ];
+    const proFeatures = CENCORI_PAID_PLANS.pro.features;
     
-    const teamFeatures = [
-        "Everything in Pro",
-        "Custom providers",
-        "Webhooks",
-        "Geo & failover analytics",
-    ];
+    const teamFeatures = CENCORI_PAID_PLANS.team.features;
     
     const enterpriseFeatures = [
         "Everything in Team",

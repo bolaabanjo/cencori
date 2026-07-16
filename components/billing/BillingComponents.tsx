@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowRight, Check, Sparkles, Zap, AlertTriangle } from 'lucide-react';
+import { CENCORI_PAID_PLANS } from '@/lib/billing/plans';
 
 interface UsageCardProps {
     used: number;
@@ -126,8 +127,16 @@ interface UpgradeCardProps {
 
 export function UpgradeCard({ currentTier, nextTier, orgId }: UpgradeCardProps) {
     const pricing = {
-        pro: { monthly: 49, annual: 490, limit: '50,000' },
-        team: { monthly: 149, annual: 1490, limit: '250,000' },
+        pro: {
+            monthly: CENCORI_PAID_PLANS.pro.prices.month / 100,
+            annual: CENCORI_PAID_PLANS.pro.prices.year / 100,
+            limit: CENCORI_PAID_PLANS.pro.requestLimit.toLocaleString(),
+        },
+        team: {
+            monthly: CENCORI_PAID_PLANS.team.prices.month / 100,
+            annual: CENCORI_PAID_PLANS.team.prices.year / 100,
+            limit: CENCORI_PAID_PLANS.team.requestLimit.toLocaleString(),
+        },
         enterprise: { monthly: 'Custom', annual: 'Custom', limit: 'Unlimited' },
     };
 
@@ -141,7 +150,11 @@ export function UpgradeCard({ currentTier, nextTier, orgId }: UpgradeCardProps) 
             const response = await fetch('/api/billing/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tier: nextTier, cycle, orgId }),
+                body: JSON.stringify({
+                    tier: nextTier,
+                    interval: cycle === 'monthly' ? 'month' : 'year',
+                    orgId,
+                }),
             });
 
             const { checkoutUrl } = await response.json();
