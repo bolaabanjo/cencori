@@ -10,6 +10,21 @@ export type MemoryScope = 'session' | 'user' | 'workspace' | 'org';
 /** Scopes accepted in Phase 1. */
 export const PHASE1_SCOPES: MemoryScope[] = ['session', 'user'];
 
+/**
+ * Default similarity cutoffs, calibrated per embedding provider. Applied only
+ * when the caller does not send an explicit `threshold`.
+ *
+ * Gemini `gemini-embedding-001` (the managed default) produces cosine scores in
+ * a lower, tighter band than OpenAI `text-embedding-3-small`, so a single fixed
+ * cutoff silently drops relevant memories on the managed path. Measured against
+ * gemini-embedding-001 in prod on 2026-07-16: directly on-point facts scored
+ * ~0.66–0.71 while a 0.7 cutoff dropped them. Tunable.
+ */
+export const DEFAULT_RETRIEVAL_THRESHOLD: Record<'openai' | 'google', number> = {
+    openai: 0.7,
+    google: 0.55,
+};
+
 export interface MemoryExtractOverride {
     model?: string;
     prompt?: string;
@@ -38,6 +53,12 @@ export interface MemoryDirective {
     write: boolean;
     topK: number;
     threshold: number;
+    /**
+     * True when the caller sent an explicit `threshold`. When false, retrieval
+     * substitutes a provider-calibrated default (see DEFAULT_RETRIEVAL_THRESHOLD)
+     * once the embedding provider is known, instead of the nominal `threshold`.
+     */
+    thresholdExplicit: boolean;
     namespace: string | null;
     extract: MemoryExtractOverride | null;
 }
@@ -162,6 +183,7 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
             write: input.write !== false,
             topK: clamp(Math.round(typeof input.topK === 'number' ? input.topK : 5), 1, 20),
             threshold: clamp(typeof input.threshold === 'number' ? input.threshold : 0.7, 0, 1),
+            thresholdExplicit: typeof input.threshold === 'number',
             namespace:
                 typeof input.namespace === 'string' && input.namespace.trim()
                     ? input.namespace.trim()
