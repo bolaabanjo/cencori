@@ -38,6 +38,7 @@ export function UserMenu({ organization }: UserMenuProps) {
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [upgradeOpen, setUpgradeOpen] = useState(false);
+    const [upgradePreload, setUpgradePreload] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -88,6 +89,12 @@ export function UserMenu({ organization }: UserMenuProps) {
                 <DropdownMenuTrigger asChild>
                     <button
                         type="button"
+                        onPointerEnter={() => {
+                            if (organization && canUpgrade) setUpgradePreload(true);
+                        }}
+                        onFocus={() => {
+                            if (organization && canUpgrade) setUpgradePreload(true);
+                        }}
                         className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                         aria-label="User menu"
                     >
@@ -166,6 +173,7 @@ export function UserMenu({ organization }: UserMenuProps) {
                     currentTier={currentTier}
                     recommendedTier="pro"
                     checkoutMode="direct"
+                    preload={upgradePreload || menuOpen || upgradeOpen}
                 />
             )}
         </>

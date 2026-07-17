@@ -48,6 +48,7 @@ interface UpgradeDialogProps {
   reason?: string;
   recommendedTier?: PaidPlanTier;
   checkoutMode?: "review" | "direct";
+  preload?: boolean;
 }
 
 type CheckoutResponse = {
@@ -194,7 +195,7 @@ function PaymentForm({
         />
       )}
 
-      <div className="mt-6 border-t border-border/50 pt-6">
+      <div className="-mx-5 mt-6 border-t border-border/50 px-5 pt-6 sm:-mx-7 sm:px-7">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h3 className="text-xs font-medium">Billing details</h3>
           <span className="text-[10px] text-muted-foreground">Required</span>
@@ -264,8 +265,7 @@ function PaymentForm({
 
 function SecureCheckoutNotice() {
   return (
-    <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
-      <LockKeyhole className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+    <div className="text-center text-[10px] leading-4 text-muted-foreground">
       <p>
         Your payment details are encrypted. By upgrading, you agree to Cencori&apos;s{" "}
         <Link href="/terms-of-service" className="underline underline-offset-2 hover:text-foreground">
@@ -284,23 +284,42 @@ function SecureCheckoutNotice() {
 function PaymentFormSkeleton({ bordered = false }: { bordered?: boolean }) {
   return (
     <section
-      className={cn("space-y-3", bordered && "border-t border-border/50 pt-6")}
+      className={cn(bordered && "border-t border-border/50 pt-6")}
       aria-label="Preparing payment form"
     >
-      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-2">
-          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-          Preparing secure payment
-        </span>
-        <span className="inline-flex items-center gap-1 text-[10px]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <CreditCard className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <span className="text-xs font-medium">Payment details</span>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <LockKeyhole className="size-3" aria-hidden="true" />
           Encrypted
         </span>
       </div>
-      <Skeleton className="h-11 w-full rounded-md" />
-      <div className="grid grid-cols-2 gap-3">
-        <Skeleton className="h-11 rounded-md" />
-        <Skeleton className="h-11 rounded-md" />
+
+      <div className="space-y-3">
+        <Skeleton className="h-11 w-full rounded-md" />
+        <div className="grid grid-cols-2 gap-3">
+          <Skeleton className="h-11 rounded-md" />
+          <Skeleton className="h-11 rounded-md" />
+        </div>
+      </div>
+
+      <div className="-mx-5 mt-6 border-t border-border/50 px-5 pt-6 sm:-mx-7 sm:px-7">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <span className="text-xs font-medium">Billing details</span>
+          <span className="text-[10px] text-muted-foreground">Required</span>
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-11 w-full rounded-md" />
+          <Skeleton className="h-11 w-full rounded-md" />
+          <Skeleton className="h-11 w-full rounded-md" />
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="h-11 rounded-md" />
+            <Skeleton className="h-11 rounded-md" />
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -316,6 +335,7 @@ export function UpgradeDialog({
   reason,
   recommendedTier = "pro",
   checkoutMode = "review",
+  preload = false,
 }: UpgradeDialogProps) {
   const { resolvedTheme } = useTheme();
   const availablePlans = useMemo(
@@ -332,6 +352,7 @@ export function UpgradeDialog({
   const [error, setError] = useState<string | null>(null);
   const directCheckoutStartedRef = useRef(false);
   const checkoutIdempotencyKeyRef = useRef<string | null>(null);
+  const checkoutOrgIdRef = useRef(orgId);
 
   const checkoutTier = checkoutMode === "direct" ? directTier : selectedTier;
   const checkoutInterval = checkoutMode === "direct" ? "month" : interval;
@@ -361,9 +382,19 @@ export function UpgradeDialog({
     checkoutIdempotencyKeyRef.current = null;
   }, [checkoutInterval, checkoutTier]);
 
+  useEffect(() => {
+    if (checkoutOrgIdRef.current === orgId) return;
+    checkoutOrgIdRef.current = orgId;
+    resetCheckout();
+  }, [orgId, resetCheckout]);
+
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && (creatingSession || paymentSubmitting)) return;
-    if (!nextOpen) resetCheckout();
+    if (!nextOpen && checkoutMode === "review") resetCheckout();
+    if (!nextOpen && checkoutMode === "direct") {
+      setPaymentSubmitting(false);
+      setError(null);
+    }
     onOpenChange(nextOpen);
   };
 
@@ -428,11 +459,11 @@ export function UpgradeDialog({
   }, [checkoutInterval, checkoutTier, clientSecret, creatingSession, orgId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !preload) return;
     if (checkoutMode !== "direct" || directCheckoutStartedRef.current) return;
     directCheckoutStartedRef.current = true;
     void startCheckout();
-  }, [checkoutMode, open, startCheckout]);
+  }, [checkoutMode, open, preload, startCheckout]);
 
   const checkoutOptions = useMemo(
     () =>
@@ -459,7 +490,7 @@ export function UpgradeDialog({
     [clientSecret, resolvedTheme],
   );
 
-  return (
+  const checkoutSheet = (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
@@ -505,33 +536,27 @@ export function UpgradeDialog({
         </SheetHeader>
 
         {checkoutOptions && sessionId ? (
-          <CheckoutElementsProvider
-            key={clientSecret}
-            stripe={stripePromise}
-            options={checkoutOptions}
+          <PaymentForm
+            error={error}
+            orgSlug={orgSlug}
+            paymentFirst={checkoutMode === "direct"}
+            sessionId={sessionId}
+            onError={setError}
+            onSubmittingChange={setPaymentSubmitting}
           >
-            <PaymentForm
-              error={error}
-              orgSlug={orgSlug}
-              paymentFirst={checkoutMode === "direct"}
-              sessionId={sessionId}
-              onError={setError}
-              onSubmittingChange={setPaymentSubmitting}
-            >
-              <CheckoutDetails
-                  availablePlans={availablePlans}
-                  checkoutMode={checkoutMode}
-                  clientSecret={clientSecret}
-                  dueNow={dueNow}
-                  interval={interval}
-                  monthlyEquivalent={monthlyEquivalent}
-                  plan={plan}
-                  selectedTier={selectedTier}
-                  setInterval={setInterval}
-                  setSelectedTier={setSelectedTier}
-              />
-            </PaymentForm>
-          </CheckoutElementsProvider>
+            <CheckoutDetails
+                availablePlans={availablePlans}
+                checkoutMode={checkoutMode}
+                clientSecret={clientSecret}
+                dueNow={dueNow}
+                interval={interval}
+                monthlyEquivalent={monthlyEquivalent}
+                plan={plan}
+                selectedTier={selectedTier}
+                setInterval={setInterval}
+                setSelectedTier={setSelectedTier}
+            />
+          </PaymentForm>
         ) : (
           <>
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -570,10 +595,7 @@ export function UpgradeDialog({
                 disabled={creatingSession || availablePlans.length === 0}
               >
                 {creatingSession ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                    Preparing payment
-                  </>
+                  checkoutMode === "review" ? "Continue to payment" : "Upgrade"
                 ) : checkoutMode === "review" ? (
                   <>
                     Continue to payment
@@ -590,6 +612,20 @@ export function UpgradeDialog({
       </SheetContent>
     </Sheet>
   );
+
+  if (checkoutOptions && sessionId) {
+    return (
+      <CheckoutElementsProvider
+        key={clientSecret}
+        stripe={stripePromise}
+        options={checkoutOptions}
+      >
+        {checkoutSheet}
+      </CheckoutElementsProvider>
+    );
+  }
+
+  return checkoutSheet;
 }
 
 function CheckoutDetails({
@@ -619,7 +655,10 @@ function CheckoutDetails({
 
   if (checkoutMode === "direct") {
     return (
-      <section aria-labelledby="plan-summary-heading" className="border-t border-border/50 pt-6">
+      <section
+        aria-labelledby="plan-summary-heading"
+        className="-mx-5 border-t border-border/50 px-5 pt-6 sm:-mx-7 sm:px-7"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 id="plan-summary-heading" className="text-xs font-medium">
@@ -634,17 +673,20 @@ function CheckoutDetails({
           </span>
         </div>
 
-        <ul className="mt-4 grid gap-x-5 gap-y-2 sm:grid-cols-2">
-          {plan.features.map((feature) => (
-            <li key={feature} className="flex items-start gap-2 text-[11px] leading-4 text-muted-foreground">
-              <Check className="mt-0.5 size-3 shrink-0 text-emerald-500" aria-hidden="true" />
-              <span>{feature}</span>
-            </li>
-          ))}
-        </ul>
-
-        <dl className="mt-5 border-t border-border/50 pt-3 text-xs">
-          <div className="flex items-end justify-between gap-4">
+        <dl className="-mx-5 mt-6 border-t border-border/50 text-xs sm:-mx-7">
+          <div className="flex items-center justify-between gap-4 border-b border-border/40 px-5 py-4 sm:px-7">
+            <dt className="text-muted-foreground">{plan.name} plan</dt>
+            <dd className="font-mono tabular-nums">{formatCents(dueNow)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/40 px-5 py-4 sm:px-7">
+            <dt className="text-muted-foreground">Billing cycle</dt>
+            <dd>Monthly</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4 sm:px-7">
+            <dt className="text-muted-foreground">Renewal</dt>
+            <dd>Automatic until canceled</dd>
+          </div>
+          <div className="flex items-end justify-between gap-4 px-5 py-4 sm:px-7">
             <dt>
               <span className="block font-medium">Due today</span>
               <span className="mt-0.5 block text-[10px] text-muted-foreground">
