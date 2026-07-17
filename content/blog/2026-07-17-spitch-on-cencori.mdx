@@ -1,0 +1,70 @@
+---
+title: "Spitch is on Cencori"
+slug: "spitch-on-cencori"
+date: "2026-07-17"
+excerpt: "Native African-language voice is now on Cencori. Spitch brings text-to-speech and speech-to-text for Yoruba, Hausa, Igbo, English, and Amharic — through the same billable, PII-redacted gateway as the rest of the Voice API."
+coverImage: "/blog/images/covers/spitch.png"
+tags: ["Product", "Spitch", "Voice", "Release"]
+category: "changelog"
+published: false
+---
+
+**Spitch** is live on Cencori.
+
+Every major voice provider wraps English, and a handful do European and Asian languages well. Almost none do **native West African voice** — Yoruba, Hausa, Igbo — in either direction. Spitch does, and starting today you can reach it through the Cencori Voice API with zero new setup: pick a Spitch model and the gateway routes to it, with billing, PII redaction, and BYOK applied the same way as every other provider.
+
+## What Makes Spitch Different
+
+### 1. Native African languages, both directions
+Spitch handles **text-to-speech and speech-to-text** for **Yoruba, Hausa, Igbo, English, and Amharic** — not transliteration or a heavy accent on an English model, but models built for these languages. For products serving Nigerian and East African users, this is the piece that was missing from every other voice stack.
+
+### 2. Built for how people actually communicate
+Across much of West Africa, voice notes are the default — not typing. Spitch on Cencori means you can accept a **WhatsApp voice note in Yoruba**, transcribe it, run it through a model, and **reply with a Yoruba voice note** — a full loop in a few lines. It's also ideal for IVR, voicemail, and voice-first apps where typing English is a barrier.
+
+### 3. Ops built in
+Because it runs through the gateway, every Spitch call is metered and logged, PII-redacted on the way in, and BYOK-ready per project. Spend caps and cost tracking apply automatically — the same operational layer as chat, vision, and documents.
+
+## Pricing & Specs
+
+| | |
+|---|---|
+| **TTS** | $0.030 / 1,000 characters |
+| **STT** | $0.010 / minute |
+| **Languages** | Yoruba, Hausa, Igbo, English, Amharic |
+| **Provider** | Spitch (via Cencori Gateway) |
+| **Model IDs** | `spitch-tts`, `spitch-stt` |
+
+## Using Spitch in Cencori
+
+The provider is inferred from the model — you never pass a provider name.
+
+```typescript
+// Speak Yoruba
+const { audio } = await cencori.voice.speak({
+  input: 'Bawo ni, e ku aaro.',
+  model: 'spitch-tts',
+  voice: 'sade',
+  language: 'yo',
+});
+
+// Transcribe a Yoruba voice note
+const { text } = await cencori.voice.transcribe({
+  audio: voiceNote,
+  model: 'spitch-stt',
+  language: 'yo',
+});
+```
+
+```python
+# Python
+audio = cencori.voice.speak("Sannu, ina kwana?", model="spitch-tts", language="ha")
+open("hausa.mp3", "wb").write(audio)
+```
+
+The `voice` namespace is available across all five SDKs — TypeScript, Python, Go, PHP, and Rust — and the drop-in `<VoiceRecorder />` and `<SpeakButton />` React components work with Spitch models out of the box.
+
+## Why this matters
+
+Localized intelligence isn't just about text. A bank chatbot, a government service line, or a fintech support flow only reaches most Nigerians if it can **listen and speak** in the language they use. Spitch on Cencori makes that a one-line change — and keeps the billing, security, and observability you already rely on.
+
+Start with the [Voice docs](/docs/api/voice), or select `spitch-tts` / `spitch-stt` directly from your project dashboard.
