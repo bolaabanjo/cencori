@@ -128,6 +128,12 @@ export class OpenAICompatibleProvider extends AIProvider {
             headers['X-Title'] = 'Cencori';
         }
 
+        // Maximo's WAF blocks the OpenAI SDK's default User-Agent (`OpenAI/NodeJS …`),
+        // returning `403 "Your request was blocked."`. Override it so requests pass.
+        if (providerName === 'maximo') {
+            headers['User-Agent'] = 'Cencori/1.0';
+        }
+
         return headers;
     }
 
