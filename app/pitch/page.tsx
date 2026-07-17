@@ -147,8 +147,8 @@ function PitchDeckContent() {
                     --border: #262626;
                     --border-light: #E5E5E5;
 
-                    --font-display: var(--font-geist-sans), system-ui, sans-serif;
-                    --font-body: var(--font-inter), system-ui, sans-serif;
+                    --font-display: var(--font-manrope), system-ui, sans-serif;
+                    --font-body: var(--font-manrope), system-ui, sans-serif;
                     --font-code: var(--font-mono), ui-monospace, monospace;
 
                     width: 100vw;
@@ -195,7 +195,6 @@ function PitchDeckContent() {
                     }
                     .nav, .export-btn, .slide-counter, .slide-logo { display: none !important; }
                 ` : ""}
-
 
                 .nav { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; align-items: center; gap: 20px; }
                 .nav-dots { display: flex; gap: 6px; }

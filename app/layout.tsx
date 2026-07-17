@@ -7,19 +7,20 @@ import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { SignupWelcomeEmailBridge } from "@/components/auth/SignupWelcomeEmailBridge";
 import Script from "next/script";
-import { Geist, Inter, JetBrains_Mono } from "next/font/google";
+import { Manrope, Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/cn";
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+  fallback: ["system-ui", "arial"],
+});
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
-  display: "swap",
-  fallback: ["system-ui", "arial"],
-});
-
-const geistSans = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
   display: "swap",
   fallback: ["system-ui", "arial"],
 });
@@ -237,7 +238,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn(
         "antialiased",
-        geistSans.variable,
+        manrope.variable,
         inter.variable,
         mono.variable,
       )}
@@ -263,7 +264,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="font-sans" suppressHydrationWarning>
+      <body className="font-sans font-medium" suppressHydrationWarning>
         <ThemeProvider>
           <PostHogProvider>
             {children}

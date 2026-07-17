@@ -87,14 +87,14 @@ export default function TypographyPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-border/50 bg-card p-5">
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold">Montserrat</h3>
+                            <h3 className="text-sm font-semibold">Manrope</h3>
                             <code className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">font-sans</code>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-4">Primary font for all UI text, headings, and body copy.</p>
+                        <p className="text-xs text-muted-foreground mb-4">Primary font for all UI text, headings, and body copy. Base weight 500.</p>
                         <div className="space-y-2 border-t border-border/40 pt-4">
                             <p className="text-2xl font-bold">Aa Bb Cc</p>
-                            <p className="text-sm">The quick brown fox jumps over the lazy dog.</p>
-                            <p className="text-xs text-muted-foreground">0123456789</p>
+                            <p className="text-sm font-medium">The quick brown fox jumps over the lazy dog.</p>
+                            <p className="text-xs text-muted-foreground font-medium">0123456789</p>
                         </div>
                     </div>
                     <div className="rounded-xl border border-border/50 bg-card p-5">
@@ -111,11 +111,11 @@ export default function TypographyPage() {
                     </div>
                 </div>
                 <CodeBlock code={`// CSS Variables (set in layout.tsx)
---font-sans: Montserrat
+--font-sans: Manrope (base weight 500)
 --font-mono: JetBrains Mono
 
 // Tailwind usage
-className="font-sans"  // Default, usually not needed
+className="font-sans font-medium"  // Default body
 className="font-mono"  // For code blocks and technical text`} language="css" />
             </section>
 

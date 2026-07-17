@@ -163,7 +163,7 @@ export default function PitchV2() {
                     --line2: #262b31;
                     --acc: ${ACC};
                     --acc-dim: rgba(61, 220, 151, 0.1);
-                    --display: var(--font-geist-sans), system-ui, sans-serif;
+                    --display: var(--font-manrope), system-ui, sans-serif;
                     --body: var(--font-inter), system-ui, sans-serif;
                     --mono: var(--font-mono), ui-monospace, monospace;
 
