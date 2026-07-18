@@ -15,6 +15,7 @@ import {
     initializeBYOKProviders,
     type ResolvedGatewayProvider,
 } from '@/lib/gateway/providers-setup';
+import { GeminiProvider } from '@/lib/providers';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -109,8 +110,14 @@ export async function executeGatewayChat(params: {
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
     requestId?: string;
+    /**
+     * Per-call Google key override, applied only when the resolved provider is
+     * Google. Lets memory extraction run on its dedicated key
+     * (MEMORY_GEMINI_API_KEY) without affecting general Gemini chat traffic.
+     */
+    googleApiKeyOverride?: string;
 }): Promise<UnifiedChatResponse & GatewayChatExecutionMeta> {
-    const resolved =
+    let resolved =
         params.resolved ??
         (await resolveGatewayProvider({
             supabase: params.supabase,
@@ -118,6 +125,12 @@ export async function executeGatewayChat(params: {
             organizationId: params.organizationId,
             requestedModel: params.request.model,
         }));
+
+    if (params.googleApiKeyOverride && resolved.providerName === 'google') {
+        const overridden = new GeminiProvider(params.googleApiKeyOverride);
+        resolved.router.registerProvider('google', overridden);
+        resolved = { ...resolved, provider: overridden };
+    }
 
     const { providerName, model, provider, router } = resolved;
     const chatRequest: UnifiedChatRequest = { ...params.request, model };

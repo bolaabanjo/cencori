@@ -313,7 +313,9 @@ export async function runChatMemoryWriteback(params: {
         await logGatewayRequest(gatewayCtx, {
             endpoint: 'memory/writeback',
             model: extraction.model,
-            provider: 'openai',
+            // Managed extraction + embeddings run on Google; only BYOK embeddings
+            // are OpenAI. Reflect what actually ran, not a hardcoded 'openai'.
+            provider: embeddingProvider ?? 'google',
             status: quotaExceeded ? 'error' : 'success',
             costUsd: totalCost,
             cencoriChargeUsd: totalCost,
@@ -331,7 +333,26 @@ export async function runChatMemoryWriteback(params: {
             await incrementUsage(gatewayCtx, totalCost);
         }
     } catch (error) {
-        // Post-response: nothing to surface, everything to log.
+        // Post-response: nothing to surface to the caller, everything to log.
+        // Without this record a writeback that throws (e.g. the embedding
+        // provider rate-limited, extraction failed) would vanish silently — the
+        // client sees write_status 'pending' forever and nothing ever lands.
+        // Make the failure visible in the request log instead.
+        const message = error instanceof Error ? error.message : 'memory writeback failed';
         console.error('[Memory] Writeback failed:', error);
+        try {
+            await logGatewayRequest(gatewayCtx, {
+                endpoint: 'memory/writeback',
+                model: 'memory-writeback',
+                provider: 'google',
+                status: 'error',
+                errorMessage: message,
+                metadata: { scope: directive.scope, stage: 'writeback_exception' },
+            });
+        } catch (logError) {
+            // Never let the failure logger become a new unhandled rejection
+            // inside waitUntil().
+            console.error('[Memory] Failed to log writeback failure:', logError);
+        }
     }
 }

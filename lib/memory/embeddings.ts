@@ -19,7 +19,7 @@ import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { decryptApiKey } from '@/lib/encryption';
 import { getPricingFromDB } from '@/lib/providers/pricing';
 import { calculateProviderTokenCost } from '@/lib/providers/base';
-import { getGoogleApiKey } from '@/lib/providers/google-env';
+import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -124,7 +124,9 @@ export async function embedForMemory(
 
 /** Managed path — Google gemini-embedding-001 at 1536 dims. */
 async function embedWithGemini(inputs: string[]): Promise<MemoryEmbeddingResult> {
-    const key = getGoogleApiKey();
+    // Memory-dedicated key (MEMORY_GEMINI_API_KEY) when set, else the shared
+    // managed key. Isolates memory embedding quota from general Gemini chat.
+    const key = getMemoryGoogleApiKey();
     if (!key) {
         throw new Error('No Google API key configured for memory embeddings');
     }
