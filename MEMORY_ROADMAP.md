@@ -26,6 +26,152 @@ and spend caps is free — because we already have them.
 
 ---
 
+## 2026-07-18 update — Managed-only + the recall thesis
+
+Two decisions supersede parts of the original sketch below. Everything already
+shipped (Phase 1 — see status at the bottom) stays; this is direction, not a
+rewrite.
+
+### Decision 1 — Memory is MANAGED. Not BYOK.
+
+Cencori's own Gemini key runs memory. Cencori pays Google; the user pays
+Cencori (provider cost + markup, already computed via `cencoriChargeUsd`).
+There is **no BYOK path for memory** (this supersedes Shape-decision #7 below,
+which described BYOK embeddings). Rationale (Bola): *"I want memory to be on
+us."*
+
+Consequence: **the managed backend IS the product.** Every user shares
+Cencori's Gemini key and its quota, so provider capacity is no longer a
+detail — it is existential. Supermemory/Mem0 make the developer stand up and
+run a store; we take that entire burden. That only wins if it is *actually
+reliable at scale*. Reliability is not the tax on this bet — it is the moat.
+
+### Decision 2 — The recall thesis (why the gateway seat wins)
+
+A standalone memory API sees a keyhole: only what the developer remembered to
+send it (a query, some `add()` calls). It is blind to the real prompt, the
+system message, the model being called, and it **never sees the completion**.
+
+Sitting between the app and the model, Cencori sees the **whole request in
+flight, the response coming back, and which model it's for** — a strictly
+larger information set than any out-of-band memory service can have. Their
+recall ceiling is capped by the keyhole; ours is not. For recall specifically
+this cashes out four ways:
+
+1. **Retrieve against real intent, in context** — we search against the actual
+   model-bound prompt, not a hand-written query. Better query in → better recall.
+2. **Capture is automatic and complete** — extract from every opted-in turn; we
+   can't recall what a dev forgot to save, and we're saving everything worth saving.
+3. **We control the injection point** — optimal position + format for the specific model.
+4. **We can close the loop** — learn from the completion; refine importance from outcomes.
+
+The seat raises the ceiling; it does not auto-win. Recall quality is still
+engineering (extraction, dedup, contradiction handling, ranking, thresholds).
+Taxes the seat imposes and we must respect: **latency** (we're in the hot path,
+<150ms p95 budget on every request) and **noise/cost** (auto-capture on a shared
+Gemini key — ruthless importance filtering or recall gets *worse*).
+
+### Decision 3 — Standalone-as-product + the unification principle
+
+Memory is **one product with two entry points**, and standalone gets a public
+product face without becoming a separate thing:
+
+- **Native (toggle):** add a `memory` field to any Cencori request. Better recall
+  (the seat — Decision 2).
+- **Standalone (drop-in):** call `cencori.memory.*` / `/v1/memory/*` directly with
+  only a Cencori key. Bring any provider/stack. This is the Mem0/Supermemory-shaped
+  front door — a Mem0 user lands here without ever needing to understand the gateway.
+
+**The unification principle (the line we do not cross):** *one client, one key,
+one store, one directive shape — two entry points.* Hold all four and "same
+product with a toggle" and "mergeable, no fragmentation" are automatic. Fork any
+one of them and we manufacture the fragmentation we're trying to avoid.
+
+Consequences of holding it:
+- **Merge is a *property*, not a feature we build.** Both doors read/write the same
+  `gateway_memories` table addressed by `(orgId, scope, userId)`, via the shared
+  `parseMemoryDirective`. So a user who starts standalone and *later* routes chat
+  through the gateway keeps every memory — no migration, no separate namespace.
+  Expansion is frictionless. Pitch: **"Start standalone. Go native whenever. Your
+  memory comes with you."** Supermemory/Mem0 can't offer the second half — they have
+  no native mode to expand into.
+
+What to protect NOW (so the later docs/landing merge is painless):
+1. **Keep `/v1/memory/*` as the standalone path — do NOT fork it.** No
+   `memory.cencori.com`, no separate `/memory/v1/`. `/v1/` is versioning, not
+   "gateway-ness"; a Mem0 user doesn't care. A separate path/subdomain IS the
+   fragmentation.
+2. **Identical directive across both doors** — `search` params and the `memory:`
+   field never drift.
+3. **One SDK namespace** — `cencori.memory` is self-contained enough to be "the
+   product" for someone who never calls `cencori.chat`.
+
+One caution: **make the native recall bonus legible as an upgrade, not a silent
+standalone penalty.** Surface "native recall active" (response field / header) so
+the delta reads as *"I unlocked something,"* not *"standalone is the crippled
+version."* Standalone must be genuinely best-in-class on its own; native is the level-up.
+
+Deferred (later, not blocking): docs framing ("Cencori Memory" as its own surface,
+sharing the existing docs site) and a landing page. Naming/IA is downstream of the
+unification principle above and can wait.
+
+### The three tracks (this replaces the old linear phase order as the priority frame)
+
+- **Track 0 — Earn the right (reliability; existential under managed):**
+  paid Gemini tier + real fallback pool (Anthropic/Groq fallbacks currently have
+  no pricing configured → overflow errors; fix or replace), per-customer quota
+  fairness so one 50K-user tenant can't starve others, and **trustworthy writes**
+  (writeback is async + silent today — make it observable via the fill gauge +
+  a confirmed-written signal). See [[project-provider-capacity]].
+- **Track 1 — Win recall (the visible edge over Mem0):** contradiction/dedup on
+  writeback (supersede stale facts instead of storing duplicates — the exact
+  Mem0 weakness), the unified graph (memory + RAG + profiles, temporal reasoning,
+  importance decay), and a **public recall benchmark we win**.
+- **Track 2 — Distribution / lock-in:** MCP bridge (`mcp.cencori.com` → memory
+  readable from Claude Desktop / Cursor / Continue), `<MemoryInspector>` drop-in
+  ("what we know about you" + one-click forget = GDPR as a feature), multi-modal
+  memory (reuse existing Vision + Documents).
+
+**Immediate next:** Track 0 #1–#3 (can't demo "giants fall" on a backend that
+rate-limits mid-demo), then Track 1 contradiction/dedup.
+
+### Stealing from the GPT thread (2026-07-18) — vetted, mapped to tracks
+
+A GPT brainstorm (pasted by Bola) was ~90% confirmation of decisions already
+locked here. Three ideas are worth keeping — everything else was either already
+built or is future taxonomy. Do NOT let the "five memory types" (working /
+episodic / semantic / procedural / organizational) balloon scope: we have
+**semantic** (facts); the rest are later.
+
+1. **Procedural memory** *(→ future bet, ties Memory to Gateway + Workflow).*
+   Remember not just facts but **which model + prompt + tool-sequence previously
+   produced a successful result**, and reuse it. Neither Mem0 nor Supermemory has
+   this — it's a genuine moat because it requires sitting in the inference path
+   (the seat). NOT first; slot after Track 1 recall quality is solid.
+
+2. **`memory.context()` / `memory.process()` naming** *(→ Track 2 / standalone
+   surface, when we touch the SDK).* Clearer names for the existing "self-managed
+   orchestration" mode that currently ships as `recall()` / `remember()`.
+   `context()` = retrieve + format an inject-ready block (no model call);
+   `process()` = extract + write from an exchange. Rename/alias when we polish the
+   standalone product face — not a behavior change, just clarity.
+
+3. **Tagline: "Your application changes models. Its memory should not."**
+   *(→ positioning).* Sharpest one-liner for provider-independent intelligence
+   continuity — memory belongs to one provider (us) and survives the app switching
+   OpenAI → Claude → Gemini → Cencori Compute. Pair with "The persistent
+   intelligence layer behind every model interaction." Use on the eventual landing
+   page; keep alongside "The memory layer of the AI cloud."
+
+**Guardrail:** the GPT thread's "catch" list (prevent false memories, resolve
+contradictions + time, avoid irrelevant recall, tenant isolation, no prompt-based
+memory poisoning, ultra-low latency, decide what to never store, explain why a
+memory was recalled, evaluate answer quality not just retrieval similarity) is NOT
+new scope — it *is* Track 0 + Track 1 restated. That's the real work; treat it as
+the acceptance criteria for those tracks, not a fourth track.
+
+---
+
 ## Shape decisions
 
 1. **Memory is a gateway feature, not a product.** No `memory.cencori.com`
@@ -42,8 +188,11 @@ and spend caps is free — because we already have them.
 6. **Forget is a first-class operation.** Not a soft delete. Not an
    annotation. An actual removal, cryptographically confirmed, in the audit
    log.
-7. **BYOK-compatible.** Embeddings for memory use whichever embedding model
-   the project is configured for — including the customer's own key.
+7. ~~**BYOK-compatible.** Embeddings for memory use whichever embedding model
+   the project is configured for — including the customer's own key.~~
+   **SUPERSEDED 2026-07-18 — memory is managed-only.** Embeddings run on
+   Cencori's managed Gemini (`gemini-embedding-001`); no per-customer BYOK for
+   memory. See the "Managed-only" decision above.
 
 ---
 

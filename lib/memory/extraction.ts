@@ -8,6 +8,7 @@
 
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { executeGatewayChat } from '@/lib/gateway/chat-executor';
+import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
@@ -67,6 +68,10 @@ export async function extractFacts(params: {
             organizationId,
             tier,
             requestId,
+            // Run managed Gemini extraction on the memory-dedicated key so it
+            // shares memory's isolated quota, not general chat's. Ignored when
+            // the extraction model resolves to a non-Google provider.
+            googleApiKeyOverride: getMemoryGoogleApiKey() ?? undefined,
             request: {
                 model,
                 temperature: 0,
