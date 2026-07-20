@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Check, Loader2, Terminal, Shield } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 interface Project {
     id: string;

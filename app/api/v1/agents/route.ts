@@ -25,7 +25,7 @@ type AgentCreateBody = {
     };
 };
 
-export async function verifyJwtProjectAccess(
+async function verifyJwtProjectAccess(
     adminClient: ReturnType<typeof createAdminClient>,
     projectId: string,
     userId: string,

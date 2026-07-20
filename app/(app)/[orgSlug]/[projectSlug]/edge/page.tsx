@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Cloudflare, Aws, Azure, Google } from '@lobehub/icons';
 import { Check, ExternalLink, Link2, Loader2, Unlink } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { supabase } from '@/lib/supabaseClient';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';

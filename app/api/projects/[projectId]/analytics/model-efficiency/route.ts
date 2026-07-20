@@ -14,11 +14,6 @@ function percentile(arr: number[], p: number): number {
     return sorted[Math.max(0, idx)];
 }
 
-function normalize(value: number, min: number, max: number): number {
-    if (max === min) return 0.5;
-    return Math.max(0, Math.min(1, (value - min) / (max - min)));
-}
-
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ projectId: string }> }
@@ -155,7 +150,7 @@ export async function GET(
             const avgCostPerToken = totalTokensSum > 0 ? totalCost / totalTokensSum : 0;
             const avgLatency = mean(g.latencies);
             const p95Latency = percentile(g.latencies, 95);
-            const successCount = g.statuses.filter(s => s === 'success').length;
+            const successCount = g.statuses.filter(s => s === 'success' || s === 'success_fallback').length;
             const successRate = requestCount > 0 ? successCount / requestCount : 0;
             const totalCompletions = g.completionTokens.reduce((a, b) => a + b, 0);
             const totalPrompts = g.promptTokens.reduce((a, b) => a + b, 0);
@@ -203,7 +198,7 @@ export async function GET(
             // Speed: faster = higher score. 0ms → 1.0, 10,000ms → 0.0
             m.speed_score = Math.max(0, 1 - m.avg_latency_ms / LATENCY_CEILING);
 
-            // Quality: success rate is already 0–1, use it directly (no normalization)
+            // Delivery: success rate is already 0–1, use it directly (no normalization)
             m.quality_score = m.success_rate;
 
             m.efficiency_score =
@@ -229,7 +224,7 @@ export async function GET(
             } else if (modelStats.length > 1 && m.model === bySpeed[0].model && m.provider === bySpeed[0].provider) {
                 m.recommendation = 'Fastest response';
             } else if (modelStats.length > 1 && m.model === byQuality[0].model && m.provider === byQuality[0].provider) {
-                m.recommendation = 'Highest quality';
+                m.recommendation = 'Highest delivery rate';
             }
         }
 

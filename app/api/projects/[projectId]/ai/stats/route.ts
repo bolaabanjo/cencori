@@ -9,6 +9,9 @@ interface DateAggregation {
     tokens: number;
     promptTokens: number;
     completionTokens: number;
+    successful: number;
+    errors: number;
+    filtered: number;
 }
 
 interface ModelAggregation {
@@ -126,13 +129,26 @@ export async function GET(
         const requestsByTime = requests?.reduce((acc: DateAggregationMap, r) => {
             const key = getGroupKey(r.created_at);
             if (!acc[key]) {
-                acc[key] = { date: key, count: 0, cost: 0, tokens: 0, promptTokens: 0, completionTokens: 0 };
+                acc[key] = {
+                    date: key,
+                    count: 0,
+                    cost: 0,
+                    tokens: 0,
+                    promptTokens: 0,
+                    completionTokens: 0,
+                    successful: 0,
+                    errors: 0,
+                    filtered: 0,
+                };
             }
             acc[key].count += 1;
             acc[key].cost += parseFloat(r.cost_usd || '0');
             acc[key].tokens += r.total_tokens || 0;
             acc[key].promptTokens += r.prompt_tokens || 0;
             acc[key].completionTokens += r.completion_tokens || 0;
+            if (r.status === 'success') acc[key].successful += 1;
+            if (r.status === 'error') acc[key].errors += 1;
+            if (r.status === 'filtered') acc[key].filtered += 1;
             return acc;
         }, {} as DateAggregationMap);
 
@@ -151,6 +167,9 @@ export async function GET(
                     tokens: existing?.tokens || 0,
                     promptTokens: existing?.promptTokens || 0,
                     completionTokens: existing?.completionTokens || 0,
+                    successful: existing?.successful || 0,
+                    errors: existing?.errors || 0,
+                    filtered: existing?.filtered || 0,
                 });
             }
         } else if (period === '24h') {
@@ -165,6 +184,9 @@ export async function GET(
                     tokens: existing?.tokens || 0,
                     promptTokens: existing?.promptTokens || 0,
                     completionTokens: existing?.completionTokens || 0,
+                    successful: existing?.successful || 0,
+                    errors: existing?.errors || 0,
+                    filtered: existing?.filtered || 0,
                 });
             }
         } else {
@@ -200,6 +222,9 @@ export async function GET(
                         tokens: existing?.tokens || 0,
                         promptTokens: existing?.promptTokens || 0,
                         completionTokens: existing?.completionTokens || 0,
+                        successful: existing?.successful || 0,
+                        errors: existing?.errors || 0,
+                        filtered: existing?.filtered || 0,
                     });
                 }
 
@@ -218,6 +243,9 @@ export async function GET(
                         tokens: existing?.tokens || 0,
                         promptTokens: existing?.promptTokens || 0,
                         completionTokens: existing?.completionTokens || 0,
+                        successful: existing?.successful || 0,
+                        errors: existing?.errors || 0,
+                        filtered: existing?.filtered || 0,
                     });
                 }
             }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, use } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { ModelUsageChart } from '@/components/analytics/ModelUsageChart';
@@ -10,22 +10,16 @@ import { CostByProviderChart } from '@/components/analytics/CostByProviderChart'
 import { LatencyHistogram } from '@/components/analytics/LatencyHistogram';
 import { FailoverMetrics } from '@/components/analytics/FailoverMetrics';
 import { ObservabilityChartCard, ObservabilityChartCardSkeleton } from '@/components/analytics/ObservabilityChartCard';
+import { ObservabilitySignalCard } from '@/components/analytics/ObservabilitySignalCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import {
-    ChartBarIcon,
-    CurrencyDollarIcon,
-    ClockIcon,
-    BoltIcon,
-    ShieldExclamationIcon,
-} from '@heroicons/react/24/outline';
+import { ChartBarIcon } from '@heroicons/react/24/outline';
 import { ArrowRight } from 'lucide-react';
 import { useEnvironment } from '@/lib/contexts/EnvironmentContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { queryKeys } from '@/lib/hooks/useQueries';
 import { ExportDialog } from '@/components/dashboard/ExportDialog';
 import { IntelligencePanel } from '@/components/analytics/intelligence/IntelligencePanel';
-import { cn } from '@/lib/utils';
 import { fetchJsonWithFeatureGate, isFeatureGateError } from '@/lib/feature-gate-client';
 import { FeatureUpgradeWall } from '@/components/billing/FeatureUpgradeWall';
 
@@ -39,14 +33,12 @@ interface TrendData {
     cost: number;
     tokens: number;
     avg_latency: number;
-}
-
-interface HttpTrendData {
-    timestamp: string;
-    total: number;
-    success: number;
-    filtered: number;
-    error: number;
+    latency_samples: number;
+    latency_p50: number | null;
+    latency_p75: number | null;
+    latency_p90: number | null;
+    latency_p95: number | null;
+    latency_p99: number | null;
 }
 
 interface OverviewData {
@@ -87,9 +79,7 @@ interface PageProps {
     }>;
 }
 
-type ObservabilitySection = 'overview' | 'ai' | 'http' | 'reliability' | 'security' | 'intelligence';
-
-type HttpMetricKey = 'total' | 'success' | 'filtered' | 'error';
+type ObservabilitySection = 'overview' | 'ai' | 'reliability' | 'security' | 'intelligence';
 
 interface SectionDefinition {
     id: ObservabilitySection;
@@ -99,7 +89,6 @@ interface SectionDefinition {
 const sections: SectionDefinition[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'ai', label: 'AI' },
-    { id: 'http', label: 'HTTP' },
     { id: 'reliability', label: 'Reliability' },
     { id: 'security', label: 'Security' },
     { id: 'intelligence', label: 'Intelligence' },
@@ -108,15 +97,14 @@ const sections: SectionDefinition[] = [
 function isObservabilitySection(value: string | null): value is ObservabilitySection {
     return value === 'overview'
         || value === 'ai'
-        || value === 'http'
         || value === 'reliability'
         || value === 'security'
         || value === 'intelligence';
 }
 
-function useProjectId(orgSlug: string, projectSlug: string) {
+function useProjectDetails(orgSlug: string, projectSlug: string) {
     return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
+        queryKey: ['observabilityProject', orgSlug, projectSlug],
         queryFn: async () => {
             const { data: orgData } = await supabase
                 .from('organizations')
@@ -128,117 +116,35 @@ function useProjectId(orgSlug: string, projectSlug: string) {
 
             const { data: projectData } = await supabase
                 .from('projects')
-                .select('id')
+                .select('id, name')
                 .eq('slug', projectSlug)
                 .eq('organization_id', orgData.id)
                 .single();
 
             if (!projectData) throw new Error('Project not found');
-            return projectData.id;
+            return projectData;
         },
         staleTime: 5 * 60 * 1000,
     });
-}
-
-function formatTimestamp(timestamp: string): string {
-    if (timestamp.match(/^\d{2}:\d{2}$/)) {
-        const [hours, minutes] = timestamp.split(':').map(Number);
-        const period = hours >= 12 ? 'pm' : 'am';
-        const hour12 = hours % 12 || 12;
-        const now = new Date();
-        const month = now.toLocaleDateString(undefined, { month: 'short' });
-        const day = now.getDate();
-        return `${month} ${day}, ${hour12}:${minutes.toString().padStart(2, '0')}${period}`;
-    }
-
-    if (timestamp.includes(' ')) {
-        const [datePart, timePart] = timestamp.split(' ');
-        const date = new Date(datePart);
-        const hours = Number.parseInt(timePart.split(':')[0], 10);
-        const period = hours >= 12 ? 'pm' : 'am';
-        const hour12 = hours % 12 || 12;
-        return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${hour12}:00${period}`;
-    }
-
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return timestamp;
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function summarizeHttpTrends(trends: HttpTrendData[]) {
-    const totals = trends.reduce(
-        (acc, point) => {
-            acc.total += point.total || 0;
-            acc.success += point.success || 0;
-            acc.filtered += point.filtered || 0;
-            acc.error += point.error || 0;
-            return acc;
-        },
-        { total: 0, success: 0, filtered: 0, error: 0 }
-    );
-
-    const successRate = totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
-    const errorRate = totals.total > 0 ? Math.round((totals.error / totals.total) * 100) : 0;
-
-    return {
-        ...totals,
-        successRate,
-        errorRate,
-    };
-}
-
-function getLastUpdateTime<T extends { timestamp: string }>(
-    points: T[],
-    hasData: (point: T) => boolean
-): string | undefined {
-    if (points.length === 0) return undefined;
-    const lastWithData = [...points].reverse().find(hasData);
-    return lastWithData ? formatTimestamp(lastWithData.timestamp) : undefined;
-}
-
-function toHttpMetricSeries(
-    trends: HttpTrendData[],
-    key: HttpMetricKey
-): Array<{ label: string; value: number }> {
-    return trends.map((trend) => ({
-        label: formatTimestamp(trend.timestamp),
-        value: trend[key] || 0,
-    }));
 }
 
 export default function ObservabilityPage({ params }: PageProps) {
     const { orgSlug, projectSlug } = use(params);
     const { environment } = useEnvironment();
     const searchParams = useSearchParams();
-    const router = useRouter();
     const pathname = usePathname();
 
     const [timeRange, setTimeRange] = useState('7d');
 
     const rawSectionParam = searchParams.get('section');
-    const normalizedSectionParam = rawSectionParam === 'api' || rawSectionParam === 'web'
-        ? 'http'
-        : rawSectionParam;
-    const section: ObservabilitySection = isObservabilitySection(normalizedSectionParam)
-        ? normalizedSectionParam
+    const section: ObservabilitySection = isObservabilitySection(rawSectionParam)
+        ? rawSectionParam
         : 'overview';
 
-    const setSection = (nextSection: ObservabilitySection) => {
-        const nextParams = new URLSearchParams(searchParams.toString());
+    const { data: project, isLoading: projectLoading } = useProjectDetails(orgSlug, projectSlug);
+    const projectId = project?.id ?? '';
 
-        if (nextSection === 'overview') {
-            nextParams.delete('section');
-        } else {
-            nextParams.set('section', nextSection);
-        }
-
-        const queryString = nextParams.toString();
-        router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
-    };
-
-    const { data: projectId, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug);
-
-    const { data: overview, isLoading: overviewLoading, error: overviewError } = useQuery<OverviewData>({
+    const { data: overview, error: overviewError } = useQuery<OverviewData>({
         queryKey: queryKeys.analytics(projectId || '', timeRange),
         queryFn: () => fetchJsonWithFeatureGate<OverviewData>(
             `/api/projects/${projectId}/analytics/overview?time_range=${timeRange}&environment=${environment}`
@@ -248,9 +154,9 @@ export default function ObservabilityPage({ params }: PageProps) {
         retry: (failureCount, error) => !isFeatureGateError(error) && failureCount < 1,
     });
 
-    const { data: trendsData } = useQuery<{ trends: TrendData[]; group_by: 'hour' | 'day' }>({
+    const { data: trendsData } = useQuery<{ trends: TrendData[]; group_by: '10min' | 'hour' | 'day' }>({
         queryKey: ['trends', projectId, timeRange, environment],
-        queryFn: () => fetchJsonWithFeatureGate<{ trends: TrendData[]; group_by: 'hour' | 'day' }>(
+        queryFn: () => fetchJsonWithFeatureGate<{ trends: TrendData[]; group_by: '10min' | 'hour' | 'day' }>(
             `/api/projects/${projectId}/analytics/trends?time_range=${timeRange}&environment=${environment}`
         ),
         enabled: !!projectId,
@@ -258,58 +164,40 @@ export default function ObservabilityPage({ params }: PageProps) {
         retry: (failureCount, error) => !isFeatureGateError(error) && failureCount < 1,
     });
 
-    const { data: httpTrendsData } = useQuery<{ trends: HttpTrendData[] }>({
-        queryKey: ['gatewayTimeline', 'http', projectId, timeRange, environment],
-        queryFn: async () => {
-            const res = await fetch(`/api/projects/${projectId}/logs/http/timeline?time_range=${timeRange}&environment=${environment}`);
-            if (!res.ok) throw new Error('Failed to fetch HTTP traffic timeline');
-            return res.json();
-        },
-        enabled: !!projectId,
-        staleTime: 30 * 1000,
-    });
-
     const trends = useMemo(() => trendsData?.trends || [], [trendsData?.trends]);
-    const groupBy: 'hour' | 'day' = trendsData?.group_by || 'day';
-
-    const httpTrends = useMemo(
-        () => httpTrendsData?.trends || [],
-        [httpTrendsData?.trends]
-    );
-
-    const httpSummary = useMemo(
-        () => summarizeHttpTrends(httpTrends),
-        [httpTrends]
-    );
-
-    const aiLastUpdate = getLastUpdateTime(trends, (point) => point.total > 0);
-    const httpLastUpdate = getLastUpdateTime(httpTrends, (point) => point.total > 0);
 
     if (projectLoading) {
         return (
-            <div className="w-full max-w-[1360px] mx-auto px-6 py-8">
+            <div className="w-full max-w-[1480px] mx-auto px-6 py-8 lg:px-8">
                 <div className="flex items-center justify-between mb-6">
                     <div>
-                        <Skeleton className="h-5 w-28" />
-                        <Skeleton className="h-3 w-52 mt-1" />
+                        <Skeleton className="h-7 w-40" />
+                        <Skeleton className="h-3.5 w-72 mt-2" />
                     </div>
-                    <Skeleton className="h-8 w-32" />
+                    <div className="flex gap-2">
+                        <Skeleton className="h-8 w-20" />
+                        <Skeleton className="h-8 w-32" />
+                    </div>
                 </div>
-                <div className="lg:grid lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
-                    <div className="mb-4 lg:mb-0 space-y-0.5">
-                        {[1, 2, 3, 4, 5, 6].map(i => <Skeleton key={i} className="h-8 w-full max-w-[180px] rounded-lg" />)}
+                <div className="overflow-hidden rounded-2xl border border-border/50">
+                    <div className="border-b border-border/50 px-5 py-4">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-56 mt-2" />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                        {[1, 2, 3, 4, 5].map(i => (
-                            <ObservabilityChartCardSkeleton key={i} />
+                    <div className="grid grid-cols-1 gap-px bg-border/40 md:grid-cols-2 xl:grid-cols-12">
+                        <ObservabilityChartCardSkeleton className="min-h-[250px] md:col-span-2 xl:col-span-8" />
+                        <ObservabilityChartCardSkeleton className="min-h-[250px] xl:col-span-4" />
+                        {[1, 2, 3].map(i => (
+                            <ObservabilityChartCardSkeleton key={i} className="min-h-[210px] xl:col-span-3" />
                         ))}
+                        <ObservabilityChartCardSkeleton className="min-h-[210px] md:col-span-2 xl:col-span-3" />
                     </div>
                 </div>
             </div>
         );
     }
 
-    if (!projectId) {
+    if (!project) {
         return (
             <div className="w-full max-w-6xl mx-auto px-6 py-8">
                 <div className="text-center py-16 flex flex-col items-center">
@@ -334,83 +222,83 @@ export default function ObservabilityPage({ params }: PageProps) {
         );
     }
 
-    const emptyOverall = !overview || (
-        overview.overview.total_requests === 0
-        && httpSummary.total === 0
-    );
-
     return (
-        <div className="w-full max-w-[1360px] mx-auto px-6 py-8">
-            <div className="flex items-center justify-between mb-6">
+        <div className="w-full max-w-[1480px] mx-auto px-6 py-8 lg:px-8">
+            <div className="mb-6">
                 <div>
-                    <h1 className="text-base font-medium">Observability</h1>
-                    <p className="text-xs text-muted-foreground mt-0.5">Real-time observability across AI and HTTP traffic</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <ExportDialog projectId={projectId} type="analytics" environment={environment} />
-                    <Select value={timeRange} onValueChange={setTimeRange}>
-                        <SelectTrigger className="w-[130px] h-8 text-xs">
-                            <SelectValue placeholder="Period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="1h" className="text-xs">Last Hour</SelectItem>
-                            <SelectItem value="24h" className="text-xs">24 Hours</SelectItem>
-                            <SelectItem value="7d" className="text-xs">7 Days</SelectItem>
-                            <SelectItem value="30d" className="text-xs">30 Days</SelectItem>
-                            <SelectItem value="90d" className="text-xs">90 Days</SelectItem>
-                            <SelectItem value="all" className="text-xs">All Time</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <h1 className="text-2xl font-semibold tracking-[-0.035em]">Observability</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Live AI telemetry for {project.name}.</p>
                 </div>
             </div>
 
-            <div className="lg:grid lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
-                <aside className="mb-4 lg:mb-0">
-                    <nav className="flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible">
-                        {sections.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => setSection(item.id)}
-                                className={cn(
-                                    'h-8 px-2.5 rounded-lg text-xs text-left transition-all whitespace-nowrap',
-                                    section === item.id
-                                        ? 'bg-secondary text-foreground font-medium'
-                                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                                )}
-                            >
-                                {item.label}
-                            </button>
-                        ))}
-                    </nav>
-                </aside>
+            <nav className="mb-4 flex gap-1 overflow-x-auto pb-1 lg:hidden" aria-label="Observability sections">
+                {sections.map((item) => (
+                    <Link
+                        key={item.id}
+                        href={item.id === 'overview' ? pathname : `${pathname}?section=${item.id}`}
+                        scroll={false}
+                        className={`h-8 shrink-0 rounded-md px-3 text-xs leading-8 transition-colors ${
+                            section === item.id
+                                ? 'bg-secondary text-foreground font-medium'
+                                : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                        }`}
+                    >
+                        {item.label}
+                    </Link>
+                ))}
+            </nav>
 
-                <div className="min-w-0">
+            <div className="min-w-0">
                     {section === 'overview' && (
-                        <>
-                            {/* AI Charts grid */}
-                            <div className="border border-border/40 bg-card mb-2.5">
-                                <div className="grid grid-cols-1 md:grid-cols-2">
+                        <div className="space-y-7">
+                            <section aria-labelledby="ai-signals-heading">
+                                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                    <div>
+                                        <h2 id="ai-signals-heading" className="text-sm font-medium">AI signals</h2>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">The operating pulse of every model request.</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                        <Select value={timeRange} onValueChange={setTimeRange}>
+                                            <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
+                                                <SelectValue placeholder="Period" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="1h" className="text-xs">Last Hour</SelectItem>
+                                                <SelectItem value="24h" className="text-xs">24 Hours</SelectItem>
+                                                <SelectItem value="7d" className="text-xs">7 Days</SelectItem>
+                                                <SelectItem value="30d" className="text-xs">30 Days</SelectItem>
+                                                <SelectItem value="90d" className="text-xs">90 Days</SelectItem>
+                                                <SelectItem value="all" className="text-xs">All Time</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
                                 {!overview ? (
-                                    <>
-                                        <ObservabilityChartCardSkeleton className="border-b md:border-r border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="border-b border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="border-b md:border-r border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="border-b border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="border-b md:border-b-0 md:border-r border-border/40" />
-                                        <ObservabilityChartCardSkeleton className="" />
-                                    </>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 xl:col-span-5" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-5" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-7" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-xl border border-border/55 xl:col-span-7" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    </div>
                                 ) : (
-                                    <>
-                                        <ObservabilityChartCard
-                                            className="border-b md:border-r border-border/40"
-                                            title="AI Requests"
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                        <ObservabilitySignalCard
+                                            className="md:col-span-2 xl:col-span-7"
+                                            title="Request outcomes"
+                                            description="Successful, failed, and filtered AI requests over time."
                                             href={`/${orgSlug}/${projectSlug}/logs`}
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={205}
                                             series={[
                                                 {
                                                     key: 'success',
                                                     label: 'Success',
-                                                    color: 'hsl(142, 71%, 45%)',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.total_requests,
                                                     format: 'number',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.success })),
@@ -418,85 +306,105 @@ export default function ObservabilityPage({ params }: PageProps) {
                                                 {
                                                     key: 'error',
                                                     label: 'Error',
-                                                    color: 'hsl(0, 84%, 60%)',
+                                                    color: 'hsl(356, 80%, 58%)',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.error })),
                                                 },
                                                 {
                                                     key: 'filtered',
                                                     label: 'Filtered',
-                                                    color: 'hsl(24, 96%, 53%)',
+                                                    color: 'hsl(45, 92%, 51%)',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered })),
                                                 },
                                             ]}
                                         />
-                                        <ObservabilityChartCard
-                                            className="border-b border-border/40"
-                                            title="Cost"
+                                        <ObservabilitySignalCard
+                                            className="xl:col-span-5"
+                                            title="Spend"
+                                            description="Provider cost accumulated across model traffic."
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={205}
                                             series={[
                                                 {
                                                     key: 'cost',
                                                     label: 'Total spend',
-                                                    color: 'hsl(217, 91%, 60%)',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.total_cost,
                                                     format: 'currency',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.cost })),
                                                 },
                                             ]}
                                         />
-                                        <ObservabilityChartCard
-                                            className="border-b md:border-r border-border/40"
-                                            title="Success Rate"
+                                        <ObservabilitySignalCard
+                                            className="xl:col-span-5"
+                                            title="Success rate"
+                                            description="The share of AI requests completed successfully."
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={175}
                                             series={[
                                                 {
                                                     key: 'rate',
-                                                    label: 'Success',
-                                                    color: 'hsl(142, 71%, 45%)',
+                                                    label: 'Successful',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.success_rate,
                                                     format: 'percentage',
                                                     data: trends.map(p => ({
                                                         timestamp: p.timestamp,
-                                                        value: p.total > 0 ? Math.round((p.success / p.total) * 100) : 0,
+                                                        value: p.total > 0 ? (p.success / p.total) * 100 : 0,
                                                     })),
                                                 },
                                             ]}
                                         />
-                                        <ObservabilityChartCard
-                                            className="border-b border-border/40"
-                                            title="Latency"
+                                        <ObservabilitySignalCard
+                                            className="xl:col-span-7"
+                                            title="Response latency"
+                                            description="Mean end-to-end response time across providers."
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={175}
                                             series={[
                                                 {
                                                     key: 'latency',
-                                                    label: 'Avg response',
-                                                    color: 'hsl(24, 96%, 53%)',
+                                                    label: 'Average latency',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.avg_latency,
                                                     format: 'ms',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.avg_latency })),
                                                 },
                                             ]}
                                         />
-                                        <ObservabilityChartCard
-                                            className="border-b md:border-b-0 md:border-r border-border/40"
-                                            title="Tokens"
+                                        <ObservabilitySignalCard
+                                            className="xl:col-span-7"
+                                            title="Token throughput"
+                                            description="Tokens processed across prompts and model output."
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={155}
                                             series={[
                                                 {
                                                     key: 'tokens',
-                                                    label: 'Total tokens',
-                                                    color: 'hsl(280, 65%, 60%)',
+                                                    label: 'Tokens',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.total_tokens,
                                                     format: 'number',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.tokens })),
                                                 },
                                             ]}
                                         />
-                                        <ObservabilityChartCard
-                                            className=""
-                                            title="Security"
+                                        <ObservabilitySignalCard
+                                            className="xl:col-span-5"
+                                            title="Security signals"
+                                            description="Policy incidents and blocked model output."
                                             href={`/${orgSlug}/${projectSlug}/security`}
+                                            type="line"
+                                            curve="stepAfter"
+                                            height={155}
                                             series={[
                                                 {
                                                     key: 'incidents',
                                                     label: 'Incidents',
-                                                    color: 'hsl(280, 65%, 60%)',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     total: overview.overview.total_incidents,
                                                     format: 'number',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered + p.blocked_output })),
@@ -504,140 +412,136 @@ export default function ObservabilityPage({ params }: PageProps) {
                                                 {
                                                     key: 'blocked',
                                                     label: 'Blocked',
-                                                    color: 'hsl(0, 84%, 60%)',
+                                                    color: 'hsl(153, 72%, 45%)',
                                                     data: trends.map(p => ({ timestamp: p.timestamp, value: p.blocked_output })),
                                                 },
                                             ]}
                                         />
-                                    </>
+                                    </div>
                                 )}
-                                </div>
-                            </div>
+                            </section>
 
-                            {/* HTTP section — only show when there's actual HTTP data */}
-                            {httpSummary.total > 0 && (
-                                <div className="border border-border/40 bg-card mt-2.5">
-                                <div className="grid grid-cols-1 md:grid-cols-2">
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r md:border-b-0 border-border/40"
-                                        title="HTTP Traffic"
-                                        type="bar"
-                                        series={[
-                                            {
-                                                key: 'total',
-                                                label: 'Requests',
-                                                color: 'hsl(217, 91%, 60%)',
-                                                total: httpSummary.total,
-                                                format: 'number',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.total })),
-                                            },
-                                            {
-                                                key: 'error',
-                                                label: 'Errors',
-                                                color: 'hsl(0, 84%, 60%)',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.error })),
-                                            },
-                                        ]}
-                                    />
-                                    <ObservabilityChartCard
-                                        className=""
-                                        title="HTTP Success Rate"
-                                        series={[
-                                            {
-                                                key: 'success',
-                                                label: 'Success',
-                                                color: 'hsl(142, 71%, 45%)',
-                                                total: httpSummary.successRate,
-                                                format: 'percentage',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.success })),
-                                            },
-                                        ]}
-                                    />
-                                </div>
-                                </div>
-                            )}
-                        </>
+                        </div>
                     )}
                     {section === 'ai' && (
-                        <>
-                            <div className="flex items-center justify-between mb-4">
+                        <div className="space-y-6">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                                 <div>
                                     <h2 className="text-sm font-medium">AI</h2>
-                                    <p className="text-xs text-muted-foreground mt-0.5">Model traffic, token usage, provider cost, and latency.</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">Model traffic, token usage, provider cost, and latency.</p>
                                 </div>
-                                <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
-                                    <Link href={`/${orgSlug}/${projectSlug}/logs`}>
-                                        Open AI Logs
-                                        <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                                    </Link>
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                    <Select value={timeRange} onValueChange={setTimeRange}>
+                                        <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
+                                            <SelectValue placeholder="Period" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1h" className="text-xs">Last Hour</SelectItem>
+                                            <SelectItem value="24h" className="text-xs">24 Hours</SelectItem>
+                                            <SelectItem value="7d" className="text-xs">7 Days</SelectItem>
+                                            <SelectItem value="30d" className="text-xs">30 Days</SelectItem>
+                                            <SelectItem value="90d" className="text-xs">90 Days</SelectItem>
+                                            <SelectItem value="all" className="text-xs">All Time</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                                        <Link href={`/${orgSlug}/${projectSlug}/logs`}>
+                                            Open AI Logs
+                                            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                        </Link>
+                                    </Button>
+                                </div>
                             </div>
 
-                            {overview && (
-                                <div className="border border-border/40 bg-card mb-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2">
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r border-border/40"
-                                        title="Requests"
+                            {!overview ? (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-7" />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                    <ObservabilitySignalCard
+                                        className="md:col-span-2 xl:col-span-7"
+                                        title="Request outcomes"
+                                        description="Successful, failed, and filtered model requests over time."
+                                        href={`/${orgSlug}/${projectSlug}/logs`}
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={205}
                                         series={[
                                             {
                                                 key: 'success',
                                                 label: 'Success',
-                                                color: 'hsl(142, 71%, 45%)',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.total_requests,
                                                 format: 'number',
                                                 data: trends.map(p => ({ timestamp: p.timestamp, value: p.success })),
                                             },
                                             {
-                                                key: 'filtered',
-                                                label: 'Filtered',
-                                                color: 'hsl(24, 96%, 53%)',
-                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered })),
-                                            },
-                                            {
                                                 key: 'error',
                                                 label: 'Error',
-                                                color: 'hsl(0, 84%, 60%)',
+                                                color: 'hsl(356, 80%, 58%)',
                                                 data: trends.map(p => ({ timestamp: p.timestamp, value: p.error })),
+                                            },
+                                            {
+                                                key: 'filtered',
+                                                label: 'Filtered',
+                                                color: 'hsl(45, 92%, 51%)',
+                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.filtered })),
                                             },
                                         ]}
                                     />
-                                    <ObservabilityChartCard
-                                        className="border-b border-border/40"
-                                        title="Tokens"
+                                    <ObservabilitySignalCard
+                                        className="xl:col-span-5"
+                                        title="Token throughput"
+                                        description="Tokens processed across prompts and model output."
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={205}
                                         series={[
                                             {
                                                 key: 'tokens',
-                                                label: 'Total tokens',
-                                                color: 'hsl(280, 65%, 60%)',
+                                                label: 'Tokens',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.total_tokens,
                                                 format: 'number',
                                                 data: trends.map(p => ({ timestamp: p.timestamp, value: p.tokens })),
                                             },
                                         ]}
                                     />
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r md:border-b-0 border-border/40"
-                                        title="Cost"
+                                    <ObservabilitySignalCard
+                                        className="xl:col-span-5"
+                                        title="Spend"
+                                        description="Provider cost accumulated across model traffic."
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={175}
                                         series={[
                                             {
                                                 key: 'cost',
                                                 label: 'Total spend',
-                                                color: 'hsl(217, 91%, 60%)',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.total_cost,
                                                 format: 'currency',
                                                 data: trends.map(p => ({ timestamp: p.timestamp, value: p.cost })),
                                             },
                                         ]}
                                     />
-                                    <ObservabilityChartCard
-                                        className=""
-                                        title="Latency"
+                                    <ObservabilitySignalCard
+                                        className="xl:col-span-7"
+                                        title="Response latency"
+                                        description="Mean end-to-end response time across model providers."
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={175}
                                         series={[
                                             {
                                                 key: 'latency',
-                                                label: 'Avg response',
-                                                color: 'hsl(24, 96%, 53%)',
+                                                label: 'Average latency',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.avg_latency,
                                                 format: 'ms',
                                                 data: trends.map(p => ({ timestamp: p.timestamp, value: p.avg_latency })),
@@ -645,220 +549,167 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                 </div>
-                                </div>
                             )}
 
                             {overview && (
-                                <div className="border border-border/40 bg-card">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
-                                    <div className="border-b md:border-r md:border-b-0 border-border/40"><ModelUsageChart data={overview.breakdown.model_usage} /></div>
-                                    <div className="border-b md:border-r md:border-b-0 border-border/40"><CostByProviderChart data={overview.breakdown.cost_by_provider} /></div>
-                                    <div><LatencyHistogram data={overview.breakdown.latency_percentiles} /></div>
-                                </div>
-                                </div>
-                            )}
-                        </>
-                    )}
-
-                    {section === 'http' && (
-                        <>
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h2 className="text-sm font-medium">HTTP</h2>
-                                    <p className="text-xs text-muted-foreground mt-0.5">Unified API and web request health, status mix, and request volume.</p>
-                                </div>
-                                <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
-                                    <Link href={`/${orgSlug}/${projectSlug}/logs?source=http`}>
-                                        Open HTTP Logs
-                                        <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                                    </Link>
-                                </Button>
-                            </div>
-
-                            {httpSummary.total > 0 ? (
-                                <div className="border border-border/40 bg-card">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r border-border/40"
-                                        title="Requests"
-                                        type="bar"
-                                        series={[
-                                            {
-                                                key: 'total',
-                                                label: 'Total',
-                                                color: 'hsl(217, 91%, 60%)',
-                                                total: httpSummary.total,
-                                                format: 'number',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.total })),
-                                            },
-                                        ]}
-                                    />
-                                    <ObservabilityChartCard
-                                        className="border-b border-border/40"
-                                        title="Success Rate"
-                                        series={[
-                                            {
-                                                key: 'success',
-                                                label: 'Success',
-                                                color: 'hsl(142, 71%, 45%)',
-                                                total: httpSummary.successRate,
-                                                format: 'percentage',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.success })),
-                                            },
-                                        ]}
-                                    />
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r md:border-b-0 border-border/40"
-                                        title="Errors"
-                                        series={[
-                                            {
-                                                key: 'error',
-                                                label: '4xx/5xx',
-                                                color: 'hsl(0, 84%, 60%)',
-                                                total: httpSummary.errorRate,
-                                                format: 'percentage',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.error })),
-                                            },
-                                        ]}
-                                    />
-                                    <ObservabilityChartCard
-                                        className=""
-                                        title="Rate Limited"
-                                        series={[
-                                            {
-                                                key: 'filtered',
-                                                label: '429 responses',
-                                                color: 'hsl(24, 96%, 53%)',
-                                                total: httpSummary.filtered,
-                                                format: 'number',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.filtered })),
-                                            },
-                                        ]}
-                                    />
-                                </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <div className="border border-border/30 bg-card px-5 py-4">
-                                        <p className="text-sm font-medium mb-1">Connect Vercel to see HTTP traffic</p>
-                                        <p className="text-xs text-muted-foreground/60 max-w-[480px] mb-4">
-                                            Install the Vercel integration to automatically stream every request to your observability dashboard — no SDK or code changes needed.
-                                        </p>
-                                        <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
-                                            <Link href={`/${orgSlug}/${projectSlug}/edge`}>
-                                                Set up Vercel Integration
-                                                <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                                            </Link>
-                                        </Button>
+                                <section aria-labelledby="model-intelligence-heading">
+                                    <div className="mb-3">
+                                        <h3 id="model-intelligence-heading" className="text-sm font-medium">Model intelligence</h3>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">Traffic concentration, provider spend, and latency percentiles.</p>
                                     </div>
-
-                                    <div className="border border-border/40 bg-card">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-0">
-                                        <div className="border-b md:border-b-0 md:border-r border-border/40 bg-card px-4 py-3.5">
-                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Request Volume</p>
-                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">Total requests, methods, and paths across all routes</p>
-                                        </div>
-                                        <div className="border-b md:border-b-0 md:border-r border-border/40 bg-card px-4 py-3.5">
-                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Success Rate</p>
-                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">2xx/3xx vs 4xx/5xx breakdown over time</p>
-                                        </div>
-                                        <div className="md:border-r border-border/40 bg-card px-4 py-3.5">
-                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Error Tracking</p>
-                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">Spot failing endpoints and status code spikes</p>
-                                        </div>
-                                        <div className="bg-card px-4 py-3.5">
-                                            <p className="text-xs font-medium text-muted-foreground/70 mb-1">Rate Limiting</p>
-                                            <p className="text-[10px] text-muted-foreground/40 leading-relaxed">429 responses and throttle patterns per route</p>
+                                    <div className="overflow-hidden rounded-xl border border-border/55 bg-card">
+                                        <div className="grid grid-cols-1 md:grid-cols-3">
+                                            <div className="border-b border-border/40 md:border-b-0 md:border-r"><ModelUsageChart data={overview.breakdown.model_usage} /></div>
+                                            <div className="border-b border-border/40 md:border-b-0 md:border-r">
+                                                <CostByProviderChart
+                                                    data={overview.breakdown.cost_by_provider}
+                                                    requests={overview.breakdown.requests_by_provider}
+                                                />
+                                            </div>
+                                            <div>
+                                                <LatencyHistogram
+                                                    data={overview.breakdown.latency_percentiles}
+                                                    history={trends.map(point => ({
+                                                        timestamp: point.timestamp,
+                                                        samples: point.latency_samples ?? 0,
+                                                        p50: point.latency_p50 ?? null,
+                                                        p75: point.latency_p75 ?? null,
+                                                        p90: point.latency_p90 ?? null,
+                                                        p95: point.latency_p95 ?? null,
+                                                        p99: point.latency_p99 ?? null,
+                                                    }))}
+                                                    timeRange={timeRange}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                </div>
+                                </section>
                             )}
-                        </>
+                        </div>
                     )}
 
                     {section === 'reliability' && (
-                        <>
-                            <div className="mb-4">
-                                <h2 className="text-sm font-medium">Reliability</h2>
-                                <p className="text-xs text-muted-foreground mt-0.5">Failover behavior, request error rates, and system stability signals.</p>
+                        <div className="space-y-6">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <h2 className="text-sm font-medium">Reliability</h2>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">AI delivery health, provider recovery, and response stability.</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                    <Select value={timeRange} onValueChange={setTimeRange}>
+                                        <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
+                                            <SelectValue placeholder="Period" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1h" className="text-xs">Last Hour</SelectItem>
+                                            <SelectItem value="24h" className="text-xs">24 Hours</SelectItem>
+                                            <SelectItem value="7d" className="text-xs">7 Days</SelectItem>
+                                            <SelectItem value="30d" className="text-xs">30 Days</SelectItem>
+                                            <SelectItem value="90d" className="text-xs">90 Days</SelectItem>
+                                            <SelectItem value="all" className="text-xs">All Time</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                                        <Link href={`/${orgSlug}/${projectSlug}/logs`}>
+                                            Open AI logs
+                                            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                        </Link>
+                                    </Button>
+                                </div>
                             </div>
 
-                            {/* Failover card — keeps its own data fetching */}
-                            <div className="mb-4">
-                                <FailoverMetrics
-                                    projectId={projectId}
-                                    environment={environment}
-                                    timeRange={timeRange}
-                                />
-                            </div>
+                            {!overview ? (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-xl border border-border/55 xl:col-span-7" />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                    <ObservabilitySignalCard
+                                        className="md:col-span-2 xl:col-span-7"
+                                        title="Delivery outcomes"
+                                        description="Completed, failed, and policy-filtered AI requests over time."
+                                        href={`/${orgSlug}/${projectSlug}/logs`}
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={220}
+                                        series={[
+                                            {
+                                                key: 'success',
+                                                label: 'Delivered',
+                                                color: 'hsl(153, 72%, 45%)',
+                                                total: overview.overview.total_requests,
+                                                format: 'number',
+                                                data: trends.map(point => ({ timestamp: point.timestamp, value: point.success })),
+                                            },
+                                            {
+                                                key: 'error',
+                                                label: 'Error',
+                                                color: 'hsl(356, 80%, 58%)',
+                                                data: trends.map(point => ({ timestamp: point.timestamp, value: point.error })),
+                                            },
+                                            {
+                                                key: 'filtered',
+                                                label: 'Filtered',
+                                                color: 'hsl(45, 92%, 51%)',
+                                                data: trends.map(point => ({ timestamp: point.timestamp, value: point.filtered })),
+                                            },
+                                        ]}
+                                    />
 
-                            {overview && (
-                                <div className="border border-border/40 bg-card">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r border-border/40"
-                                        title="AI Success Rate"
+                                    <FailoverMetrics
+                                        className="xl:col-span-5"
+                                        projectId={projectId}
+                                        environment={environment}
+                                        timeRange={timeRange}
+                                    />
+
+                                    <ObservabilitySignalCard
+                                        className="xl:col-span-5"
+                                        title="Delivery rate"
+                                        description="The share of AI requests completed successfully, including recovered fallbacks."
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={180}
                                         series={[
                                             {
                                                 key: 'rate',
-                                                label: 'Success',
-                                                color: 'hsl(142, 71%, 45%)',
+                                                label: 'Delivered',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.success_rate,
                                                 format: 'percentage',
-                                                data: trends.map(p => ({
-                                                    timestamp: p.timestamp,
-                                                    value: p.total > 0 ? Math.round((p.success / p.total) * 100) : 0,
+                                                data: trends.map(point => ({
+                                                    timestamp: point.timestamp,
+                                                    value: point.total > 0 ? (point.success / point.total) * 100 : 0,
                                                 })),
                                             },
                                         ]}
                                     />
-                                    <ObservabilityChartCard
-                                        className="border-b border-border/40"
-                                        title="Average Latency"
+
+                                    <ObservabilitySignalCard
+                                        className="xl:col-span-7"
+                                        title="Response stability"
+                                        description="Mean end-to-end latency across model providers."
+                                        type="line"
+                                        curve="stepAfter"
+                                        height={180}
                                         series={[
                                             {
                                                 key: 'latency',
-                                                label: 'Avg response',
-                                                color: 'hsl(24, 96%, 53%)',
+                                                label: 'Average latency',
+                                                color: 'hsl(153, 72%, 45%)',
                                                 total: overview.overview.avg_latency,
                                                 format: 'ms',
-                                                data: trends.map(p => ({ timestamp: p.timestamp, value: p.avg_latency })),
+                                                data: trends.map(point => ({ timestamp: point.timestamp, value: point.avg_latency })),
                                             },
                                         ]}
                                     />
-                                    <ObservabilityChartCard
-                                        className="border-b md:border-r md:border-b-0 border-border/40"
-                                        title="HTTP Errors"
-                                        series={[
-                                            {
-                                                key: 'error',
-                                                label: '4xx/5xx rate',
-                                                color: 'hsl(0, 84%, 60%)',
-                                                total: httpSummary.errorRate,
-                                                format: 'percentage',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.error })),
-                                            },
-                                        ]}
-                                    />
-                                    <ObservabilityChartCard
-                                        className=""
-                                        title="HTTP Throttles"
-                                        series={[
-                                            {
-                                                key: 'filtered',
-                                                label: '429 responses',
-                                                color: 'hsl(24, 96%, 53%)',
-                                                total: httpSummary.filtered,
-                                                format: 'number',
-                                                data: httpTrends.map(p => ({ timestamp: p.timestamp, value: p.filtered })),
-                                            },
-                                        ]}
-                                    />
-                                </div>
                                 </div>
                             )}
-                        </>
+                        </div>
                     )}
 
                     {section === 'security' && overview && (
@@ -938,9 +789,11 @@ export default function ObservabilityPage({ params }: PageProps) {
                         </>
                     )}
                     {section === 'intelligence' && projectId && (
-                        <IntelligencePanel projectId={projectId} environment={environment} />
+                        <IntelligencePanel
+                            projectId={projectId}
+                            environment={environment}
+                        />
                     )}
-                </div>
             </div>
         </div>
     );

@@ -5,7 +5,7 @@ import { Copy, Share, ArrowUp, ThumbsUp, ThumbsDown, RotateCcw } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { ThinkingIndicator } from "@/components/docs/ThinkingIndicator";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import Navbar from "@/components/landing/Navbar";
 import { Logo } from "@/components/logo";
 import { siteConfig } from "@/config/site";

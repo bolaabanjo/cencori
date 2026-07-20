@@ -8,7 +8,7 @@ import { X, Send, ThumbsUp, ThumbsDown, Copy, RotateCcw, StopCircle, MessageCirc
 import { useDocsContext } from "./DocsContext";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Copy, Check, ArrowRight, Settings, User, Search, Bell, Home, Plus, Trash2, Edit, Eye, Download, Upload, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Cloudflare, Aws, Azure, Google, OpenAI, Claude, Gemini } from "@lobehub/icons";
 
 function CodeBlock({ code, language = "tsx" }: { code: string; language?: string }) {

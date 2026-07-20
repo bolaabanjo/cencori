@@ -3,7 +3,7 @@
 
 import { Copy } from "lucide-react";
 import React from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -23,6 +23,7 @@ interface ObservabilityChartCardProps {
     type?: 'area' | 'bar';
     isLoading?: boolean;
     className?: string;
+    chartHeight?: number;
 }
 
 export function formatValue(val: number, format?: ChartSeries['format']): string {
@@ -77,19 +78,6 @@ function getTimeLabels(timestamps: string[]): { start: string; end: string } {
     return { start, end: 'Now' };
 }
 
-function yTickFormatter(val: number, format?: ChartSeries['format']): string {
-    if (format === 'currency') {
-        if (val === 0) return '$0';
-        if (val < 0.01) return `$${val.toFixed(3)}`;
-        return `$${val.toFixed(2)}`;
-    }
-    if (format === 'percentage') return `${val}%`;
-    if (format === 'ms') return val >= 1000 ? `${(val / 1000).toFixed(0)}s` : `${val}ms`;
-    if (val >= 1000000) return `${(val / 1000000).toFixed(0)}M`;
-    if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
-    return `${val}`;
-}
-
 function ChartTooltipContent({ active, payload, label }: { active?: boolean; payload?: Array<{ color: string; name: string; value: number; dataKey: string }>; label?: string }) {
     if (!active || !payload?.length) return null;
     return (
@@ -125,7 +113,9 @@ export function ObservabilityChartCard({
     type = 'area',
     isLoading = false,
     className,
+    chartHeight = 100,
 }: ObservabilityChartCardProps) {
+    const gradientId = useId().replace(/:/g, '');
     const chartData = useMemo(() => {
         if (series.length === 0) return [];
         const allTimestamps = [...new Set(series.flatMap(s => s.data.map(d => d.timestamp)))].sort();
@@ -157,7 +147,7 @@ export function ObservabilityChartCard({
 
     return (
         <div className={cn(
-            'bg-card flex flex-col overflow-hidden transition-colors',
+            'group bg-card flex flex-col overflow-hidden transition-colors',
             className
         )}>
             {/* Header: title + primary value */}
@@ -198,12 +188,12 @@ export function ObservabilityChartCard({
             {/* Chart */}
             <div className="flex-1 min-h-0 px-0">
                 {hasData ? (
-                    <ResponsiveContainer width="100%" height={100}>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
                         {type === 'bar' ? (
                             <BarChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 12 }} barCategoryGap="25%">
                                 <defs>
                                     {series.map(s => (
-                                        <linearGradient key={s.key} id={`fill-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient key={s.key} id={`fill-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor={s.color} stopOpacity={0.85} />
                                             <stop offset="100%" stopColor={s.color} stopOpacity={0.35} />
                                         </linearGradient>
@@ -221,14 +211,14 @@ export function ObservabilityChartCard({
                                     content={<ChartTooltipContent />}
                                 />
                                 {series.map(s => (
-                                    <Bar key={s.key} dataKey={s.key} name={s.label} fill={`url(#fill-${s.key})`} radius={[3, 3, 0, 0]} maxBarSize={16} />
+                                    <Bar key={s.key} dataKey={s.key} name={s.label} fill={`url(#fill-${gradientId}-${s.key})`} radius={[3, 3, 0, 0]} maxBarSize={16} />
                                 ))}
                             </BarChart>
                         ) : (
                             <AreaChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 12 }}>
                                 <defs>
                                     {series.map(s => (
-                                        <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient key={s.key} id={`grad-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor={s.color} stopOpacity={0.25} />
                                             <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
                                         </linearGradient>
@@ -253,7 +243,7 @@ export function ObservabilityChartCard({
                                         name={s.label}
                                         stroke={s.color}
                                         strokeWidth={1.5}
-                                        fill={`url(#grad-${s.key})`}
+                                        fill={`url(#grad-${gradientId}-${s.key})`}
                                         dot={false}
                                         activeDot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
                                     />
@@ -262,7 +252,7 @@ export function ObservabilityChartCard({
                         )}
                     </ResponsiveContainer>
                 ) : (
-                    <div className="h-[100px] flex items-center justify-center">
+                    <div className="flex items-center justify-center" style={{ height: chartHeight }}>
                         <p className="text-[11px] text-muted-foreground/30">No data yet</p>
                     </div>
                 )}

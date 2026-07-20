@@ -28,10 +28,14 @@ export async function checkMemoryQuota(
     }
 
     try {
+        // Count only ACTIVE memories — superseded/expired history (Layer 3) is
+        // retained for temporal queries but must not count against the tier
+        // limit. A contradiction that supersedes a fact keeps the count flat.
         const { count, error } = await supabase
             .from('gateway_memories')
             .select('id', { count: 'exact', head: true })
-            .eq('project_id', projectId);
+            .eq('project_id', projectId)
+            .eq('status', 'active');
 
         if (error) throw error;
 

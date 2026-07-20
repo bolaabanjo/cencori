@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Loader2 } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ThumbsUpIcon from "@hugeicons/core-free-icons/ThumbsUpIcon";

@@ -4,7 +4,7 @@ import React from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Check, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 const GitHubIcon = () => (
     <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">

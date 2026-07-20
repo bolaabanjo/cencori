@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2, Power, PowerOff, Server, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { queryKeys } from '@/lib/hooks/useQueries';
 
 interface CustomProvider {

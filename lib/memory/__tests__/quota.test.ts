@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildQuotaExceededBody, checkMemoryQuota } from '../quota';
 
 function mockSupabaseWithCount(count: number | null, error: unknown = null) {
+    // checkMemoryQuota filters .eq('project_id').eq('status','active')
     return {
         from: vi.fn(() => ({
             select: vi.fn(() => ({
-                eq: vi.fn(async () => ({ count, error })),
+                eq: vi.fn(() => ({
+                    eq: vi.fn(async () => ({ count, error })),
+                })),
             })),
         })),
     } as never;

@@ -1,14 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+    Anthropic,
+    AssemblyAI,
+    Cerebras,
+    Cohere,
+    DeepSeek,
+    ElevenLabs,
+    Google,
+    Groq,
+    HuggingFace,
+    Meta,
+    Mistral,
+    OpenAI,
+    OpenRouter,
+    Perplexity,
+    Qwen,
+    Together,
+    XAI,
+} from '@lobehub/icons';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Zap, DollarSign, Clock, Award } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AnomalyAlertsPanel } from './AnomalyAlertsPanel';
 
-interface ModelStat {
+export interface ModelStat {
     model: string;
     provider: string;
     request_count: number;
@@ -28,7 +47,7 @@ interface ModelStat {
     potential_savings_usd: number | null;
 }
 
-interface EfficiencySummary {
+export interface EfficiencySummary {
     top_model: string;
     top_provider: string;
     cheapest_model: string;
@@ -39,7 +58,7 @@ interface EfficiencySummary {
     total_requests_analyzed: number;
 }
 
-interface EfficiencyResponse {
+export interface EfficiencyResponse {
     models: ModelStat[];
     summary: EfficiencySummary | null;
     insufficient_data: boolean;
@@ -49,257 +68,333 @@ interface EfficiencyResponse {
 interface ModelEfficiencyPanelProps {
     projectId: string;
     environment: 'production' | 'test';
+    timeRange?: string;
+    onTimeRangeChange?: (value: string) => void;
 }
 
-const RECOMMENDATION_STYLES: Record<string, string> = {
-    'Best overall': 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
-    'Cheapest per token': 'text-blue-500 bg-blue-500/10 border-blue-500/20',
-    'Fastest response': 'text-purple-500 bg-purple-500/10 border-purple-500/20',
-    'Highest quality': 'text-amber-500 bg-amber-500/10 border-amber-500/20',
+const PROVIDER_LOGOS: Record<string, (size: number) => ReactNode> = {
+    openai: size => <OpenAI size={size} />,
+    anthropic: size => <Anthropic size={size} />,
+    google: size => <Google.Color size={size} />,
+    googleai: size => <Google.Color size={size} />,
+    groq: size => <Groq size={size} />,
+    cerebras: size => <Cerebras.Color size={size} />,
+    assemblyai: size => <AssemblyAI.Color size={size} />,
+    elevenlabs: size => <ElevenLabs size={size} />,
+    mistral: size => <Mistral.Color size={size} />,
+    cohere: size => <Cohere.Color size={size} />,
+    perplexity: size => <Perplexity.Color size={size} />,
+    openrouter: size => <OpenRouter size={size} />,
+    xai: size => <XAI size={size} />,
+    together: size => <Together.Color size={size} />,
+    meta: size => <Meta.Avatar size={size} />,
+    huggingface: size => <HuggingFace.Color size={size} />,
+    qwen: size => <Qwen.Avatar size={size} />,
+    deepseek: size => <DeepSeek.Color size={size} />,
 };
 
-function ScoreBar({ score, color }: { score: number; color: string }) {
+function providerKey(provider: string): string {
+    return provider.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function ProviderLogo({ provider }: { provider: string }) {
+    const renderLogo = PROVIDER_LOGOS[providerKey(provider)];
+    if (!renderLogo) return <span className="size-7 shrink-0" aria-hidden="true" />;
+
     return (
-        <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
+        <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/45 bg-background"
+            title={provider}
+            aria-hidden="true"
+        >
+            {renderLogo(15)}
+        </span>
+    );
+}
+
+function formatCostPerMillion(value: number): string {
+    const perMillion = value * 1_000_000;
+    if (perMillion === 0) return '$0.00';
+    if (perMillion < 0.01) return `$${perMillion.toFixed(4)}`;
+    return `$${perMillion.toFixed(2)}`;
+}
+
+function formatCost(value: number): string {
+    if (value === 0) return '$0.00';
+    if (value < 0.01) return `$${value.toFixed(4)}`;
+    if (value < 1) return `$${value.toFixed(3)}`;
+    return `$${value.toFixed(2)}`;
+}
+
+function formatLatency(value: number): string {
+    if (value < 1_000) return `${Math.round(value)}ms`;
+    return `${(value / 1_000).toFixed(value >= 10_000 ? 1 : 2)}s`;
+}
+
+function RecommendationBadge({ label }: { label: string }) {
+    if (!label) return null;
+
+    return (
+        <span
+            className={cn(
+                'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-none',
+                label === 'Best overall'
+                    ? 'border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400'
+                    : 'border-border/45 bg-muted/30 text-muted-foreground'
+            )}
+        >
+            {label}
+        </span>
+    );
+}
+
+function TrafficShare({ value }: { value: number }) {
+    return (
+        <div className="mt-1.5 h-px w-20 overflow-hidden bg-border/70">
+            <div className="h-full bg-foreground/45" style={{ width: `${Math.max(2, value)}%` }} />
+        </div>
+    );
+}
+
+function EfficiencyPosition({ score, highlighted }: { score: number; highlighted: boolean }) {
+    const percent = Math.max(0, Math.min(100, score * 100));
+
+    return (
+        <div className="relative h-3.5 w-20" aria-hidden="true">
+            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
             <div
-                className={cn('h-full rounded-full transition-all', color)}
-                style={{ width: `${Math.round(score * 100)}%` }}
+                className={cn(
+                    'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background',
+                    highlighted ? 'bg-emerald-500' : 'bg-foreground/55'
+                )}
+                style={{ left: `${percent}%` }}
             />
         </div>
     );
 }
 
-function formatCostPerToken(v: number): string {
-    if (v === 0) return '$0';
-    if (v < 0.000001) return `$${(v * 1e6).toFixed(2)}µ/tok`;
-    if (v < 0.001) return `$${(v * 1000).toFixed(3)}m/tok`;
-    return `$${v.toFixed(6)}/tok`;
+function SummaryCell({ label, value, detail, accent = false }: {
+    label: string;
+    value: string;
+    detail: string;
+    accent?: boolean;
+}) {
+    return (
+        <div className="min-w-0 px-4 py-3">
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">{label}</p>
+            <p className={cn('mt-1 truncate text-sm font-medium', accent && 'text-emerald-600 dark:text-emerald-400')}>
+                {value}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{detail}</p>
+        </div>
+    );
 }
 
-function formatCost(v: number): string {
-    if (v < 0.01) return `$${v.toFixed(4)}`;
-    if (v < 1) return `$${v.toFixed(3)}`;
-    return `$${v.toFixed(2)}`;
-}
+export function ModelEfficiencyPanel({
+    projectId,
+    environment,
+    timeRange: controlledTimeRange,
+    onTimeRangeChange,
+}: ModelEfficiencyPanelProps) {
+    const [localTimeRange, setLocalTimeRange] = useState('30d');
+    const timeRange = controlledTimeRange ?? localTimeRange;
 
-export function ModelEfficiencyPanel({ projectId, environment }: ModelEfficiencyPanelProps) {
-    const [timeRange, setTimeRange] = useState('30d');
+    const handleTimeRangeChange = (value: string) => {
+        if (onTimeRangeChange) onTimeRangeChange(value);
+        else setLocalTimeRange(value);
+    };
 
     const { data, isLoading, isError } = useQuery<EfficiencyResponse>({
         queryKey: ['modelEfficiency', projectId, environment, timeRange],
         queryFn: async () => {
-            const res = await fetch(
+            const response = await fetch(
                 `/api/projects/${projectId}/analytics/model-efficiency?environment=${environment}&time_range=${timeRange}&min_requests=1`
             );
-            if (!res.ok) throw new Error('Failed to fetch model efficiency data');
-            return res.json();
+            if (!response.ok) throw new Error('Failed to fetch model efficiency data');
+            return response.json();
         },
         staleTime: 5 * 60 * 1000,
     });
 
+    const modelCount = data?.models.length ?? 0;
+    const providerCount = new Set(data?.models.map(model => model.provider) ?? []).size;
+
     return (
-        <Card className="border-border/40">
-            <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <p className="text-sm font-medium">Model Efficiency</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Ranked by cost, speed, and quality for your actual workload
-                        </p>
-                    </div>
-                    <Select value={timeRange} onValueChange={setTimeRange}>
-                        <SelectTrigger className="w-[120px] h-7 text-xs">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="7d" className="text-xs">7 days</SelectItem>
-                            <SelectItem value="30d" className="text-xs">30 days</SelectItem>
-                            <SelectItem value="90d" className="text-xs">90 days</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {isLoading && (
-                    <div className="space-y-2">
-                        {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
-                    </div>
-                )}
-
-                {isError && (
-                    <p className="text-xs text-muted-foreground py-4 text-center">
-                        Could not load model efficiency data.
+        <section className="overflow-hidden rounded-xl border border-border/55 bg-card" aria-labelledby="model-efficiency-title">
+            <div className="flex flex-col gap-3 border-b border-border/35 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 id="model-efficiency-title" className="text-sm font-medium">Model efficiency</h2>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Compare the models serving your workload by price, response time, and delivery.
                     </p>
-                )}
+                </div>
+                <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+                    <SelectTrigger className="h-8 w-[120px] text-xs">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="7d" className="text-xs">7 days</SelectItem>
+                        <SelectItem value="30d" className="text-xs">30 days</SelectItem>
+                        <SelectItem value="90d" className="text-xs">90 days</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
 
-                {data?.insufficient_data && (
-                    <div className="text-center py-6">
-                        <Zap className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
-                        <p className="text-xs font-medium text-muted-foreground">Not enough data yet</p>
-                        <p className="text-[11px] text-muted-foreground/60 mt-1 max-w-[260px] mx-auto">
-                            Make at least one AI request to see model rankings.
-                            {data.total_requests_analyzed != null && data.total_requests_analyzed > 0 &&
-                                ` ${data.total_requests_analyzed} requests analyzed so far.`
-                            }
-                        </p>
+            <AnomalyAlertsPanel projectId={projectId} environment={environment} embedded />
+
+            {isLoading && (
+                <div className="space-y-2 p-4">
+                    <Skeleton className="h-20 w-full" />
+                    {[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-14 w-full" />)}
+                </div>
+            )}
+
+            {isError && (
+                <p className="px-4 py-10 text-center text-xs text-muted-foreground">
+                    Could not load model efficiency data.
+                </p>
+            )}
+
+            {data?.insufficient_data && (
+                <div className="flex flex-col items-center px-4 py-12 text-center">
+                    <span className="mb-3 flex size-9 items-center justify-center rounded-full border border-border/45 bg-muted/20">
+                        <Activity className="size-4 text-muted-foreground" />
+                    </span>
+                    <p className="text-xs font-medium">Not enough traffic yet</p>
+                    <p className="mt-1 max-w-sm text-[11px] leading-relaxed text-muted-foreground">
+                        Make at least one AI request to begin comparing model efficiency.
+                        {data.total_requests_analyzed != null && data.total_requests_analyzed > 0
+                            ? ` ${data.total_requests_analyzed} requests have been analyzed so far.`
+                            : ''}
+                    </p>
+                </div>
+            )}
+
+            {data && !data.insufficient_data && data.summary && data.models.length > 0 && (
+                <>
+                    <div className="grid border-b border-border/35 sm:grid-cols-2 lg:grid-cols-4 [&>*:not(:last-child)]:border-border/30 sm:[&>*:not(:nth-child(2n))]:border-r lg:[&>*:not(:last-child)]:border-r">
+                        <SummaryCell
+                            label="Best overall"
+                            value={data.summary.top_model}
+                            detail={data.summary.top_provider}
+                            accent
+                        />
+                        <SummaryCell
+                            label="Traffic analyzed"
+                            value={data.summary.total_requests_analyzed.toLocaleString()}
+                            detail={`${modelCount} models across ${providerCount} providers`}
+                        />
+                        <SummaryCell
+                            label="Spend analyzed"
+                            value={formatCost(data.summary.total_cost_analyzed)}
+                            detail={`${data.summary.analysis_period_days}-day comparison window`}
+                        />
+                        <SummaryCell
+                            label="Savings opportunity"
+                            value={formatCost(data.summary.potential_savings_usd)}
+                            detail={data.summary.potential_savings_usd > 0 ? 'Estimated against the top-ranked model' : 'No clear savings opportunity'}
+                        />
                     </div>
-                )}
 
-                {data && !data.insufficient_data && data.summary && data.models.length > 0 && (
-                    <>
-                        {/* Summary strip */}
-                        <div className="flex items-center gap-4 mb-4 p-3 rounded-md bg-secondary/50 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                                <Award className="h-3.5 w-3.5 text-emerald-500" />
-                                <span className="text-[11px] text-muted-foreground">Best overall:</span>
-                                <span className="text-[11px] font-medium">{data.summary.top_model}</span>
-                            </div>
-                            {data.summary.potential_savings_usd > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                    <DollarSign className="h-3.5 w-3.5 text-blue-500" />
-                                    <span className="text-[11px] text-muted-foreground">Potential savings:</span>
-                                    <span className="text-[11px] font-medium text-blue-500">
-                                        {formatCost(data.summary.potential_savings_usd)}
-                                    </span>
-                                </div>
-                            )}
-                            <div className="flex items-center gap-1.5 ml-auto">
-                                <span className="text-[10px] text-muted-foreground/60">
-                                    {data.summary.total_requests_analyzed.toLocaleString()} requests · {data.summary.analysis_period_days}d
-                                </span>
-                            </div>
-                        </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[1040px] border-collapse text-left">
+                            <caption className="sr-only">
+                                Model efficiency ranking for {data.summary.analysis_period_days} days of AI traffic
+                            </caption>
+                            <thead className="bg-muted/[0.18]">
+                                <tr className="border-b border-border/35">
+                                    <th scope="col" className="w-12 px-4 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Rank</th>
+                                    <th scope="col" className="min-w-[280px] px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Model</th>
+                                    <th scope="col" className="w-32 px-3 py-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Requests</th>
+                                    <th scope="col" className="w-28 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Cost / 1M</th>
+                                    <th scope="col" className="w-28 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Median</th>
+                                    <th scope="col" className="w-28 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">P95</th>
+                                    <th scope="col" className="w-28 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Delivery</th>
+                                    <th scope="col" className="w-36 px-4 py-2.5 text-right text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Efficiency</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.models.map(model => {
+                                    const modelKey = `${model.model}||${model.provider}`;
+                                    const highlighted = model.efficiency_rank === 1;
+                                    const trafficShare = (model.request_count / data.summary!.total_requests_analyzed) * 100;
+                                    const deliveryPercent = model.success_rate * 100;
 
-                        {/* Column headers */}
-                        <div className="grid grid-cols-[1.5rem_1fr_6rem_6rem_6rem_6rem] gap-x-3 items-center mb-2 px-1">
-                            <span />
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Model</span>
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-right">Cost/tok</span>
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-right">Latency</span>
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-right">Success</span>
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider text-right">Score</span>
-                        </div>
-
-                        {/* Model rows */}
-                        <div className="space-y-1">
-                            {data.models.map(m => (
-                                <div
-                                    key={`${m.model}||${m.provider}`}
-                                    className={cn(
-                                        'grid grid-cols-[1.5rem_1fr_6rem_6rem_6rem_6rem] gap-x-3 items-center rounded-md px-1 py-2',
-                                        m.efficiency_rank === 1 ? 'bg-emerald-500/5' : 'hover:bg-secondary/40'
-                                    )}
-                                >
-                                    {/* Rank */}
-                                    <span className={cn(
-                                        'text-[11px] font-mono font-medium w-5 text-center',
-                                        m.efficiency_rank === 1 ? 'text-emerald-500' : 'text-muted-foreground/50'
-                                    )}>
-                                        {m.efficiency_rank}
-                                    </span>
-
-                                    {/* Model name + tags */}
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="text-xs font-medium truncate">{m.model}</span>
-                                            {m.recommendation && (
-                                                <span className={cn(
-                                                    'text-[9px] font-medium px-1.5 py-0.5 rounded border shrink-0',
-                                                    RECOMMENDATION_STYLES[m.recommendation] || 'text-muted-foreground bg-secondary border-border/40'
-                                                )}>
-                                                    {m.recommendation}
-                                                </span>
+                                    return (
+                                        <tr
+                                            key={modelKey}
+                                            className={cn(
+                                                'border-b border-border/25 transition-colors last:border-b-0 hover:bg-muted/[0.18]',
+                                                model.efficiency_rank === 1 && 'bg-emerald-500/[0.025]'
                                             )}
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[10px] text-muted-foreground/60">{m.provider}</span>
-                                            <span className="text-[10px] text-muted-foreground/40">·</span>
-                                            <span className="text-[10px] text-muted-foreground/60">
-                                                {m.request_count.toLocaleString()} req
-                                            </span>
-                                            {m.potential_savings_usd != null && m.potential_savings_usd > 0 && (
-                                                <>
-                                                    <span className="text-[10px] text-muted-foreground/40">·</span>
-                                                    <span className="text-[10px] text-blue-500/70">
-                                                        save {formatCost(m.potential_savings_usd)} vs #1
+                                        >
+                                            <td className="px-4 py-3 align-middle font-mono text-[11px] tabular-nums text-muted-foreground">
+                                                {String(model.efficiency_rank).padStart(2, '0')}
+                                            </td>
+                                            <td className="px-3 py-3 align-middle">
+                                                <div className="flex max-w-full items-center gap-2.5">
+                                                    <ProviderLogo provider={model.provider} />
+                                                    <span className="min-w-0">
+                                                        <span className="flex min-w-0 items-center gap-2">
+                                                            <span className="truncate text-xs font-medium">{model.model}</span>
+                                                            <RecommendationBadge label={model.recommendation} />
+                                                        </span>
+                                                        <span className="mt-0.5 block truncate text-[10px] capitalize text-muted-foreground">{model.provider}</span>
                                                     </span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-3 align-middle">
+                                                <div className="font-mono text-[11px] tabular-nums">{model.request_count.toLocaleString()}</div>
+                                                <div className="mt-0.5 text-[10px] text-muted-foreground">{trafficShare.toFixed(1)}% of traffic</div>
+                                                <TrafficShare value={trafficShare} />
+                                            </td>
+                                            <td className="px-3 py-3 text-right align-middle font-mono text-[11px] tabular-nums">
+                                                {formatCostPerMillion(model.avg_cost_per_token)}
+                                            </td>
+                                            <td className="px-3 py-3 text-right align-middle font-mono text-[11px] tabular-nums">
+                                                {formatLatency(model.avg_latency_ms)}
+                                            </td>
+                                            <td className="px-3 py-3 text-right align-middle font-mono text-[11px] tabular-nums text-muted-foreground">
+                                                {formatLatency(model.p95_latency_ms)}
+                                            </td>
+                                            <td className="px-3 py-3 text-right align-middle">
+                                                <span className={cn(
+                                                    'font-mono text-[11px] tabular-nums',
+                                                    deliveryPercent >= 99
+                                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                                        : deliveryPercent >= 95
+                                                            ? 'text-foreground'
+                                                            : deliveryPercent >= 80
+                                                                ? 'text-amber-600 dark:text-amber-400'
+                                                                : 'text-red-600 dark:text-red-400'
+                                                )}>
+                                                    {deliveryPercent.toFixed(1)}%
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 align-middle">
+                                                <div className="flex items-center justify-end gap-3">
+                                                    <EfficiencyPosition score={model.efficiency_score} highlighted={highlighted} />
+                                                    <span className={cn(
+                                                        'w-6 text-right font-mono text-[11px] font-medium tabular-nums',
+                                                        highlighted ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
+                                                    )}>
+                                                        {Math.round(model.efficiency_score * 100)}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
 
-                                    {/* Cost per token */}
-                                    <div className="w-full">
-                                        <p className="text-[11px] font-mono text-muted-foreground text-right truncate">
-                                            {formatCostPerToken(m.avg_cost_per_token)}
-                                        </p>
-                                        <div className="flex justify-end mt-0.5">
-                                            <ScoreBar score={m.cost_score} color="bg-blue-500" />
-                                        </div>
-                                    </div>
-
-                                    {/* Latency */}
-                                    <div className="w-full">
-                                        <p className="text-[11px] font-mono text-muted-foreground text-right">
-                                            {m.avg_latency_ms}ms
-                                        </p>
-                                        <div className="flex justify-end mt-0.5">
-                                            <ScoreBar score={m.speed_score} color="bg-purple-500" />
-                                        </div>
-                                    </div>
-
-                                    {/* Success rate */}
-                                    <div className="w-full">
-                                        <p className={cn(
-                                            'text-[11px] font-mono text-right',
-                                            m.success_rate >= 0.99 ? 'text-emerald-500' :
-                                            m.success_rate >= 0.95 ? 'text-muted-foreground' : 'text-amber-500'
-                                        )}>
-                                            {(m.success_rate * 100).toFixed(1)}%
-                                        </p>
-                                        <div className="flex justify-end mt-0.5">
-                                            <ScoreBar score={m.quality_score} color="bg-amber-500" />
-                                        </div>
-                                    </div>
-
-                                    {/* Efficiency score */}
-                                    <div className="w-full">
-                                        <p className={cn(
-                                            'text-[11px] font-mono font-medium text-right',
-                                            m.efficiency_rank === 1 ? 'text-emerald-500' : 'text-muted-foreground'
-                                        )}>
-                                            {Math.round(m.efficiency_score * 100)}
-                                        </p>
-                                        <div className="flex justify-end mt-0.5">
-                                            <ScoreBar score={m.efficiency_score} color="bg-emerald-500" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Score legend */}
-                        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/30">
-                            <p className="text-[10px] text-muted-foreground/50">Score bars:</p>
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-1.5 rounded-full bg-blue-500" />
-                                <span className="text-[10px] text-muted-foreground/50">Cost</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-1.5 rounded-full bg-purple-500" />
-                                <span className="text-[10px] text-muted-foreground/50">Speed</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-1.5 rounded-full bg-amber-500" />
-                                <span className="text-[10px] text-muted-foreground/50">Quality</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <div className="w-3 h-1.5 rounded-full bg-emerald-500" />
-                                <span className="text-[10px] text-muted-foreground/50">Overall</span>
-                            </div>
-                        </div>
-                    </>
-                )}
-            </CardContent>
-        </Card>
+                    <div className="flex flex-col gap-1 border-t border-border/35 bg-muted/[0.12] px-4 py-3 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                        <span>Efficiency score: cost 45% · response time 30% · delivery 25%</span>
+                        <span>Scores use observed production traffic from this project.</span>
+                    </div>
+                </>
+            )}
+        </section>
     );
 }

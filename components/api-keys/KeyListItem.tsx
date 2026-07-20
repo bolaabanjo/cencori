@@ -21,7 +21,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Copy, MoreVertical, Trash2, Check } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { maskApiKey } from "@/lib/api-keys";
 
 interface ApiKey {

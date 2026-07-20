@@ -12,6 +12,7 @@ import { embedForMemory } from './embeddings';
 import { extractFacts } from './extraction';
 import { checkMemoryQuota } from './quota';
 import { redactFact } from './redact';
+import { reconcileFacts, hashContent, type ReconcileCandidate, type ReconcilePlan } from './reconcile';
 import { appendSessionMemories } from './session-store';
 import {
     MEMORY_CONTENT_MAX_CHARS,
@@ -21,6 +22,11 @@ import {
     type MemorySettings,
     type WrittenMemory,
 } from './types';
+
+/** Default reconciliation model when a caller doesn't pass one. */
+const DEFAULT_RECONCILE_MODEL = 'gemini-2.5-flash';
+/** Nearest active memories fetched per new fact as reconciliation candidates. */
+const RECONCILE_CANDIDATES_PER_FACT = 6;
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -35,6 +41,13 @@ export interface WriteMemoriesParams {
     facts: ExtractedFact[];
     metadata?: Record<string, unknown>;
     expiresAt?: string | null;
+    /**
+     * Run Layer-1 conflict resolution (ADD/UPDATE/DELETE/NOOP) before persisting.
+     * Defaults to true. Set false for the eval-harness baseline (blind insert).
+     */
+    reconcile?: boolean;
+    /** Model used for the reconciliation decision (defaults to gemini-2.5-flash). */
+    reconcileModel?: string;
 }
 
 export interface WriteMemoriesResult {
@@ -43,6 +56,8 @@ export interface WriteMemoriesResult {
     embeddingCostUsd: number;
     embeddingModel?: string;
     embeddingProvider?: 'openai' | 'google';
+    /** How reconciliation resolved the batch (absent when reconcile=false). */
+    reconciliation?: { added: number; updated: number; superseded: number; noop: number; fellBack: boolean };
 }
 
 /**
@@ -78,57 +93,193 @@ export async function writeMemories(params: WriteMemoriesParams): Promise<WriteM
         return { written: [], quotaExceeded: false, embeddingCostUsd: 0 };
     }
 
+    // Embed the new facts once — reused both to find reconciliation candidates
+    // and (for ADDs) as the stored vector.
     const embedding = await embedForMemory(
         supabase,
         projectId,
         organizationId,
         redacted.map(f => f.content)
     );
+    const embeddingByContent = new Map<string, number[]>();
+    redacted.forEach((f, i) => embeddingByContent.set(f.content, embedding.embeddings[i]));
 
-    const rows = redacted.map((fact, i) => ({
-        organization_id: organizationId,
-        project_id: projectId,
-        scope,
-        scope_key: scopeKey,
-        namespace,
-        content: fact.content,
-        embedding: JSON.stringify(embedding.embeddings[i]),
-        importance: fact.importance,
-        metadata: {
-            ...metadata,
-            piiRedactions: fact.redactions,
-            embeddingProvider: embedding.provider,
-            embeddingModel: embedding.model,
-        },
-        expires_at: expiresAt ?? null,
-    }));
+    let totalCostUsd = embedding.cencoriChargeUsd;
 
-    const { data, error } = await supabase
-        .from('gateway_memories')
-        .insert(rows)
-        .select('id, content, importance');
+    // ── Layer 1: reconcile against existing memories ─────────────────────────
+    const reconcileEnabled = params.reconcile !== false;
+    let plan: ReconcilePlan;
 
-    if (error) {
-        console.error('[Memory] Insert failed:', error.message);
-        return {
-            written: [],
-            quotaExceeded: false,
-            embeddingCostUsd: embedding.cencoriChargeUsd,
-            embeddingModel: embedding.model,
-            embeddingProvider: embedding.provider,
+    if (reconcileEnabled) {
+        const candidateMap = new Map<string, ReconcileCandidate>();
+        for (let i = 0; i < redacted.length; i++) {
+            const { data: cands, error: candErr } = await supabase.rpc('match_gateway_memories_for_write', {
+                p_org_id: organizationId,
+                p_project_id: projectId,
+                p_scope: scope,
+                p_scope_key: scopeKey,
+                p_query_embedding: JSON.stringify(embedding.embeddings[i]),
+                p_limit: RECONCILE_CANDIDATES_PER_FACT,
+                p_namespace: namespace,
+            });
+            if (candErr) {
+                // Candidate lookup failed → skip reconciliation, insert as-is.
+                console.warn('[Memory] Candidate lookup failed, inserting without reconcile:', candErr.message);
+                candidateMap.clear();
+                break;
+            }
+            for (const row of (cands ?? []) as Array<{ id: string; content: string; importance: number; content_hash: string | null }>) {
+                candidateMap.set(row.id, {
+                    id: row.id,
+                    content: row.content,
+                    importance: Number(row.importance),
+                    contentHash: row.content_hash,
+                });
+            }
+        }
+
+        const reconciled = await reconcileFacts({
+            supabase,
+            projectId,
+            organizationId,
+            tier,
+            model: params.reconcileModel || DEFAULT_RECONCILE_MODEL,
+            facts: redacted.map(f => ({ content: f.content, importance: f.importance })),
+            candidates: [...candidateMap.values()],
+        });
+        plan = reconciled.plan;
+        totalCostUsd += reconciled.costUsd;
+    } else {
+        plan = {
+            adds: redacted.map(f => ({ content: f.content, importance: f.importance })),
+            updates: [],
+            deletes: [],
+            noops: 0,
+            fellBack: false,
         };
     }
 
+    const redactionByContent = new Map(redacted.map(f => [f.content, f.redactions]));
+    const written: WrittenMemory[] = [];
+
+    // ── Apply DELETEs (supersede stale/contradicted facts) ───────────────────
+    for (const oldId of plan.deletes) {
+        const { error: supErr } = await supabase.rpc('supersede_gateway_memory', {
+            p_org_id: organizationId,
+            p_old_id: oldId,
+            p_new_id: null,
+        });
+        if (supErr) console.warn('[Memory] Supersede failed:', supErr.message);
+    }
+
+    // ── Apply UPDATEs as supersede-old + insert-new (Layer 3) ────────────────
+    // A refinement/contradiction inserts the new fact as a fresh active row and
+    // marks the old one superseded (valid_to=now, superseded_by=new id) rather
+    // than mutating in place — so "what was true before" stays queryable, and
+    // active count stays flat (one out, one in).
+    if (plan.updates.length > 0) {
+        const updateEmbedding = await embedForMemory(
+            supabase,
+            projectId,
+            organizationId,
+            plan.updates.map(u => u.content)
+        );
+        totalCostUsd += updateEmbedding.cencoriChargeUsd;
+        for (let i = 0; i < plan.updates.length; i++) {
+            const u = plan.updates[i];
+            const content = u.content.slice(0, MEMORY_CONTENT_MAX_CHARS);
+            const { data: ins, error: insErr } = await supabase
+                .from('gateway_memories')
+                .insert({
+                    organization_id: organizationId,
+                    project_id: projectId,
+                    scope,
+                    scope_key: scopeKey,
+                    namespace,
+                    content,
+                    content_hash: hashContent(content),
+                    embedding: JSON.stringify(updateEmbedding.embeddings[i]),
+                    importance: u.importance,
+                    metadata: { ...metadata, supersedes: u.id, reconciled: 'update' },
+                    expires_at: expiresAt ?? null,
+                })
+                .select('id, content, importance')
+                .single();
+            if (insErr || !ins) {
+                console.warn('[Memory] Update-insert failed:', insErr?.message);
+                continue;
+            }
+            // Retire the old fact, linking it to its replacement.
+            const { error: supErr } = await supabase.rpc('supersede_gateway_memory', {
+                p_org_id: organizationId,
+                p_old_id: u.id,
+                p_new_id: ins.id,
+            });
+            if (supErr) console.warn('[Memory] Supersede-on-update failed:', supErr.message);
+            written.push({ id: toMemoryId(ins.id), content: ins.content, importance: Number(ins.importance) });
+        }
+    }
+
+    // ── Apply ADDs (insert genuinely new facts) ──────────────────────────────
+    if (plan.adds.length > 0) {
+        const rows = plan.adds.map(fact => ({
+            organization_id: organizationId,
+            project_id: projectId,
+            scope,
+            scope_key: scopeKey,
+            namespace,
+            content: fact.content,
+            content_hash: hashContent(fact.content),
+            embedding: JSON.stringify(embeddingByContent.get(fact.content) ?? []),
+            importance: fact.importance,
+            metadata: {
+                ...metadata,
+                piiRedactions: redactionByContent.get(fact.content) ?? 0,
+                embeddingProvider: embedding.provider,
+                embeddingModel: embedding.model,
+            },
+            expires_at: expiresAt ?? null,
+        }));
+
+        const { data, error } = await supabase
+            .from('gateway_memories')
+            .insert(rows)
+            .select('id, content, importance');
+
+        if (error) {
+            console.error('[Memory] Insert failed:', error.message);
+            return {
+                written,
+                quotaExceeded: false,
+                embeddingCostUsd: totalCostUsd,
+                embeddingModel: embedding.model,
+                embeddingProvider: embedding.provider,
+                reconciliation: reconcileEnabled
+                    ? { added: 0, updated: plan.updates.length, superseded: plan.deletes.length, noop: plan.noops, fellBack: plan.fellBack }
+                    : undefined,
+            };
+        }
+
+        for (const row of data ?? []) {
+            written.push({ id: toMemoryId(row.id), content: row.content, importance: Number(row.importance) });
+        }
+    }
+
     return {
-        written: (data ?? []).map(row => ({
-            id: toMemoryId(row.id),
-            content: row.content,
-            importance: Number(row.importance),
-        })),
+        written,
         quotaExceeded: false,
-        embeddingCostUsd: embedding.cencoriChargeUsd,
+        embeddingCostUsd: totalCostUsd,
         embeddingModel: embedding.model,
         embeddingProvider: embedding.provider,
+        reconciliation: reconcileEnabled
+            ? {
+                added: plan.adds.length,
+                updated: plan.updates.length,
+                superseded: plan.deletes.length,
+                noop: plan.noops,
+                fellBack: plan.fellBack,
+            }
+            : undefined,
     };
 }
 
@@ -158,6 +309,8 @@ export async function rememberExchange(params: {
     userText: string;
     assistantText: string;
     requestId?: string;
+    /** Override Layer-1 reconciliation (default on). The eval harness sets false for its baseline run. */
+    reconcile?: boolean;
 }): Promise<RememberExchangeResult> {
     const { supabase, organizationId, projectId, tier, directive, settings, userText, assistantText, requestId } = params;
 
@@ -209,6 +362,8 @@ export async function rememberExchange(params: {
         scopeKey: directive.scopeKey,
         namespace: directive.namespace,
         facts: extraction.facts,
+        reconcile: params.reconcile,
+        reconcileModel: extraction.model,
         metadata: {
             extractedFrom: 'chat',
             modelUsed: extraction.model,
@@ -262,6 +417,7 @@ export async function runChatMemoryWriteback(params: {
         let embeddingCostUsd = 0;
         let embeddingModel: string | undefined;
         let embeddingProvider: 'openai' | 'google' | undefined;
+        let reconciliation: WriteMemoriesResult['reconciliation'];
 
         if (directive.scope === 'session') {
             // Redact, then append to the Redis session list (no embeddings).
@@ -289,6 +445,7 @@ export async function runChatMemoryWriteback(params: {
                 scopeKey: directive.scopeKey,
                 namespace: directive.namespace,
                 facts: extraction.facts,
+                reconcileModel: extraction.model,
                 metadata: {
                     extractedFrom: 'chat',
                     modelUsed: extraction.model,
@@ -300,6 +457,7 @@ export async function runChatMemoryWriteback(params: {
             embeddingCostUsd = result.embeddingCostUsd;
             embeddingModel = result.embeddingModel;
             embeddingProvider = result.embeddingProvider;
+            reconciliation = result.reconciliation;
 
             if (quotaExceeded) {
                 // Response has already been sent — can't 429. Log it instead.
@@ -326,6 +484,15 @@ export async function runChatMemoryWriteback(params: {
                 scope: directive.scope,
                 embedding_model: embeddingModel,
                 embedding_provider: embeddingProvider,
+                ...(reconciliation
+                    ? {
+                        reconcile_added: reconciliation.added,
+                        reconcile_updated: reconciliation.updated,
+                        reconcile_superseded: reconciliation.superseded,
+                        reconcile_noop: reconciliation.noop,
+                        reconcile_fell_back: reconciliation.fellBack,
+                    }
+                    : {}),
             },
         });
 

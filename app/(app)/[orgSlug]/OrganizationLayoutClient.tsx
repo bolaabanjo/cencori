@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { notFound, usePathname, useRouter, useParams } from "next/navigation";
+import { notFound, usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -88,6 +88,7 @@ export default function OrganizationLayoutClient({
     const params = useParams<{ orgSlug: string }>();
     const { orgSlug } = params;
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const { isOpen, setIsOpen } = useMobileSheet();
 
     const { data: organization, error } = useOrganization(orgSlug);
@@ -118,10 +119,19 @@ export default function OrganizationLayoutClient({
     const projectSlug = isInsideProject ? orgSubSegment : (projects?.[0]?.slug || null);
     const isProjectCreation = pathname.includes("/projects/new") || pathname.includes("/projects/import");
     const isPlayground = pathname.includes("/ai-gateway/playground");
-    const [activeView, setActiveView] = useState<"main" | "ai-gateway">("main");
+    const [activeView, setActiveView] = useState<"main" | "observability" | "ai-gateway">(() => {
+        if (isInsideProject && pathname.includes("/observability")) return "observability";
+        if (pathname.includes("/ai-gateway")) return "ai-gateway";
+        return "main";
+    });
 
     const orgBase = `/${orgSlug}`;
     const basePath = projectSlug ? `${orgBase}/${projectSlug}` : null;
+    const observabilityHref = isInsideProject ? `${basePath}/observability` : `${orgBase}/~/observability`;
+    const rawObservabilitySection = searchParams.get("section");
+    const observabilitySection = rawObservabilitySection === "http" || rawObservabilitySection === "api" || rawObservabilitySection === "web"
+        ? "overview"
+        : rawObservabilitySection || "overview";
 
     const isActive = (path: string) => {
         const exactMatchOnly =
@@ -144,17 +154,28 @@ export default function OrganizationLayoutClient({
         queryClient.prefetchQuery({ queryKey: ["orgLayout", orgSlug] });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+    useEffect(() => {
+        if (isInsideProject && pathname.includes("/observability")) {
+            setActiveView("observability");
+        } else if (pathname.includes("/ai-gateway")) {
+            setActiveView("ai-gateway");
+        } else {
+            setActiveView("main");
+        }
+    }, [isInsideProject, pathname]);
+
     if (error) {
         notFound();
     }
 
     // Layout groups (top → bottom):
     //   1. overviewItem                  — Projects (org level) or Overview (project level)
-    //   2. projectItems                  — Observability, Logs
-    //   3. AI Gateway toggle             — expands to projectSubItems
-    //   4. projectSecondaryItems         — Security, Edge, End-User Billing
-    //   5. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
-    //   6. bottomItems                   — Webhooks, Settings
+    //   2. Observability toggle           — expands to observabilitySubItems
+    //   3. projectItems                  — Logs
+    //   4. AI Gateway toggle             — expands to projectSubItems
+    //   5. projectSecondaryItems         — Security, Edge, End-User Billing
+    //   6. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
+    //   7. bottomItems                   — Webhooks, Settings
 
     const overviewItem = {
         href: isInsideProject ? `${basePath}` : `${orgBase}/~/projects`,
@@ -162,17 +183,26 @@ export default function OrganizationLayoutClient({
         label: isInsideProject ? "Overview" : "Projects",
     };
 
+    const observabilityItem = {
+        href: observabilityHref,
+        icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-5 !w-5" />,
+        label: "Observability",
+    };
+
     const projectItems = [
-        {
-            href: isInsideProject ? `${basePath}/observability` : `${orgBase}/~/observability`,
-            icon: <HugeiconsIcon icon={Analytics01Icon} className="!h-5 !w-5" />,
-            label: "Observability",
-        },
         {
             href: isInsideProject ? `${basePath}/logs` : `${orgBase}/~/logs`,
             icon: <HugeiconsIcon icon={Activity03Icon} className="!h-5 !w-5" />,
             label: "Logs",
         },
+    ];
+
+    const observabilitySubItems = [
+        { section: "overview", href: observabilityHref, icon: <HugeiconsIcon icon={DashboardCircleIcon} className="!h-5 !w-5" />, label: "Overview" },
+        { section: "ai", href: `${observabilityHref}?section=ai`, icon: <HugeiconsIcon icon={AiChipIcon} className="!h-5 !w-5" />, label: "AI" },
+        { section: "reliability", href: `${observabilityHref}?section=reliability`, icon: <HugeiconsIcon icon={Activity03Icon} className="!h-5 !w-5" />, label: "Reliability" },
+        { section: "security", href: `${observabilityHref}?section=security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
+        { section: "intelligence", href: `${observabilityHref}?section=intelligence`, icon: <HugeiconsIcon icon={AiChemistry01Icon} className="!h-5 !w-5" />, label: "Intelligence" },
     ];
 
     const projectSubItems = [
@@ -214,7 +244,35 @@ export default function OrganizationLayoutClient({
                     <SidebarContent>
                         <SidebarGroup className="pt-3">
                             <SidebarMenu>
-                                {activeView === "ai-gateway" ? (
+                                {activeView === "observability" ? (
+                                    <>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton
+                                                onClick={() => setActiveView("main")}
+                                                size="sm"
+                                                className="gap-1 text-muted-foreground"
+                                            >
+                                                <ChevronLeft className="!h-5 !w-5" />
+                                                <span className="text-sm">Back</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                        {observabilitySubItems.map((item) => (
+                                            <SidebarMenuItem key={item.section}>
+                                                <SidebarMenuButton
+                                                    asChild
+                                                    tooltip={item.label}
+                                                    isActive={observabilitySection === item.section}
+                                                    size="sm"
+                                                >
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
+                                                        {item.icon}
+                                                        <span className="text-sm">{item.label}</span>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        ))}
+                                    </>
+                                ) : activeView === "ai-gateway" ? (
                                     <>
                                         <SidebarMenuItem>
                                             <SidebarMenuButton
@@ -248,7 +306,30 @@ export default function OrganizationLayoutClient({
                                                 </Link>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
-                                        {/* 2. Observability, Logs */}
+                                        {/* 2. Observability */}
+                                        <SidebarMenuItem>
+                                            {isInsideProject ? (
+                                                <SidebarMenuButton
+                                                    onClick={() => setActiveView("observability")}
+                                                    onMouseEnter={() => prefetchRoute(observabilityHref)}
+                                                    isActive={pathname === observabilityHref}
+                                                    size="sm"
+                                                    className="gap-1"
+                                                >
+                                                    {observabilityItem.icon}
+                                                    <span className="text-sm">{observabilityItem.label}</span>
+                                                    <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
+                                                </SidebarMenuButton>
+                                            ) : (
+                                                <SidebarMenuButton asChild tooltip={observabilityItem.label} isActive={isActive(observabilityItem.href)} size="sm">
+                                                    <Link href={observabilityItem.href} prefetch={true} onMouseEnter={() => prefetchRoute(observabilityItem.href)}>
+                                                        {observabilityItem.icon}
+                                                        <span className="text-sm">{observabilityItem.label}</span>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            )}
+                                        </SidebarMenuItem>
+                                        {/* 3. Logs */}
                                         {projectItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
@@ -259,7 +340,7 @@ export default function OrganizationLayoutClient({
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
                                         ))}
-                                        {/* 3. AI Gateway toggle */}
+                                        {/* 4. AI Gateway toggle */}
                                         <SidebarMenuItem>
                                             <SidebarMenuButton
                                                 onClick={() => setActiveView("ai-gateway")}
@@ -271,7 +352,7 @@ export default function OrganizationLayoutClient({
                                                 <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
-                                        {/* 4. Security, Edge, End-User Billing */}
+                                        {/* 5. Security, Edge, End-User Billing */}
                                         {projectSecondaryItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
@@ -283,7 +364,7 @@ export default function OrganizationLayoutClient({
                                             </SidebarMenuItem>
                                         ))}
                                         <SidebarSeparator className="my-2 mx-0 w-full" />
-                                        {/* 5. Billing, Usage, Integrations, Teams, Audit Log */}
+                                        {/* 6. Billing, Usage, Integrations, Teams, Audit Log */}
                                         {orgItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
@@ -295,7 +376,7 @@ export default function OrganizationLayoutClient({
                                             </SidebarMenuItem>
                                         ))}
                                         <SidebarSeparator className="my-2 mx-0 w-full" />
-                                        {/* 6. Webhooks, Settings */}
+                                        {/* 7. Webhooks, Settings */}
                                         {bottomItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
@@ -397,7 +478,7 @@ export default function OrganizationLayoutClient({
                     <div className="py-3">
                         <SidebarGroup>
                             <SidebarMenu>
-                                {[overviewItem, ...projectItems, ...projectSecondaryItems, ...orgItems, ...bottomItems].map((item) => (
+                                {[overviewItem, observabilityItem, ...projectItems, ...projectSecondaryItems, ...orgItems, ...bottomItems].map((item) => (
                                     <SidebarMenuItem key={item.href}>
                                         <SidebarMenuButton asChild size="sm" onClick={() => setIsOpen(false)}>
                                             <Link href={item.href} prefetch={true}>

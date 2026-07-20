@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { GradientAvatar } from "@outpacelabs/avatars";
 import { ThemeSwitcher } from "@/components/ui/theme-switcher";
@@ -15,7 +16,11 @@ import {
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import posthog from "posthog-js";
-import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
+
+const UpgradeDialog = dynamic(
+    () => import("@/components/billing/UpgradeDialog").then((module) => module.UpgradeDialog),
+    { ssr: false },
+);
 
 type ProfileData = {
     first_name?: string;
@@ -89,12 +94,6 @@ export function UserMenu({ organization }: UserMenuProps) {
                 <DropdownMenuTrigger asChild>
                     <button
                         type="button"
-                        onPointerEnter={() => {
-                            if (organization && canUpgrade) setUpgradePreload(true);
-                        }}
-                        onFocus={() => {
-                            if (organization && canUpgrade) setUpgradePreload(true);
-                        }}
                         className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                         aria-label="User menu"
                     >
@@ -109,7 +108,7 @@ export function UserMenu({ organization }: UserMenuProps) {
                         <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
                     </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black dark:border-white/10" side="top" sideOffset={4} align="start" forceMount>
+                <DropdownMenuContent className="w-66 p-1 font-mono dark:bg-black dark:border-white/10 data-[state=open]:animate-none data-[state=closed]:animate-none" side="top" sideOffset={4} align="start" forceMount>
                     <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">
                         <p className="text-xs font-semibold truncate text-popover-foreground leading-tight">{fullName || email}</p>
                         {fullName && <p className="text-[10px] text-muted-foreground truncate leading-tight">{email}</p>}
@@ -129,6 +128,8 @@ export function UserMenu({ organization }: UserMenuProps) {
                             <button
                                 type="button"
                                 onClick={openUpgrade}
+                                onPointerEnter={() => setUpgradePreload(true)}
+                                onFocus={() => setUpgradePreload(true)}
                                 disabled={!organization}
                                 className="flex h-8 w-full cursor-pointer items-center justify-center rounded-md bg-foreground text-xs font-semibold text-background transition-[opacity,transform,background-color] duration-200 hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-100"
                             >
@@ -163,7 +164,7 @@ export function UserMenu({ organization }: UserMenuProps) {
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            {organization && canUpgrade && (
+            {organization && canUpgrade && (upgradePreload || upgradeOpen) && (
                 <UpgradeDialog
                     open={upgradeOpen}
                     onOpenChange={setUpgradeOpen}
@@ -173,7 +174,7 @@ export function UserMenu({ organization }: UserMenuProps) {
                     currentTier={currentTier}
                     recommendedTier="pro"
                     checkoutMode="direct"
-                    preload={upgradePreload || menuOpen || upgradeOpen}
+                    preload={upgradePreload || upgradeOpen}
                 />
             )}
         </>

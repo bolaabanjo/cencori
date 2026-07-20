@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, AlertCircle, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { GitHubInstallDialog } from '@/components/github/GitHubInstallDialog';
 import { UpgradeDialog } from '@/components/billing/UpgradeDialog';
 

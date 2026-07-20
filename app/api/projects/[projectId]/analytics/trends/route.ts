@@ -170,7 +170,7 @@ export async function GET(
             }
 
             trendData[key].total++;
-            if (req.status === 'success') trendData[key].success++;
+            if (req.status === 'success' || req.status === 'success_fallback') trendData[key].success++;
             if (req.status === 'filtered') trendData[key].filtered++;
             if (req.status === 'blocked_output') trendData[key].blocked_output++;
             if (req.status === 'error') trendData[key].error++;
@@ -213,20 +213,35 @@ export async function GET(
 
         const trends = Object.values(trendData)
             .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-            .map(data => ({
-                timestamp: data.timestamp,
-                total: data.total,
-                success: data.success,
-                filtered: data.filtered,
-                blocked_output: data.blocked_output,
-                error: data.error,
-                success_rate: data.total > 0 ? Math.round((data.success / data.total) * 100) : 0,
-                cost: Math.round(data.cost * 1000000) / 1000000,
-                tokens: data.tokens,
-                avg_latency: data.latencies.length > 0
-                    ? Math.round(data.latencies.reduce((a, b) => a + b, 0) / data.latencies.length)
-                    : 0,
-            }));
+            .map(data => {
+                const sortedLatencies = [...data.latencies].sort((a, b) => a - b);
+                const latencyPercentile = (percentile: number) => {
+                    if (sortedLatencies.length === 0) return null;
+                    const index = Math.ceil((percentile / 100) * sortedLatencies.length) - 1;
+                    return Math.round(sortedLatencies[Math.max(0, index)]);
+                };
+
+                return {
+                    timestamp: data.timestamp,
+                    total: data.total,
+                    success: data.success,
+                    filtered: data.filtered,
+                    blocked_output: data.blocked_output,
+                    error: data.error,
+                    success_rate: data.total > 0 ? Math.round((data.success / data.total) * 100) : 0,
+                    cost: Math.round(data.cost * 1000000) / 1000000,
+                    tokens: data.tokens,
+                    avg_latency: data.latencies.length > 0
+                        ? Math.round(data.latencies.reduce((a, b) => a + b, 0) / data.latencies.length)
+                        : 0,
+                    latency_samples: data.latencies.length,
+                    latency_p50: latencyPercentile(50),
+                    latency_p75: latencyPercentile(75),
+                    latency_p90: latencyPercentile(90),
+                    latency_p95: latencyPercentile(95),
+                    latency_p99: latencyPercentile(99),
+                };
+            });
 
         return NextResponse.json({ trends, group_by: groupBy });
 

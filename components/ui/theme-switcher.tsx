@@ -7,6 +7,15 @@ import { cn } from "@/lib/utils";
 
 export function ThemeSwitcher({ className }: { className?: string }) {
     const { theme, setTheme } = useTheme();
+    const [mounted, setMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // `next-themes` cannot know the saved browser theme during SSR. Keep the
+    // server and first client render identical, then show the active theme.
+    const activeTheme = mounted ? theme : undefined;
 
     return (
         <div
@@ -16,7 +25,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
                 onClick={() => setTheme("system")}
                 className={cn(
                     "relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full transition-colors",
-                    theme === "system"
+                    activeTheme === "system"
                         ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
                         : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
                 )}
@@ -30,7 +39,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
                 onClick={() => setTheme("light")}
                 className={cn(
                     "relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full transition-colors",
-                    theme === "light"
+                    activeTheme === "light"
                         ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
                         : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
                 )}
@@ -44,7 +53,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
                 onClick={() => setTheme("dark")}
                 className={cn(
                     "relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full transition-colors",
-                    theme === "dark"
+                    activeTheme === "dark"
                         ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
                         : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
                 )}

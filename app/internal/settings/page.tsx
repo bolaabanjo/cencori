@@ -6,7 +6,7 @@ import { UserPlus, Trash2, Check, ShieldCheck, Clock, XCircle } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 
 interface Admin {
     id: string;

@@ -3,7 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CookieConsent } from "@/components/CookieConsent";
 import { Analytics } from "@vercel/analytics/react";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/sileo";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { SignupWelcomeEmailBridge } from "@/components/auth/SignupWelcomeEmailBridge";
 import Script from "next/script";

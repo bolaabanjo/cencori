@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiGatewayRequestDetailModal } from './ApiGatewayRequestDetailModal';
 import { WebRequestDetailModal } from './WebRequestDetailModal';
 import { FileText } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 
 type HttpLogKind = 'api' | 'web';
 

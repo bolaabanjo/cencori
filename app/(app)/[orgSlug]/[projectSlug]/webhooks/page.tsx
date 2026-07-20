@@ -23,7 +23,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Plus, Loader2, Globe, Copy, Trash2, MoreHorizontal, Check, X, Zap } from "lucide-react";
 import {
     DropdownMenu,

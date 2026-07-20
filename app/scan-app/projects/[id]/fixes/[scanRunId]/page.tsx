@@ -26,7 +26,7 @@ import {
     ThumbsDown,
     ThumbsUp,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 interface ScanIssue {
     type: string;

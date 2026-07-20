@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { Save, Plus, X, Shield, Eye, Ban, Siren, Fingerprint } from 'lucide-react';
 
 interface SecuritySettingsProps {

@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/currency';

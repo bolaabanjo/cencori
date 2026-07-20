@@ -6,7 +6,7 @@ import { X, ThumbsUp, ThumbsDown, Copy, RotateCcw, StopCircle, ArrowUp, File, Sh
 import { useDocsContext } from "@/components/docs/DocsContext";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThinkingIndicator } from "@/components/docs/ThinkingIndicator";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";

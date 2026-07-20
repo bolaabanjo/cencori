@@ -116,6 +116,13 @@ export async function executeGatewayChat(params: {
      * (MEMORY_GEMINI_API_KEY) without affecting general Gemini chat traffic.
      */
     googleApiKeyOverride?: string;
+    /**
+     * Restrict this call to the primary (Google) provider — never fall back to
+     * OpenAI/Anthropic/Groq. Used by the managed, Google-only memory pipeline:
+     * a Google failure should fail open (caller handles it), not silently route
+     * memory traffic through an unfunded OpenAI key.
+     */
+    googleOnly?: boolean;
 }): Promise<UnifiedChatResponse & GatewayChatExecutionMeta> {
     let resolved =
         params.resolved ??
@@ -179,7 +186,8 @@ export async function executeGatewayChat(params: {
         await recordFailure(providerName, cbConfig);
     }
 
-    if (!failoverAllowed || !settings.enableFallback || !lastError) {
+    if (params.googleOnly || !failoverAllowed || !settings.enableFallback || !lastError) {
+        // googleOnly: memory is managed + Google-only — never fall back to OpenAI.
         throw lastError || new Error('Chat request failed');
     }
 

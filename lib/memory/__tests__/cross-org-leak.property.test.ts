@@ -72,7 +72,10 @@ describe('cross-org leak resistance (app layer)', () => {
                 if (table === 'gateway_memories') {
                     return {
                         select: vi.fn(() => ({
-                            eq: vi.fn(async () => ({ count: 0, error: null })),
+                            // quota count: .eq('project_id').eq('status','active')
+                            eq: vi.fn(() => ({
+                                eq: vi.fn(async () => ({ count: 0, error: null })),
+                            })),
                         })),
                         insert: vi.fn((rows: Record<string, unknown>[]) => {
                             insertedRows.push(...rows);
@@ -110,7 +113,7 @@ describe('cross-org leak resistance (app layer)', () => {
 
                 expect(rpcSpy).toHaveBeenCalledTimes(1);
                 const [fn, args] = rpcSpy.mock.calls[0] as [string, Record<string, unknown>];
-                expect(fn).toBe('match_gateway_memories');
+                expect(fn).toBe('match_gateway_memories_ranked');
                 expect(args.p_org_id).toBe(CTX_ORG);
                 expect(args.p_project_id).toBe(CTX_PROJECT);
                 // The adversarial values must never surface as org/project.

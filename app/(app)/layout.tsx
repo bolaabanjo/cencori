@@ -28,6 +28,7 @@ import {
 import { OrganizationProjectProvider, useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import { MobileSheetProvider, useMobileSheet } from "@/lib/contexts/MobileSheetContext";
 import { MobileNav } from "@/components/dashboard/MobileNav";
+import { CencoriAgentSidebar } from "@/components/dashboard/CencoriAgentSidebar";
 import { EnvironmentProvider, useEnvironment } from "@/lib/contexts/EnvironmentContext";
 import { ReactQueryProvider } from "@/lib/providers/ReactQueryProvider";
 import { useQuery } from "@tanstack/react-query";
@@ -173,6 +174,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   const { setEnvironment, isTestMode } = useEnvironment();
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
 
   // Fetch user profile to get custom avatar
   const { data: userProfile } = useQuery({
@@ -281,7 +283,7 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
   return (
     <div
       className={cn(
-        "bg-background transition-colors font-inter",
+        "dashboard-theme bg-background transition-colors font-inter",
         isPlayground ? "flex h-svh flex-col overflow-hidden" : "min-h-screen"
       )}
     >
@@ -468,6 +470,16 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
             </Link>
           )}
 
+          <button
+            type="button"
+            onClick={() => setAgentOpen(true)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background text-[11px] font-medium text-foreground transition-[background-color,border-color,transform] hover:border-border hover:bg-secondary/70 active:scale-[0.98] lg:h-6 lg:w-auto lg:px-2.5"
+            aria-label="Ask Cencori agent"
+          >
+            <Logo variant="mark" className="h-3" />
+            <span className="hidden lg:inline">Ask agent</span>
+          </button>
+
           {/* Search Button (icon only on mobile) */}
           <button
             type="button"
@@ -516,6 +528,22 @@ function LayoutContent({ user, avatar, name, children }: LayoutContentProps) {
         onOpenChange={setCommandPaletteOpen}
         orgSlug={orgSlug}
         projectSlug={projectSlug}
+      />
+      <CencoriAgentSidebar
+        open={agentOpen}
+        onOpenChange={setAgentOpen}
+        project={currentProject ? {
+          id: currentProject.id,
+          name: currentProject.name,
+          slug: currentProject.slug,
+        } : null}
+        organization={currentOrg ? {
+          id: currentOrg.id,
+          name: currentOrg.name,
+          slug: currentOrg.slug,
+        } : null}
+        environment={isTestMode ? "test" : "production"}
+        userName={name}
       />
       <UpdateToast />
     </div>

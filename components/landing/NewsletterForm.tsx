@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Loader2, Check, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 export function NewsletterForm() {
     const [email, setEmail] = useState("");
