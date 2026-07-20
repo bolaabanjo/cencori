@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { CookieConsent } from "@/components/CookieConsent";
 import { Analytics } from "@vercel/analytics/react";
 import { Toaster } from "@/components/ui/sileo";
+import { ConnectivityWatcher } from "@/components/ConnectivityWatcher";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { SignupWelcomeEmailBridge } from "@/components/auth/SignupWelcomeEmailBridge";
 import Script from "next/script";
@@ -271,6 +272,7 @@ export default function RootLayout({
             <SignupWelcomeEmailBridge />
             <CookieConsent />
             <Toaster />
+            <ConnectivityWatcher />
           </PostHogProvider>
         </ThemeProvider>
         <Analytics />

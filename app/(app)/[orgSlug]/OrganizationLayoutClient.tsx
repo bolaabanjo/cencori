@@ -60,6 +60,11 @@ interface OrganizationData {
     monthly_request_limit: number;
 }
 
+// Sentinel message that marks a *genuine* missing org (server confirmed zero
+// rows) vs. a transient failure (offline, 5xx, auth hiccup). Only the former
+// should ever render a 404 — a network blip must never nuke the dashboard.
+const ORG_NOT_FOUND = "ORG_NOT_FOUND";
+
 function useOrganization(orgSlug: string) {
     return useQuery({
         queryKey: ["orgLayout", orgSlug],
@@ -70,8 +75,18 @@ function useOrganization(orgSlug: string) {
                 .eq("slug", orgSlug)
                 .single();
 
-            if (orgError || !orgData) {
-                throw new Error("Organization not found");
+            if (orgError) {
+                // PGRST116 = query succeeded but matched no rows → the org
+                // truly doesn't exist. Anything else (network drop, timeout,
+                // 5xx) is transient and must be surfaced as a retryable error,
+                // NOT a 404.
+                if (orgError.code === "PGRST116") {
+                    throw new Error(ORG_NOT_FOUND);
+                }
+                throw orgError;
+            }
+            if (!orgData) {
+                throw new Error(ORG_NOT_FOUND);
             }
 
             return orgData as OrganizationData;
@@ -164,7 +179,10 @@ export default function OrganizationLayoutClient({
         }
     }, [isInsideProject, pathname]);
 
-    if (error) {
+    // Only a confirmed-missing org renders 404. Transient/network errors keep
+    // the last-good dashboard on screen; the global ConnectivityWatcher tells
+    // the user to reconnect, and React Query refetches once back online.
+    if (error instanceof Error && error.message === ORG_NOT_FOUND) {
         notFound();
     }
 
