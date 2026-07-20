@@ -6,8 +6,6 @@ Expose Cencori documentation and authenticated platform reads to AI clients (Cur
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**Full spec:** [`anthony/cencori-mcp.md`](../../anthony/cencori-mcp.md) — architecture, decisions, testing, troubleshooting.
-
 ---
 
 ## What this package does
@@ -75,7 +73,7 @@ Add to your MCP config (e.g. `~/.cursor/mcp.json` or project `.cursor/mcp.json`)
       "command": "npx",
       "args": ["-y", "@cencori/mcp"],
       "env": {
-        "CENCORI_API_KEY": "csk_...",
+        "CENCORI_API_KEY": "",
         "CENCORI_MCP_FEATURES": "docs,gateway,agents"
       }
     }
@@ -146,7 +144,8 @@ src/
 ├── index.ts          # stdio entrypoint
 ├── server.ts         # McpServer wiring + conditional registration
 ├── config.ts         # env parsing
-├── client.ts         # PlatformClient (direct fetch → /api/v1/*)
+├── client.ts         # PlatformClient (Bearer → /api/v1/*)
+├── http.ts           # shared fetch timeout + error body parsing
 ├── tools.ts          # barrel exports
 ├── docs/client.ts    # DocsClient (fetch → /api/docs/*)
 └── tools/
@@ -205,7 +204,7 @@ Cursor / Claude Desktop
         ├── DocsClient ──────► GET /api/docs/{search,raw,navigation}
         │
         └── PlatformClient ──► GET /api/v1/{models,metrics,agents}
-              (Authorization: Bearer + CENCORI_API_KEY headers)
+              (Authorization: Bearer only)
 ```
 
 ---
@@ -219,8 +218,6 @@ Cursor / Claude Desktop
 | `SyntaxError` at shebang on Windows | Rebuild; ensure no shebang in `src/index.ts` |
 | Agent tools error at runtime | Use current `PlatformClient` (direct fetch); don't use npm `cencori` SDK for agents yet |
 | Changes to env not reflected | Restart MCP server / reload Cursor |
-
-More detail: [`anthony/cencori-mcp.md` §14](../../anthony/cencori-mcp.md).
 
 ---
 

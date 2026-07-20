@@ -1,3 +1,5 @@
+import { fetchSignal, readHttpErrorMessage } from './http.js';
+
 export type MetricsPeriod = '1h' | '24h' | '7d' | '30d' | 'mtd';
 
 export interface AgentConfig {
@@ -96,20 +98,12 @@ export class PlatformClient {
         const response = await fetch(url, {
             headers: {
                 Authorization: `Bearer ${this.apiKey}`,
-                CENCORI_API_KEY: this.apiKey,
             },
+            signal: fetchSignal(),
         });
 
         if (!response.ok) {
-            const errorData = (await response.json().catch(() => null)) as
-                | { error?: string | { message?: string; code?: string } }
-                | null;
-
-            const message =
-                typeof errorData?.error === 'string'
-                    ? errorData.error
-                    : errorData?.error?.message ?? response.statusText;
-
+            const message = await readHttpErrorMessage(response);
             throw new Error(`Cencori API error: ${message}`);
         }
 

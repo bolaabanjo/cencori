@@ -3,6 +3,7 @@ import type {
     DocRawResponse,
     DocSearchResponse,
 } from './types.js';
+import { fetchSignal, readHttpErrorMessage } from '../http.js';
 
 export class DocsClient {
     constructor(private readonly baseUrl: string) {}
@@ -11,9 +12,10 @@ export class DocsClient {
         const url = new URL('/api/docs/search', this.baseUrl);
         url.searchParams.set('q', query);
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: fetchSignal() });
         if (!response.ok) {
-            throw new Error(`Docs search failed (${response.status}): ${response.statusText}`);
+            const message = await readHttpErrorMessage(response);
+            throw new Error(`Docs search failed (${response.status}): ${message}`);
         }
 
         return response.json() as Promise<DocSearchResponse>;
@@ -24,12 +26,13 @@ export class DocsClient {
         const url = new URL('/api/docs/raw', this.baseUrl);
         url.searchParams.set('slug', normalizedSlug);
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: fetchSignal() });
         if (response.status === 404) {
             return { content: '', error: `Document not found: ${normalizedSlug}` };
         }
         if (!response.ok) {
-            throw new Error(`Docs fetch failed (${response.status}): ${response.statusText}`);
+            const message = await readHttpErrorMessage(response);
+            throw new Error(`Docs fetch failed (${response.status}): ${message}`);
         }
 
         return response.json() as Promise<DocRawResponse>;
@@ -37,9 +40,10 @@ export class DocsClient {
 
     async listNavigation(): Promise<DocNavigationResponse> {
         const url = new URL('/api/docs/navigation', this.baseUrl);
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: fetchSignal() });
         if (!response.ok) {
-            throw new Error(`Docs navigation failed (${response.status}): ${response.statusText}`);
+            const message = await readHttpErrorMessage(response);
+            throw new Error(`Docs navigation failed (${response.status}): ${message}`);
         }
 
         return response.json() as Promise<DocNavigationResponse>;

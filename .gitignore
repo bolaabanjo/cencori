@@ -79,3 +79,4 @@ pnpm-workspace.yaml
 # fumadocs generated source
 .source
 eve
+/mydocs/

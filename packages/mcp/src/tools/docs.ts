@@ -19,11 +19,7 @@ export function registerDocsTools(server: McpServer, docs: DocsClient, docsBaseU
             annotations: READ_ONLY_ANNOTATIONS,
         },
         async ({ query }) => {
-            const { results, error } = await docs.search(query);
-            if (error) {
-                return jsonResult({ query, count: 0, results: [], error });
-            }
-
+            const { results } = await docs.search(query);
             return jsonResult({ query, count: results.length, results });
         },
     );
