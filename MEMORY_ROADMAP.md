@@ -472,20 +472,162 @@ Files, images, and documents become memorable too.
 **Ship criteria:** upload a PDF, ask a question about it in a chat six weeks
 later, the model still knows.
 
-### Phase 3 — Entity graphs & temporal reasoning (weeks 5–7)
+### Phase 3 — The reasoning layer (Track 1: "win recall") — build plan
 
-The hard problems Supermemory has spent a year on.
+**Framing (scoped 2026-07-18).** Phase 1 shipped a *semantic vector store*, not
+memory: the write path is a blind `.insert()` (`lib/memory/writeback.ts:108`) and
+the read path is pure cosine top-K (`lib/memory/retrieval.ts:78` →
+`match_gateway_memories`). That is enough to *demo* recall; it is not enough to
+make anyone leave Mem0/Zep/Supermemory. Those products' moat is the **reasoning
+layer on top of storage** — conflict resolution, temporal validity, decay, graph.
+Phase 3 builds that layer *on top of the existing store* (no rewrite; isolation,
+quota, redaction, fail-open all stay). This is Track 1 from the priority frame
+above, and it is the work that earns "leave Mem0 and don't look back."
 
-- Entity extraction and merging — the memory layer knows "John from Zap"
-  and "John Smith @ Zap Corp" are the same person
-- Temporal reasoning — recent memories weighted higher, contradictions
-  resolved in favor of the newer fact
-- Importance decay — unused memories fade unless reinforced
-- Forget with filters — `forget everything about my former employer`
-- Dashboard: memory graph explorer per user
+**Non-negotiable rule: nothing in Phase 3 ships without moving a number on the
+eval harness (Layer 0).** "Memory has to be sooo good" is unmeasurable today.
+Every layer below has an acceptance metric the harness reports.
 
-**Ship criteria:** memory that survives a year of use without becoming a
-tangled contradiction.
+**Prerequisite — schema drift to close first.** The `Memory` TS type in this doc
+claims `updatedAt`, `lastAccessedAt`, `accessCount`, `region`, but the live
+`gateway_memories` table (migration `20260710_000000_gateway_memory.sql`) has only
+`created_at` + `expires_at`. Layers 1/3/4 depend on these columns. First migration
+of Phase 3 adds: `updated_at`, `last_accessed_at`, `access_count int default 0`,
+`status text default 'active'` (`active|superseded|expired`), `superseded_by uuid`,
+`valid_from timestamptz`, `valid_to timestamptz`, `content_hash text`, plus a
+`reinforcement_count`. See [[project-schema-drift-incident]] — verify against LIVE
+schema, do not assume the migration file reflects prod.
+
+---
+
+#### Layer 0 — Eval harness *(build first; it is the gate for everything else)*
+
+- **What:** a fixed, versioned benchmark: N multi-session conversation transcripts
+  + a question set with graded gold answers, scored on **answer quality** (LLM-judge
+  + exact-match where possible), not cosine similarity. Include the adversarial
+  cases from the GPT "catch" list: contradiction-over-time, stale-fact supersession,
+  irrelevant-recall (precision), multi-hop, and never-store (secrets/PII leakage).
+- **Why:** you cannot perfect what you cannot measure, and you cannot safely stack
+  Layers 1–5 without a scoreboard that catches regressions. This is also the
+  **public recall benchmark we win** (Track 1) — build it to be publishable.
+- **Build:** offline runner (`scripts/memory-eval/` or `lib/memory/eval/`) that
+  seeds a throwaway org/project, replays transcripts through the real write path,
+  runs the question set through the real retrieval path, and emits a scorecard
+  (recall@k, precision, contradiction-resolution rate, leak count, p95 latency).
+  Base it on public methodology (LoCoMo / LongMemEval-style) so results are credible.
+- **Acceptance:** harness runs green in CI against a seeded DB and prints a baseline
+  scorecard for today's blind-insert/cosine system. That baseline is the number
+  every later layer must beat.
+
+#### Layer 1 — Conflict resolution on write *(the Mem0 core; biggest perceived-intelligence jump)*
+
+- **What:** replace the blind insert with **ADD / UPDATE / DELETE / NOOP**. On each
+  extracted fact, embed it, fetch the top semantically-similar existing memories in
+  the same `(org, scope, scope_key, namespace)`, and have an LLM (cheap model, e.g.
+  `gemini-2.5-flash`) decide: new fact (ADD), refines/replaces an existing one
+  (UPDATE → rewrite content + bump `updated_at`, keep id so history is stable),
+  contradicts an existing one (supersede: mark old `status='superseded'`,
+  `superseded_by=new.id`), or already known (NOOP). Exact-dup guard via `content_hash`
+  before the LLM call to save tokens.
+- **Why:** today "I use Python" then "I moved to Rust" stores **both** and injects
+  **both** — the exact failure that makes memory feel like a log. This is the single
+  most-cited Mem0 differentiator and the #1 reason to switch.
+- **Touch:** `lib/memory/writeback.ts` (the insert), new
+  `lib/memory/reconcile.ts` (the decision call), `gateway_memories` status columns.
+  Runs in the existing async `waitUntil` writeback — no added chat latency.
+- **Acceptance:** harness contradiction-resolution rate goes from ~0 to >90%;
+  duplicate-storage rate drops to near-0; **no regression** in recall@k or leak count.
+
+#### Layer 2 — Reranking on read *(biggest retrieval-quality jump; independent of Layer 1)*
+
+- **What:** retrieve a wider candidate set (e.g. top-30 by cosine) then **rerank** to
+  final top-K by a scoring function combining semantic similarity + recency +
+  `importance` + `access_count`, with MMR for diversity (drop near-duplicate hits).
+  Optionally add hybrid keyword (BM25/`tsvector`) recall so exact-term facts aren't
+  missed by pure vector search. Cross-encoder rerank is a later upgrade if a managed
+  reranker is available; formula-based reranking is the v1.
+- **Why:** pure cosine top-K over-returns semantically-near-but-irrelevant facts and
+  ignores recency — hurts both precision and the "why did it recall that?" story.
+- **Touch:** `match_gateway_memories` RPC (return wider set + fields), new ranking in
+  `lib/memory/retrieval.ts`. Keep the provider-calibrated threshold work already in
+  `types.ts` (`DEFAULT_RETRIEVAL_THRESHOLD`).
+- **Acceptance:** harness precision + recall@k both improve vs Layer-1 baseline;
+  p95 retrieval overhead stays <150ms (the locked latency budget).
+
+#### Layer 3 — Temporal validity *(the Zep/Graphiti-class story)*
+
+- **What:** give facts *bi-temporal* validity — `valid_from`/`valid_to` (when the
+  fact was true in the world) distinct from `created_at`/`updated_at` (when we
+  learned it). Supersession from Layer 1 sets `valid_to` on the old fact instead of
+  hard-deleting, so history is queryable: "what did the user prefer *before* they
+  switched?" Default retrieval filters to currently-valid (`status='active'` /
+  `valid_to is null`); an explicit `asOf` directive can query historical state.
+- **Why:** contradictions resolved *by time*, not just overwritten — lets memory
+  survive a year of use without collapsing into a tangle, and unlocks temporal
+  questions no flat store can answer.
+- **Touch:** temporal columns (prereq migration), `match_gateway_memories` validity
+  filter, optional `asOf` on `MemoryDirective` (`lib/memory/types.ts`).
+- **Acceptance:** harness "state-at-time" questions answerable; current-state recall
+  unaffected; superseded facts never injected into a default (non-`asOf`) turn.
+
+#### Layer 4 — Importance decay + reinforcement
+
+- **What:** `importance` stops being a write-once constant. **Reinforce** on recall
+  (a fact retrieved/used bumps `access_count` + `last_accessed_at` and its effective
+  weight); **decay** unused low-importance facts over time (time-based half-life on an
+  *effective* score, computed at read or by a periodic job — never destroys the raw
+  `importance`). Feeds the Layer-2 ranker. Trivia fades; load-bearing facts persist.
+- **Why:** keeps recall sharp as the store grows and gives the quota fill-gauge a
+  natural pressure valve (decayed trivia is the first eviction candidate at 100%).
+- **Touch:** `access_count`/`last_accessed_at` update on retrieval (Layer 2 already
+  touches read), effective-score formula shared with the ranker, optional cron for
+  batch decay.
+- **Acceptance:** harness precision holds as transcript volume scales up (the
+  "1 year of use" stress set); reinforced facts rank above stale peers.
+
+#### Layer 5 — Entity / graph layer *(deepest; do last, once 0–4 are proven)*
+
+- **What:** extract entities + relationships alongside flat facts (`user → building →
+  Ledgerkit`, `John → works_at → Zap`), with **entity resolution / merging** ("John
+  from Zap" == "John Smith @ Zap Corp"). New `memory_entities` +
+  `memory_entity_edges` tables keyed by the same `(org, scope, scope_key)` boundary.
+  Retrieval can then do multi-hop ("who does Sarah report to?") that pure similarity
+  cannot. This is the **unified graph** (memory + RAG + profiles) named in Track 1.
+- **Why:** the last structural gap vs Zep/Supermemory; turns memory from a fact list
+  into a queryable model of the user's world.
+- **Touch:** new tables + migrations, entity-aware extraction in
+  `lib/memory/extraction.ts`, graph-walk retrieval path, hard org-boundary property
+  tests on the new tables (same zero-leak contract as `gateway_memories`).
+- **Acceptance:** harness multi-hop questions answerable; entity-merge precision
+  measured; zero cross-org edges (property test).
+
+---
+
+**Rides on top of these layers (not blockers, sequence opportunistically):**
+
+- **Forget-with-filter** — `forget everything about my former employer`: semantic +
+  entity-scoped deletion (Layer 5 makes it precise), real removal + cryptographic
+  receipt in the audit log (the governance contract). 
+- **Dashboard graph explorer** — per-user memory/entity graph view; folds into the
+  dashboard memory surface (currently a redirect stub at
+  `app/(app)/[orgSlug]/[projectSlug]/memory/page.tsx`).
+- **"Explain why recalled"** — surface the ranker's reason per injected memory
+  (from Layer 2 scoring); directly answers the GPT-thread catch item and is a trust
+  feature for `<MemoryInspector>`.
+
+**Explicitly OUT of Phase 3 scope** (guardrail against the five-types balloon):
+procedural memory (post-Track-1 future bet), the other memory *types* (working /
+episodic / organizational), and cross-workflow sharing (Phase 4). Phase 3 makes the
+**semantic** layer world-class; nothing more.
+
+**Dependency order:** 0 → (1 ‖ 2 in parallel) → 3 → 4 → 5. Layers 1 and 2 are
+independent and can be built concurrently; 3 depends on 1's supersession; 4 depends
+on 2's read-path hook; 5 is standalone but last because it's the heaviest and least
+proven.
+
+**Ship criteria:** memory that survives a year of use without becoming a tangled
+contradiction — *and a public benchmark scorecard, produced by Layer 0, where
+Cencori beats Mem0/Zep on answer quality.*
 
 ### Phase 4 — Ongoing
 

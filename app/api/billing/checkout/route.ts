@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       const customer = await stripe.customers.create(
         {
           email: organization.billing_email || user.email,
-          name: organization.name || user.user_metadata?.full_name || user.email.split("@")[0],
+          name: user.user_metadata?.full_name || organization.name || user.email.split("@")[0],
           metadata: {
             org_id: organization.id,
             org_slug: organization.slug,

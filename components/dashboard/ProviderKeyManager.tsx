@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { AudioLines, Check, ChevronRight, Eye, EyeOff, Key, Loader2, Plus, Trash2, X } from "lucide-react";
 import { OpenAI, Anthropic, Google, Mistral, Cohere, Perplexity, OpenRouter, Groq, XAI, Together, Meta, HuggingFace, Qwen, DeepSeek, ZAI } from "@lobehub/icons";
 import { SUPPORTED_PROVIDERS, getModelsForProvider, getChatModelsForProvider, getImageModelsForProvider, type AIProviderConfig } from "@/lib/providers/config";

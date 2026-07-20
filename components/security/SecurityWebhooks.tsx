@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { Plus, Trash2, Webhook, Copy, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface SecurityWebhooksProps {

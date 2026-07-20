@@ -2,17 +2,20 @@
 
 import { supabase as browserSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import { Copy, Check, ExternalLink, Info, Terminal } from "lucide-react";
 import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { EXAMPLE_PROJECTS } from "@/config/examples";
-import { Bar, BarChart, XAxis } from "recharts";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import React, { useState, use } from "react";
+import { useState, use } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEnvironment } from "@/lib/contexts/EnvironmentContext";
+import {
+  ProjectOverviewDashboard,
+  type ProjectOverviewChartPoint,
+  type ProjectOverviewModel,
+  type ProjectOverviewStats,
+} from "@/components/dashboard/project-overview/ProjectOverviewDashboard";
 
 interface OrganizationData {
   id: string;
@@ -28,27 +31,6 @@ interface ProjectData {
   visibility: "public" | "private";
   status: "active" | "inactive";
   created_at: string;
-}
-
-interface AIStats {
-  totalRequests: number;
-  successfulRequests: number;
-  errorRequests: number;
-  filteredRequests: number;
-  totalCost: string;
-  totalTokens: number;
-  totalPromptTokens: number;
-  totalCompletionTokens: number;
-  avgLatency: number;
-}
-
-interface ChartDataPoint {
-  date: string;
-  count: number;
-  cost: number;
-  tokens: number;
-  promptTokens: number;
-  completionTokens: number;
 }
 
 // Getting Started Section Component - Compact
@@ -335,21 +317,28 @@ export default function ProjectDetailsPage({
   const organization = projectData?.organization;
   const project = projectData?.project;
 
-  // Fetch user profile for greeting (stays in sync with /dashboard/profile)
   const { data: profile } = useQuery<{ first_name: string | null }>({
     queryKey: ["userProfile"],
     queryFn: async () => {
-      const res = await fetch("/api/user/profile");
-      if (!res.ok) throw new Error("Failed to fetch profile");
-      const data = await res.json();
+      const response = await fetch("/api/user/profile");
+      if (!response.ok) return { first_name: null };
+      const data = await response.json();
       return data.profile;
     },
-    staleTime: 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
-  const firstName = profile?.first_name || null;
 
   // Fetch AI stats with caching
-  const { data: statsData, isLoading: statsLoading } = useQuery<{ stats: AIStats; chartData: ChartDataPoint[] }>({
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useQuery<{
+    stats: ProjectOverviewStats;
+    chartData: ProjectOverviewChartPoint[];
+    modelBreakdown: ProjectOverviewModel[];
+  }>({
     queryKey: ["aiStats", project?.id, period, environment],
     queryFn: async () => {
       const response = await fetch(`/api/projects/${project!.id}/ai/stats?period=${period}&environment=${environment}`);
@@ -364,42 +353,32 @@ export default function ProjectDetailsPage({
 
   const aiStats = statsData?.stats || null;
   const chartData = statsData?.chartData || [];
-
-  const stats = {
-    aiRequests: {
-      value: aiStats ? aiStats.totalRequests.toLocaleString() : "0",
-      change: aiStats ? `${aiStats.successfulRequests} successful` : "No data",
-    },
-    aiCost: {
-      value: aiStats ? `$${aiStats.totalCost}` : "$0",
-      change: aiStats ? `${aiStats.totalTokens.toLocaleString()} tokens` : "No data",
-    },
-    avgLatency: {
-      value: aiStats ? `${aiStats.avgLatency}ms` : "0ms",
-      change: aiStats ? `${aiStats.errorRequests} errors` : "No data",
-    },
-    tokens: {
-      value: aiStats ? aiStats.totalTokens.toLocaleString() : "0",
-      change: aiStats ? `${aiStats.totalPromptTokens.toLocaleString()} in · ${aiStats.totalCompletionTokens.toLocaleString()} out` : "No data",
-    },
-  };
-
-
+  const modelBreakdown = statsData?.modelBreakdown || [];
 
   if (projectLoading) {
     return (
-      <div className="w-full max-w-5xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <Skeleton className="h-6 w-32" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
+      <div className="min-h-[calc(100svh-5.5rem)] bg-background p-2 dark:bg-black sm:p-3 lg:p-4">
+        <div className="mx-auto min-h-[calc(100svh-7.5rem)] max-w-[90rem]">
+          <div className="space-y-3 py-6 lg:py-7">
+            <Skeleton className="h-3 w-36 rounded-sm" />
+            <Skeleton className="h-8 w-40 rounded-sm" />
+            <Skeleton className="h-3 w-72 max-w-full rounded-sm" />
+          </div>
+          <div className="overflow-hidden border border-black/[0.08] dark:border-white/[0.09]">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5">
+              {[1, 2, 3, 4, 5].map((item) => (
+                <div key={item} className="min-h-32 border-b border-border/50 px-5 py-5 lg:border-r lg:last:border-r-0">
+                  <Skeleton className="h-3 w-20 rounded-sm" />
+                  <Skeleton className="mt-5 h-7 w-24 rounded-sm" />
+                  <Skeleton className="mt-3 h-3 w-32 rounded-sm" />
+                </div>
+              ))}
+            </div>
+            <div className="grid border-t border-border/50 xl:grid-cols-[minmax(0,1fr)_21rem]">
+              <div className="h-[28rem] p-5"><Skeleton className="h-full w-full rounded-md" /></div>
+              <div className="hidden border-l border-border/50 p-5 xl:block"><Skeleton className="h-full w-full rounded-md" /></div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -407,21 +386,19 @@ export default function ProjectDetailsPage({
 
   if (error || !organization || !project) {
     return (
-      <div className="w-full max-w-5xl mx-auto px-6 py-8">
-        <div className="text-center py-16">
-          <p className="text-sm text-red-500">{error?.message || "Project or Organization not found."}</p>
+      <div className="min-h-[calc(100svh-5.5rem)] bg-background p-3 dark:bg-black lg:p-4">
+        <div className="mx-auto flex min-h-[calc(100svh-7.5rem)] max-w-[90rem] items-center justify-center px-6">
+          <div className="max-w-sm text-center">
+            <p className="text-sm font-medium">This project could not be loaded</p>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">{error?.message || "Project or organization not found."}</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <p className="text-xl font-semibold">Hey, {firstName || "there"}!</p>
-      </div>
-
+    <>
       {/* Getting Started Section */}
       <GettingStartedSection
         orgSlug={orgSlug}
@@ -429,210 +406,20 @@ export default function ProjectDetailsPage({
         hasData={true}
         loading={projectLoading}
       />
-
-      {/* Analytics */}
-      <>
-        {/* Overview Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-medium">Overview</h2>
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[120px] h-7 text-xs">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1h" className="text-xs">Last Hour</SelectItem>
-                <SelectItem value="24h" className="text-xs">24 Hours</SelectItem>
-                <SelectItem value="7d" className="text-xs">7 Days</SelectItem>
-                <SelectItem value="30d" className="text-xs">30 Days</SelectItem>
-                <SelectItem value="all" className="text-xs">All Time</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Stats Cards Grid */}
-          <div className="border border-border/40 bg-card mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              {/* Requests Card */}
-              <div className="border-b md:border-b-0 md:border-r border-border/40 pt-5 px-5 pb-2">
-              <div className="mb-2">
-                <span className="text-sm font-medium">Requests</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">API Calls</p>
-              <p className="text-3xl font-semibold mb-1">{stats.aiRequests.value}</p>
-              <p className="text-xs text-muted-foreground mb-3">{stats.aiRequests.change}</p>
-              <div className="h-36">
-                {statsLoading ? (
-                  <Skeleton className="h-36 w-full rounded-lg" />
-                ) : chartData.length > 0 ? (
-                  <ChartContainer
-                    config={{ requests: { label: "Requests", color: "hsl(24 80% 50%)" } }}
-                    className="h-full w-full"
-                  >
-                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                        tickMargin={8}
-                        interval="preserveStartEnd"
-                      />
-                      <ChartTooltip
-                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                        content={<ChartTooltipContent hideLabel />}
-                      />
-                      <Bar
-                        dataKey="count"
-                        fill="var(--color-requests)"
-                        radius={[3, 3, 0, 0]}
-                      />
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                )}
-              </div>
-            </div>
-
-            {/* Cost Card */}
-            <div className="border-b md:border-b-0 border-border/40 pt-5 px-5 pb-2">
-              <div className="mb-2">
-                <span className="text-sm font-medium">Cost</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">Total Spend</p>
-              <p className="text-3xl font-semibold mb-1">{stats.aiCost.value}</p>
-              <p className="text-xs text-muted-foreground mb-3">{stats.aiCost.change}</p>
-              <div className="h-36">
-                {statsLoading ? (
-                  <Skeleton className="h-36 w-full rounded-lg" />
-                ) : chartData.length > 0 ? (
-                  <ChartContainer
-                    config={{ cost: { label: "Cost", color: "hsl(142 76% 36%)" } }}
-                    className="h-full w-full"
-                  >
-                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                        tickMargin={8}
-                        interval="preserveStartEnd"
-                      />
-                      <ChartTooltip
-                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                        content={<ChartTooltipContent hideLabel formatter={(value) => `$${Number(value).toFixed(6)}`} />}
-                      />
-                      <Bar
-                        dataKey="cost"
-                        fill="var(--color-cost)"
-                        radius={[3, 3, 0, 0]}
-                      />
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                )}
-              </div>
-            </div>
-
-            {/* Latency Card */}
-            <div className="border-b md:border-b-0 md:border-r md:border-t border-border/40 pt-5 px-5 pb-2">
-              <div className="mb-2">
-                <span className="text-sm font-medium">Performance</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">Avg Latency</p>
-              <p className="text-3xl font-semibold mb-1">{stats.avgLatency.value}</p>
-              <p className="text-xs text-muted-foreground mb-3">{stats.avgLatency.change}</p>
-              <div className="h-36">
-                {statsLoading ? (
-                  <Skeleton className="h-36 w-full rounded-lg" />
-                ) : chartData.length > 0 ? (
-                  <ChartContainer
-                    config={{ latency: { label: "Latency", color: "hsl(244 59% 59%)" } }}
-                    className="h-full w-full"
-                  >
-                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                        tickMargin={8}
-                        interval="preserveStartEnd"
-                      />
-                      <ChartTooltip
-                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                        content={<ChartTooltipContent hideLabel />}
-                      />
-                      <Bar
-                        dataKey="count"
-                        fill="var(--color-latency)"
-                        radius={[3, 3, 0, 0]}
-                      />
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                )}
-              </div>
-            </div>
-
-            {/* Tokens Card */}
-            <div className="md:border-t border-border/40 pt-5 px-5 pb-2">
-              <div className="mb-2">
-                <span className="text-sm font-medium">Tokens</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">Total Usage</p>
-              <p className="text-3xl font-semibold mb-1">{stats.tokens.value}</p>
-              <p className="text-xs text-muted-foreground mb-3">{stats.tokens.change}</p>
-              <div className="h-36">
-                {statsLoading ? (
-                  <Skeleton className="h-36 w-full rounded-lg" />
-                ) : chartData.length > 0 ? (
-                  <ChartContainer
-                    config={{
-                      promptTokens: { label: "Input", color: "hsl(280 65% 60%)" },
-                      completionTokens: { label: "Output", color: "hsl(330 65% 55%)" },
-                    }}
-                    className="h-full w-full"
-                  >
-                    <BarChart data={chartData} margin={{ left: 0, right: 0, top: 0, bottom: 20 }}>
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                        tickMargin={8}
-                        interval="preserveStartEnd"
-                      />
-                      <ChartTooltip
-                        cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                        content={<ChartTooltipContent />}
-                      />
-                      <Bar
-                        dataKey="promptTokens"
-                        stackId="tokens"
-                        fill="var(--color-promptTokens)"
-                        radius={[0, 0, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="completionTokens"
-                        stackId="tokens"
-                        fill="var(--color-completionTokens)"
-                        radius={[3, 3, 0, 0]}
-                      />
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No data</div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </>
-    </div>
+      <ProjectOverviewDashboard
+        projectName={project.name}
+        viewerName={profile?.first_name}
+        orgSlug={orgSlug}
+        projectSlug={projectSlug}
+        period={period}
+        onPeriodChange={setPeriod}
+        stats={aiStats}
+        chartData={chartData}
+        modelBreakdown={modelBreakdown}
+        loading={statsLoading && !statsData}
+        error={statsError}
+        onRetry={() => void refetchStats()}
+      />
+    </>
   );
 }

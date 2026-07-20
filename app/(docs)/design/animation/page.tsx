@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Copy, Check, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 function CodeBlock({ code, language = "tsx" }: { code: string; language?: string }) {
     const [copied, setCopied] = useState(false);

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { updateBillingDetails } from '@/app/(app)/[orgSlug]/~/billing/actions';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { useTransition } from 'react';
 import { CountrySelector } from './CountrySelector';
 import { useQueryClient } from '@tanstack/react-query';

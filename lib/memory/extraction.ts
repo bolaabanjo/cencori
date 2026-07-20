@@ -12,6 +12,7 @@ import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
+    ensureGoogleMemoryModel,
     type ExtractedFact,
     type MemoryExtractOverride,
     type MemorySettings,
@@ -56,7 +57,9 @@ export async function extractFacts(params: {
         settings, extractOverride, userText, assistantText, requestId,
     } = params;
 
-    const model = extractOverride?.model || settings.extractionModel;
+    // Memory is managed + Google-only: coerce any configured/overridden model
+    // to a Gemini model so extraction runs on the dedicated key, never OpenAI.
+    const model = ensureGoogleMemoryModel(extractOverride?.model || settings.extractionModel);
     const minImportance = extractOverride?.minImportance ?? settings.minImportance;
     const systemPrompt =
         extractOverride?.prompt || settings.extractionPrompt || DEFAULT_EXTRACTION_PROMPT;
@@ -69,9 +72,10 @@ export async function extractFacts(params: {
             tier,
             requestId,
             // Run managed Gemini extraction on the memory-dedicated key so it
-            // shares memory's isolated quota, not general chat's. Ignored when
-            // the extraction model resolves to a non-Google provider.
+            // shares memory's isolated quota, not general chat's. googleOnly
+            // guarantees it never falls back to OpenAI (managed, Google-only).
             googleApiKeyOverride: getMemoryGoogleApiKey() ?? undefined,
+            googleOnly: true,
             request: {
                 model,
                 temperature: 0,

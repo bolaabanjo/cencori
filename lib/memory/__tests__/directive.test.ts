@@ -15,7 +15,24 @@ describe('parseMemoryDirective', () => {
             threshold: 0.7,
             namespace: null,
             extract: null,
+            asOf: null,
         });
+    });
+
+    it('parses a valid asOf timestamp into normalized ISO (temporal recall)', () => {
+        const result = parseMemoryDirective({ userId: 'u', asOf: '2026-01-01T12:00:00Z' });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.directive.asOf).toBe('2026-01-01T12:00:00.000Z');
+    });
+
+    it('ignores an unparseable asOf (falls back to current-state recall, never errors)', () => {
+        for (const bad of ['not-a-date', '', '   ', 42 as unknown as string]) {
+            const result = parseMemoryDirective({ userId: 'u', asOf: bad });
+            expect(result.ok).toBe(true);
+            if (!result.ok) return;
+            expect(result.directive.asOf).toBeNull();
+        }
     });
 
     it('rejects non-objects', () => {

@@ -25,6 +25,20 @@ export const DEFAULT_RETRIEVAL_THRESHOLD: Record<'openai' | 'google', number> = 
     google: 0.55,
 };
 
+/**
+ * Memory is a MANAGED, Google-only product: extraction + reconciliation run on
+ * Cencori's dedicated Gemini key. Non-Google models are never used — routing a
+ * memory call through OpenAI means the paid-key override doesn't apply and the
+ * request cascades into the (unfunded) fallback chain. This is the managed model.
+ */
+export const MEMORY_MANAGED_MODEL = 'gemini-2.5-flash';
+
+/** Coerce any configured/overridden model to a Google model for memory calls. */
+export function ensureGoogleMemoryModel(model: string | null | undefined): string {
+    const trimmed = typeof model === 'string' ? model.trim() : '';
+    return /^gemini/i.test(trimmed) ? trimmed : MEMORY_MANAGED_MODEL;
+}
+
 export interface MemoryExtractOverride {
     model?: string;
     prompt?: string;
@@ -42,6 +56,12 @@ export interface MemoryDirectiveInput {
     threshold?: number;
     namespace?: string;
     extract?: MemoryExtractOverride;
+    /**
+     * Query memory as it was valid at this time (ISO 8601). Temporal recall:
+     * returns facts true AS OF that instant, including ones later superseded.
+     * Omit for current-state recall.
+     */
+    asOf?: string;
 }
 
 /** Parsed + clamped directive the pipeline operates on. */
@@ -61,6 +81,11 @@ export interface MemoryDirective {
     thresholdExplicit: boolean;
     namespace: string | null;
     extract: MemoryExtractOverride | null;
+    /**
+     * ISO timestamp for temporal (as-of) recall, or null for current state.
+     * When set, retrieval queries the validity window instead of active rows.
+     */
+    asOf: string | null;
 }
 
 export interface RetrievedMemory {
@@ -94,9 +119,9 @@ export interface MemorySettings {
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     enabled: true,
-    // Non-OpenAI by default so the whole memory pipeline (extraction +
-    // embeddings) runs without an OpenAI key. Overridable per project/request.
-    extractionModel: 'gemini-2.5-flash',
+    // Managed Google model — the whole memory pipeline (extraction + reconcile
+    // + embeddings) runs on Cencori's Gemini key, never OpenAI.
+    extractionModel: MEMORY_MANAGED_MODEL,
     extractionPrompt: null,
     minImportance: 0.5,
     maxMemoriesPerExchange: 5,
@@ -174,6 +199,14 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
         };
     }
 
+    // Temporal recall: accept a parseable ISO timestamp, normalize to ISO, else
+    // ignore (current-state recall). Never fail the request on a bad asOf.
+    let asOf: string | null = null;
+    if (typeof input.asOf === 'string' && input.asOf.trim()) {
+        const parsed = Date.parse(input.asOf.trim());
+        if (!Number.isNaN(parsed)) asOf = new Date(parsed).toISOString();
+    }
+
     return {
         ok: true,
         directive: {
@@ -189,6 +222,7 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
                     ? input.namespace.trim()
                     : null,
             extract,
+            asOf,
         },
     };
 }

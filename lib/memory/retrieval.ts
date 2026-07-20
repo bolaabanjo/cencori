@@ -9,6 +9,7 @@
 
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { embedForMemory, type MemoryEmbeddingResult } from './embeddings';
+import { rankMemories, type RankableMemory } from './rank';
 import { listSessionMemories } from './session-store';
 import {
     DEFAULT_RETRIEVAL_THRESHOLD,
@@ -19,6 +20,13 @@ import {
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 export type MemoryEmbeddingUsage = Omit<MemoryEmbeddingResult, 'embeddings'>;
+
+/**
+ * Candidate pool fetched before reranking. Wider than topK so recency /
+ * importance / reinforcement can lift the right near-matches above raw cosine.
+ */
+const RANK_POOL_MULTIPLIER = 5;
+const RANK_POOL_MIN = 30;
 
 export async function retrieveMemories(params: {
     supabase: SupabaseAdmin;
@@ -75,41 +83,148 @@ export async function retrieveMemories(params: {
             ? directive.threshold
             : DEFAULT_RETRIEVAL_THRESHOLD[embeddingResult.provider];
 
-        const { data, error } = await supabase.rpc('match_gateway_memories', {
-            p_org_id: organizationId,
-            p_project_id: projectId,
-            p_scope: directive.scope,
-            p_scope_key: directive.scopeKey,
-            p_query_embedding: JSON.stringify(embeddingResult.embeddings[0]),
-            p_threshold: effectiveThreshold,
-            p_limit: directive.topK,
-            p_namespace: directive.namespace,
-        });
+        // Fetch a WIDER pool than we return, then rerank (Layer 2). The pool
+        // uses the same relevance threshold as a floor; ranking decides order.
+        const poolSize = Math.max(RANK_POOL_MIN, directive.topK * RANK_POOL_MULTIPLIER);
+
+        // Temporal (as-of) recall (Layer 3): query the validity window at a past
+        // instant, including facts later superseded. Otherwise: current active state.
+        const isAsOf = directive.asOf != null;
+        const rankNow = isAsOf ? Date.parse(directive.asOf as string) : Date.now();
+
+        const { data, error } = isAsOf
+            ? await supabase.rpc('match_gateway_memories_asof', {
+                p_org_id: organizationId,
+                p_project_id: projectId,
+                p_scope: directive.scope,
+                p_scope_key: directive.scopeKey,
+                p_query_embedding: JSON.stringify(embeddingResult.embeddings[0]),
+                p_as_of: directive.asOf,
+                p_threshold: effectiveThreshold,
+                p_pool: poolSize,
+                p_namespace: directive.namespace,
+            })
+            : await supabase.rpc('match_gateway_memories_ranked', {
+                p_org_id: organizationId,
+                p_project_id: projectId,
+                p_scope: directive.scope,
+                p_scope_key: directive.scopeKey,
+                p_query_embedding: JSON.stringify(embeddingResult.embeddings[0]),
+                p_threshold: effectiveThreshold,
+                p_pool: poolSize,
+                p_namespace: directive.namespace,
+            });
 
         if (error || !data) {
-            if (error) console.warn('[Memory] Retrieval RPC failed:', error.message);
+            // On error: for current-state recall, fall back to the legacy RPC so
+            // recall never goes dark if the Layer-2 migration isn't applied. For
+            // as-of recall there is no legacy equivalent — fail open to empty.
+            if (error) {
+                if (isAsOf) {
+                    console.warn('[Memory] As-of retrieval RPC failed:', error.message);
+                    return [];
+                }
+                console.warn('[Memory] Ranked RPC failed, falling back to legacy retrieval:', error.message);
+                return legacyRetrieve(supabase, organizationId, projectId, directive, embeddingResult.embeddings[0], effectiveThreshold);
+            }
             return [];
         }
 
-        return (data as Array<{
+        const pool: RankableMemory[] = (data as Array<{
             id: string;
             content: string;
             namespace: string | null;
             importance: number;
             similarity: number;
+            access_count: number;
             created_at: string;
+            last_accessed_at: string | null;
         }>).map(row => ({
-            id: toMemoryId(row.id),
+            id: row.id,
             content: row.content,
             similarity: row.similarity,
-            namespace: row.namespace,
             importance: Number(row.importance),
+            accessCount: Number(row.access_count ?? 0),
             createdAt: row.created_at,
+            lastAccessedAt: row.last_accessed_at ?? null,
+            namespace: row.namespace,
+        }));
+
+        const ranked = rankMemories(pool, { topK: directive.topK, now: rankNow });
+
+        // Reinforce ONLY the memories that survived rerank (not the whole pool),
+        // so access_count tracks what actually proved useful. Best-effort. Skip
+        // for as-of recall — inspecting history must not reinforce a memory.
+        if (ranked.length > 0 && !isAsOf) {
+            try {
+                await supabase.rpc('touch_gateway_memories', {
+                    p_org_id: organizationId,
+                    p_ids: ranked.map(m => m.id),
+                });
+            } catch (touchErr) {
+                console.warn('[Memory] Access-count touch failed (non-fatal):', touchErr);
+            }
+        }
+
+        return ranked.map(m => ({
+            id: toMemoryId(m.id),
+            content: m.content,
+            similarity: m.similarity,
+            namespace: m.namespace,
+            importance: m.importance,
+            createdAt: m.createdAt,
         }));
     } catch (error) {
         console.warn('[Memory] Retrieval failed (fail-open):', error);
         return [];
     }
+}
+
+/**
+ * Pre-Layer-2 retrieval: cosine top-K via the legacy RPC, no reranking. Used
+ * only as a fallback when the ranked RPC is unavailable (migration not yet
+ * applied), so a code-before-migration deploy degrades to plain recall instead
+ * of returning nothing.
+ */
+async function legacyRetrieve(
+    supabase: SupabaseAdmin,
+    organizationId: string,
+    projectId: string,
+    directive: MemoryDirective,
+    queryEmbedding: number[],
+    threshold: number
+): Promise<RetrievedMemory[]> {
+    const { data, error } = await supabase.rpc('match_gateway_memories', {
+        p_org_id: organizationId,
+        p_project_id: projectId,
+        p_scope: directive.scope,
+        p_scope_key: directive.scopeKey,
+        p_query_embedding: JSON.stringify(queryEmbedding),
+        p_threshold: threshold,
+        p_limit: directive.topK,
+        p_namespace: directive.namespace,
+    });
+
+    if (error || !data) {
+        if (error) console.warn('[Memory] Legacy retrieval RPC failed:', error.message);
+        return [];
+    }
+
+    return (data as Array<{
+        id: string;
+        content: string;
+        namespace: string | null;
+        importance: number;
+        similarity: number;
+        created_at: string;
+    }>).map(row => ({
+        id: toMemoryId(row.id),
+        content: row.content,
+        similarity: row.similarity,
+        namespace: row.namespace,
+        importance: Number(row.importance),
+        createdAt: row.created_at,
+    }));
 }
 
 /**

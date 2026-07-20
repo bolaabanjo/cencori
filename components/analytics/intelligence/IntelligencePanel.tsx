@@ -1,6 +1,6 @@
 'use client';
 
-import { AnomalyAlertsPanel } from './AnomalyAlertsPanel';
+import { useState } from 'react';
 import { ModelEfficiencyPanel } from './ModelEfficiencyPanel';
 
 interface IntelligencePanelProps {
@@ -9,18 +9,24 @@ interface IntelligencePanelProps {
 }
 
 export function IntelligencePanel({ projectId, environment }: IntelligencePanelProps) {
+    const [timeRange, setTimeRange] = useState('30d');
+
     return (
         <div>
             <div className="mb-4">
                 <h2 className="text-sm font-medium">Intelligence</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                    Anomaly detection and model efficiency analysis for your workload.
+                    Grounded analysis and model efficiency evidence for your workload.
                 </p>
             </div>
 
             <div className="space-y-4">
-                <AnomalyAlertsPanel projectId={projectId} environment={environment} />
-                <ModelEfficiencyPanel projectId={projectId} environment={environment} />
+                <ModelEfficiencyPanel
+                    projectId={projectId}
+                    environment={environment}
+                    timeRange={timeRange}
+                    onTimeRangeChange={setTimeRange}
+                />
             </div>
         </div>
     );

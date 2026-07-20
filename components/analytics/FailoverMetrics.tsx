@@ -9,6 +9,7 @@ interface FailoverMetricsProps {
     projectId: string;
     environment: 'production' | 'test';
     timeRange: string;
+    className?: string;
 }
 
 interface FailoverStats {
@@ -28,14 +29,24 @@ interface FailoverStats {
         errors: number;
         fallbacks: number;
     }>;
+    time_range?: string;
 }
 
-function capitalize(s: string): string {
-    return s.charAt(0).toUpperCase() + s.slice(1);
+const RANGE_LABELS: Record<string, string> = {
+    '1h': 'Last hour',
+    '24h': 'Last 24 hours',
+    '7d': 'Last 7 days',
+    '30d': 'Last 30 days',
+    '90d': 'Last 90 days',
+    all: 'All retained history',
+};
+
+function formatRouteLabel(value: string): string {
+    return value.toLowerCase() === 'unknown' ? 'Unknown source' : value;
 }
 
-export function FailoverMetrics({ projectId, environment, timeRange }: FailoverMetricsProps) {
-    const { data: stats, isLoading } = useQuery<FailoverStats>({
+export function FailoverMetrics({ projectId, environment, timeRange, className }: FailoverMetricsProps) {
+    const { data: stats, isLoading, isError } = useQuery<FailoverStats>({
         queryKey: ['failoverStats', projectId, environment, timeRange],
         queryFn: async () => {
             const response = await fetch(
@@ -49,13 +60,17 @@ export function FailoverMetrics({ projectId, environment, timeRange }: FailoverM
 
     if (isLoading) {
         return (
-            <div className="border border-border/30 bg-card p-4">
-                <Skeleton className="h-3.5 w-32 mb-3" />
-                <Skeleton className="h-6 w-20 mb-4" />
-                <div className="space-y-2">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full" />)}
+            <article className={cn('flex min-h-[320px] flex-col rounded-xl border border-border/55 bg-card p-5', className)}>
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="mt-2 h-3 w-64 max-w-full" />
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-16 w-full" />
                 </div>
-            </div>
+                <div className="mt-5 space-y-3">
+                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-full" />)}
+                </div>
+            </article>
         );
     }
 
@@ -67,91 +82,103 @@ export function FailoverMetrics({ projectId, environment, timeRange }: FailoverM
             .slice(0, 5)
         : [];
 
-    // Derive provider list from failover routes or show empty
-    const providerSet = new Set<string>();
-    if (stats) {
-        for (const [, f] of Object.entries(stats.by_provider)) {
-            for (const flow of f) {
-                providerSet.add(flow.original.toLowerCase());
-                providerSet.add(flow.fallback.toLowerCase());
-            }
-        }
+    const maximumFlowCount = flows[0]?.count || 1;
+    const periodLabel = RANGE_LABELS[stats?.time_range ?? timeRange] ?? 'Selected period';
+
+    if (isError) {
+        return (
+            <article className={cn('flex min-h-[320px] flex-col rounded-xl border border-border/55 bg-card p-5', className)}>
+                <h3 className="text-sm font-medium">Provider recovery</h3>
+                <p className="mt-1 text-[11px] text-muted-foreground">Fallback routing and provider continuity.</p>
+                <div className="flex flex-1 items-center justify-center">
+                    <p className="max-w-56 text-center text-[11px] leading-5 text-muted-foreground">
+                        Failover telemetry is unavailable for this period.
+                    </p>
+                </div>
+            </article>
+        );
     }
 
     return (
-        <div className="border border-border/30 bg-card p-4">
-            <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-medium text-muted-foreground">Provider Failover</p>
-                {hasFallbacks && (
-                    <span className="text-[10px] text-muted-foreground/50">{timeRange}</span>
-                )}
-            </div>
+        <article className={cn(
+            'group flex min-h-[320px] flex-col overflow-hidden rounded-xl border border-border/55 bg-card transition-[border-color,background-color,transform] duration-200 hover:-translate-y-px hover:border-foreground/15',
+            className,
+        )}>
+            <header className="flex items-start justify-between gap-4 px-5 pb-4 pt-4">
+                <div>
+                    <h3 className="text-sm font-medium tracking-[-0.01em]">Provider recovery</h3>
+                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Fallback routing when a primary model cannot deliver.</p>
+                </div>
+                <span className="shrink-0 text-[9px] text-muted-foreground">{periodLabel}</span>
+            </header>
 
-            {/* Status headline */}
-            <div className="flex items-center gap-2 mb-4">
-                {hasFallbacks ? (
-                    <>
-                        <span className="text-lg font-semibold tabular-nums tracking-tight">
-                            {stats.total_fallbacks}
-                        </span>
-                        <span className="text-xs text-muted-foreground/50">
-                            fallbacks
-                        </span>
-                        <span className="text-[10px] text-amber-500 font-medium ml-auto tabular-nums">
-                            {stats.fallback_rate.toFixed(1)}% of requests
-                        </span>
-                    </>
-                ) : (
-                    <>
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-                        <span className="text-sm font-medium text-emerald-500">All providers stable</span>
-                    </>
-                )}
+            <div className="grid grid-cols-2 border-y border-border/40">
+                <div className="px-5 py-4">
+                    <p className="text-[10px] text-muted-foreground">Recovered requests</p>
+                    <p className="mt-1 font-mono text-2xl font-medium tracking-[-0.04em] tabular-nums">
+                        {stats?.total_fallbacks.toLocaleString() ?? '0'}
+                    </p>
+                </div>
+                <div className="border-l border-border/40 px-5 py-4">
+                    <p className="text-[10px] text-muted-foreground">Fallback rate</p>
+                    <p className="mt-1 font-mono text-2xl font-medium tracking-[-0.04em] tabular-nums">
+                        {stats?.fallback_rate.toFixed(1) ?? '0.0'}%
+                    </p>
+                </div>
             </div>
 
             {hasFallbacks ? (
                 <>
-                    {/* Failover routes */}
-                    <div className="space-y-1.5">
-                        {flows.map((flow, i) => {
-                            const maxCount = flows[0]?.count || 1;
-                            const barWidth = (flow.count / maxCount) * 100;
+                    <div className="px-5 pb-4 pt-4">
+                        <div className="mb-3 flex items-center justify-between">
+                            <p className="text-[10px] font-medium text-muted-foreground">Recovery routes</p>
+                            <div className="flex items-center gap-1.5 text-[9px] text-amber-500">
+                                <AlertTriangle className="size-3" />
+                                Primary provider bypassed
+                            </div>
+                        </div>
 
-                            return (
-                                <div key={i} className="group">
-                                    <div className="flex items-center justify-between mb-0.5">
-                                        <div className="flex items-center gap-1.5 text-xs">
-                                            <span className="text-muted-foreground">{capitalize(flow.original)}</span>
-                                            <ArrowRight className="h-2.5 w-2.5 text-muted-foreground/40" />
-                                            <span className="font-medium">{capitalize(flow.fallback)}</span>
+                        <div className="space-y-3">
+                            {flows.map((flow, index) => {
+                                const share = (flow.count / maximumFlowCount) * 100;
+
+                                return (
+                                    <div key={`${flow.original}-${flow.fallback}-${index}`}>
+                                        <div className="mb-1.5 flex min-w-0 items-center gap-2">
+                                            <span className="truncate font-mono text-[10px] text-muted-foreground">
+                                                {formatRouteLabel(flow.original)}
+                                            </span>
+                                            <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                                            <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-medium">
+                                                {formatRouteLabel(flow.fallback)}
+                                            </span>
+                                            <span className="font-mono text-[9px] tabular-nums text-muted-foreground">
+                                                {flow.count}×
+                                            </span>
                                         </div>
-                                        <span className="text-[10px] text-muted-foreground/50 tabular-nums font-mono">
-                                            {flow.count}x
-                                        </span>
+                                        <div className="h-1 overflow-hidden rounded-full bg-muted/70">
+                                            <div
+                                                className="h-full rounded-full bg-amber-500/75 transition-[width] duration-300"
+                                                style={{ width: `${share}%` }}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="h-1 rounded-full bg-secondary overflow-hidden">
-                                        <div
-                                            className="h-full rounded-full bg-amber-500 transition-all"
-                                            style={{ width: `${barWidth}%`, opacity: 0.5 }}
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    {/* Top reasons */}
                     {stats.top_reasons.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-border/20">
-                            <p className="text-[10px] text-muted-foreground/40 uppercase tracking-wider mb-2">Reasons</p>
-                            <div className="space-y-1">
-                                {stats.top_reasons.slice(0, 3).map((reason, i) => (
-                                    <div key={i} className="flex items-center justify-between">
-                                        <span className="text-[11px] text-muted-foreground truncate max-w-[70%]">
+                        <div className="mt-auto border-t border-border/40 px-5 py-3">
+                            <p className="mb-2 text-[9px] font-medium text-muted-foreground">Why recovery was triggered</p>
+                            <div className="space-y-1.5">
+                                {stats.top_reasons.slice(0, 2).map((reason, index) => (
+                                    <div key={`${reason.reason}-${index}`} className="flex items-center justify-between gap-4">
+                                        <span className="truncate text-[10px] text-muted-foreground">
                                             {reason.reason}
                                         </span>
-                                        <span className="text-[10px] text-muted-foreground/40 tabular-nums font-mono">
-                                            {reason.count}x
+                                        <span className="font-mono text-[9px] tabular-nums text-muted-foreground">
+                                            {reason.count}×
                                         </span>
                                     </div>
                                 ))}
@@ -160,12 +187,16 @@ export function FailoverMetrics({ projectId, environment, timeRange }: FailoverM
                     )}
                 </>
             ) : (
-                <div className="space-y-1.5">
-                    <p className="text-[11px] text-muted-foreground/40">
-                        No provider failovers triggered in this period. All requests routed to their primary provider successfully.
+                <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
+                    <span className="mb-3 flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/[0.08]">
+                        <CheckCircle className="size-4 text-emerald-500" />
+                    </span>
+                    <p className="text-xs font-medium">All primary routes were stable</p>
+                    <p className="mt-1 max-w-64 text-[10px] leading-4 text-muted-foreground">
+                        No request needed a fallback provider during this period.
                     </p>
                 </div>
             )}
-        </div>
+        </article>
     );
 }

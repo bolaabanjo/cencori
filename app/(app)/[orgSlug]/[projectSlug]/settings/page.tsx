@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Trash2, Globe, Clock, Webhook, Server, AlertTriangle, Plus, MoreHorizontal, RefreshCw, DollarSign, Bell, Shield, Gauge, Loader2 } from "lucide-react";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { RagMetricsLogo } from "@/components/icons/BrandIcons";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MinimalScrollArea } from "@/components/ui/scroll-area";
 import {

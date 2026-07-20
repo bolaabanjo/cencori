@@ -25,7 +25,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Copy, Check } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { updateOrgName, updateOrgSlug, deleteOrganization } from './actions';
 
 interface PageProps {

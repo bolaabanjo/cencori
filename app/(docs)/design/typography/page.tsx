@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 // Code block component with copy functionality
 function CodeBlock({ code, language = "tsx" }: { code: string; language?: string }) {

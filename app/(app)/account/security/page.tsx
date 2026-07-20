@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { ShieldCheck, Key, Smartphone, Monitor, Laptop, Tablet, Globe, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabaseClient";
 
 function parseUserAgent(ua: string) {

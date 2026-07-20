@@ -70,6 +70,9 @@
 }
 
 :root {
+    --sileo-duration: 560ms !important;
+    --sileo-height: 42px !important;
+    --sileo-width: min(350px, calc(100vw - 1.5rem)) !important;
     --radius: 0.5rem;
     --background: #ffffff;
     --foreground: #000000;
@@ -107,6 +110,47 @@
     --color-vesper-string: oklch(0.5464 0.1442 147.32);
 }
 
+[data-sileo-viewport] {
+    z-index: 120 !important;
+}
+
+[data-sileo-title] {
+    text-transform: none !important;
+}
+
+@keyframes agent-thinking-shimmer {
+    from {
+        background-position: 180% 50%;
+    }
+    to {
+        background-position: -80% 50%;
+    }
+}
+
+.agent-thinking-shimmer {
+    display: inline-block;
+    color: transparent;
+    background-image: linear-gradient(
+        100deg,
+        var(--muted-foreground) 30%,
+        var(--foreground) 48%,
+        var(--muted-foreground) 66%
+    );
+    background-position: 180% 50%;
+    background-size: 240% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: agent-thinking-shimmer 1.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-thinking-shimmer {
+        color: var(--muted-foreground);
+        background: none;
+        animation: none;
+    }
+}
+
 .dark {
     --background: #000000;
     --foreground: #f2f2f2;
@@ -141,6 +185,17 @@
     --sidebar-ring: #f2f2f2;
     --color-vesper-type: oklch(0.8689 0.0877 60.68);
     --color-vesper-string: oklch(0.93 0.1035 175.07);
+}
+
+/* Dashboard-only surface contrast. Marketing and docs keep the global palette. */
+.dashboard-theme {
+    --border: #dedede;
+    --sidebar-border: #ededed;
+}
+
+.dark .dashboard-theme {
+    --border: #2b2b2b;
+    --sidebar-border: #1d1d1d;
 }
 
 /* ── Docs route theme  scoped to .docs-theme only ── */
@@ -432,31 +487,6 @@
     animation: fade-in 0.5s ease-out forwards;
 }
 
-/* Sonner Toast Type Styling */
-[data-sonner-toast][data-type="success"] {
-    background: hsl(142 76% 36% / 0.15) !important;
-    border-color: hsl(142 76% 36% / 0.3) !important;
-    color: hsl(142 76% 36%) !important;
-}
-
-[data-sonner-toast][data-type="error"] {
-    background: hsl(0 84% 60% / 0.15) !important;
-    border-color: hsl(0 84% 60% / 0.3) !important;
-    color: hsl(0 84% 60%) !important;
-}
-
-[data-sonner-toast][data-type="warning"] {
-    background: hsl(38 92% 50% / 0.15) !important;
-    border-color: hsl(38 92% 50% / 0.3) !important;
-    color: hsl(38 92% 50%) !important;
-}
-
-[data-sonner-toast][data-type="info"] {
-    background: hsl(217 91% 60% / 0.15) !important;
-    border-color: hsl(217 91% 60% / 0.3) !important;
-    color: hsl(217 91% 60%) !important;
-}
-
 code {
     font-family: var(--font-mono);
 }
@@ -666,4 +696,8 @@ rect:focus-visible {
 text,
 tspan {
     user-select: none;
+}
+
+html[data-toast-preview="true"] [data-cookie-consent] {
+    display: none !important;
 }

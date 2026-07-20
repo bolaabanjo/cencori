@@ -3,9 +3,10 @@
 
 import { Copy } from "lucide-react";
 import React from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/utils";
 
 // Simple syntax highlighter
 function highlightCode(code: string, lang: string) {
@@ -70,14 +71,14 @@ function highlightCode(code: string, lang: string) {
     ));
 }
 
-export function MarkdownRenderer({ content }: { content: string }) {
+export function MarkdownRenderer({ content, className }: { content: string; className?: string }) {
     const copyCode = (code: string) => {
         navigator.clipboard.writeText(code);
         toast.success("Code copied", { duration: 2000 });
     };
 
     return (
-        <div className="prose prose-xs prose-headings:text-foreground dark:prose-invert max-w-none break-words">
+        <div className={cn("prose prose-xs prose-headings:text-foreground dark:prose-invert max-w-none break-words", className)}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{

@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiGatewayRequestDetailModal } from './ApiGatewayRequestDetailModal';
 import { FileText } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 
 interface ApiGatewayRequestLog {
     id: string;

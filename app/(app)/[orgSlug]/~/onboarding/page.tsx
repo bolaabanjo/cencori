@@ -13,7 +13,7 @@ import { slugify, cn } from "@/lib/utils";
 import { isReservedProjectSlug } from "@/lib/reserved-slugs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabaseClient";
 import {
   Select,

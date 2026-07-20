@@ -98,7 +98,9 @@ export async function GET(
         }
 
         const totalRequests = requests?.length || 0;
-        const successfulRequests = requests?.filter(r => r.status === 'success').length || 0;
+        const successfulRequests = requests?.filter(
+            r => r.status === 'success' || r.status === 'success_fallback'
+        ).length || 0;
         const filteredRequests = requests?.filter(r => r.status === 'filtered').length || 0;
         const blockedOutputRequests = requests?.filter(r => r.status === 'blocked_output').length || 0;
         const errorRequests = requests?.filter(r => r.status === 'error').length || 0;

@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { GenerateKeyDialog } from "@/components/api-keys/GenerateKeyDialog";
 import { useEnvironment } from "@/lib/contexts/EnvironmentContext";
 import { maskApiKey } from "@/lib/api-keys";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { queryKeys } from "@/lib/hooks/useQueries";
 import {
     DropdownMenu,

@@ -1,13 +1,15 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import Link from "next/link";
+import { useState, useEffect, Suspense, useMemo, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { slugify } from "@/lib/utils";
 import { isReservedSlug } from "@/lib/reserved-slugs";
+import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Logo } from "@/components/logo";
@@ -26,6 +28,12 @@ const PLANS = [
     popular: true,
   },
 ] as const;
+
+type ProvisionedOrganization = {
+  id: string;
+  slug: string;
+  name: string;
+};
 
 function getRequestLimit(tier: string): number {
   switch (tier) {
@@ -47,14 +55,25 @@ function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preview = searchParams.get("preview") === "true";
+  const [fullName, setFullName] = useState("");
   const [orgName, setOrgName] = useState("");
   const [plan, setPlan] = useState<"free" | "pro">("free");
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [provisionedOrganization, setProvisionedOrganization] =
+    useState<ProvisionedOrganization | null>(null);
+  const organizationPromiseRef = useRef<Promise<ProvisionedOrganization | null> | null>(null);
+  const fullNameInputRef = useRef<HTMLInputElement>(null);
+  const orgNameInputRef = useRef<HTMLInputElement>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
+  const supabase = useMemo(
+    () =>
+      createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
+      ),
+    [],
   );
 
   useEffect(() => {
@@ -67,109 +86,197 @@ function OnboardingContent() {
         router.replace("/login");
         return;
       }
+      const metadataName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        [user.user_metadata?.first_name, user.user_metadata?.last_name]
+          .filter(Boolean)
+          .join(" ");
+      if (metadataName) {
+        setFullName((currentName) => currentName || metadataName);
+      }
       setCheckingAuth(false);
     });
   }, [supabase, router, preview]);
 
-  const handleSubmit = async () => {
+  const focusFullName = () => {
+    requestAnimationFrame(() => fullNameInputRef.current?.focus());
+  };
+
+  const focusOrganizationName = () => {
+    requestAnimationFrame(() => orgNameInputRef.current?.focus());
+  };
+
+  const ensureOrganization = async (): Promise<ProvisionedOrganization | null> => {
+    if (provisionedOrganization) return provisionedOrganization;
+    if (organizationPromiseRef.current) return organizationPromiseRef.current;
+
+    if (!fullName.trim()) {
+      toast.error("Please enter your full name.");
+      focusFullName();
+      return null;
+    }
+
     if (!orgName.trim()) {
       toast.error("Please enter an organization name.");
-      return;
+      focusOrganizationName();
+      return null;
     }
 
-    setLoading(true);
+    const normalizedFullName = fullName.trim().replace(/\s+/g, " ");
+    const organizationName = orgName.trim();
+    const provisionOrganization = async (): Promise<ProvisionedOrganization | null> => {
+      setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("You must be logged in.");
-      setLoading(false);
-      return;
-    }
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          toast.error("You must be logged in.");
+          return null;
+        }
 
-    const baseSlug = slugify(orgName.trim()) || "org";
-    let newSlug = baseSlug;
-    let slugExists = true;
-    for (let i = 0; i < 10; i++) {
-      // Skip reserved slugs (would collide with app routes like /enterprise).
-      if (isReservedSlug(newSlug)) {
-        newSlug = `${baseSlug}-${i + 1}`;
-        continue;
-      }
-      const { data } = await supabase
-        .from("organizations")
-        .select("slug")
-        .eq("slug", newSlug)
-        .single();
-      if (!data) {
-        slugExists = false;
-        break;
-      }
-      newSlug = `${baseSlug}-${i + 1}`;
-    }
+        const [firstName, ...remainingNameParts] = normalizedFullName.split(" ");
+        const lastName = remainingNameParts.join(" ");
+        const { error: metadataError } = await supabase.auth.updateUser({
+          data: {
+            full_name: normalizedFullName,
+            name: normalizedFullName,
+            first_name: firstName,
+            last_name: lastName,
+          },
+        });
 
-    if (slugExists) {
-      toast.error("Could not generate a unique slug. Try again.");
-      setLoading(false);
-      return;
-    }
+        if (metadataError) {
+          console.error("Error saving user name:", metadataError.message);
+          toast.error("Could not save your name. Please try again.");
+          return null;
+        }
 
-    const isPaid = plan === "pro";
-    const initialTier = isPaid ? "free" : "free";
+        const profileResponse = await fetch("/api/user/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: firstName,
+            last_name: lastName,
+          }),
+        });
 
-    const { data: orgData, error } = await supabase
-      .from("organizations")
-      .insert({
-        name: orgName.trim(),
-        slug: newSlug,
-        subscription_tier: initialTier,
-        subscription_status: "active",
-        monthly_request_limit: getRequestLimit(initialTier),
-        monthly_requests_used: 0,
-        owner_id: user.id,
-      })
-      .select("id, slug")
-      .single();
+        if (!profileResponse.ok) {
+          console.error("Error saving user profile:", await profileResponse.text());
+          toast.error("Could not finish saving your profile. Please try again.");
+          return null;
+        }
 
-    if (error || !orgData) {
-      console.error("Error creating organization:", error?.message);
-      toast.error("Failed to create organization.");
-      setLoading(false);
-      return;
-    }
+        const baseSlug = slugify(organizationName) || "org";
+        let newSlug = baseSlug;
+        let slugExists = true;
 
-    const { error: memberError } = await supabase
-      .from("organization_members")
-      .insert({
-        organization_id: orgData.id,
-        user_id: user.id,
-        role: "owner",
-      });
+        for (let i = 0; i < 10; i++) {
+          // Skip reserved slugs that collide with application routes.
+          if (isReservedSlug(newSlug)) {
+            newSlug = `${baseSlug}-${i + 1}`;
+            continue;
+          }
 
-    if (memberError) {
-      console.error("Error adding member:", memberError.message);
-      await supabase.from("organizations").delete().eq("id", orgData.id);
-      toast.error("Failed to finalize setup.");
-      setLoading(false);
-      return;
-    }
+          const { data, error: slugError } = await supabase
+            .from("organizations")
+            .select("slug")
+            .eq("slug", newSlug)
+            .maybeSingle();
 
-    if (isPaid) {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "pro", interval: "month", orgId: orgData.id }),
-      });
-      const data = await res.json();
-      if (res.ok && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      } else {
-        await supabase.from("organizations").delete().eq("id", orgData.id);
-        toast.error("Checkout failed. Please try again.");
+          if (slugError) {
+            console.error("Error checking organization slug:", slugError.message);
+            toast.error("Could not prepare your organization. Please try again.");
+            return null;
+          }
+
+          if (!data) {
+            slugExists = false;
+            break;
+          }
+          newSlug = `${baseSlug}-${i + 1}`;
+        }
+
+        if (slugExists) {
+          toast.error("Could not generate a unique slug. Try again.");
+          return null;
+        }
+
+        // Paid onboarding starts as Free and is upgraded only after Stripe confirms payment.
+        const initialTier = "free";
+        const { data: orgData, error } = await supabase
+          .from("organizations")
+          .insert({
+            name: organizationName,
+            slug: newSlug,
+            subscription_tier: initialTier,
+            subscription_status: "active",
+            monthly_request_limit: getRequestLimit(initialTier),
+            monthly_requests_used: 0,
+            owner_id: user.id,
+          })
+          .select("id, slug, name")
+          .single();
+
+        if (error || !orgData) {
+          console.error("Error creating organization:", error?.message);
+          toast.error("Failed to create organization.");
+          return null;
+        }
+
+        const { error: memberError } = await supabase
+          .from("organization_members")
+          .insert({
+            organization_id: orgData.id,
+            user_id: user.id,
+            role: "owner",
+          });
+
+        if (memberError) {
+          console.error("Error adding member:", memberError.message);
+          await supabase.from("organizations").delete().eq("id", orgData.id);
+          toast.error("Failed to finalize setup.");
+          return null;
+        }
+
+        const organization = {
+          id: orgData.id,
+          slug: orgData.slug,
+          name: orgData.name || organizationName,
+        };
+        setProvisionedOrganization(organization);
+        return organization;
+      } finally {
         setLoading(false);
       }
+    };
+
+    const provisionPromise = provisionOrganization();
+    organizationPromiseRef.current = provisionPromise;
+
+    try {
+      return await provisionPromise;
+    } finally {
+      organizationPromiseRef.current = null;
+    }
+  };
+
+  const handlePlanSelect = (selectedPlan: "free" | "pro") => {
+    if (loading) return;
+    setPlan(selectedPlan);
+  };
+
+  const handleSubmit = async () => {
+    const organization = await ensureOrganization();
+    if (!organization) return;
+
+    if (plan === "pro") {
+      setCheckoutOpen(true);
     } else {
       toast.success("Organization created!");
-      router.push(`/${orgData.slug}`);
+      router.push(`/${organization.slug}`);
     }
   };
 
@@ -192,14 +299,35 @@ function OnboardingContent() {
 
         <div className="rounded-xl bg-black p-6 space-y-6">
           <div>
+            <label htmlFor="fullName" className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Full name
+            </label>
+            <Input
+              ref={fullNameInputRef}
+              id="fullName"
+              name="name"
+              type="text"
+              autoComplete="name"
+              placeholder="e.g. Ada Lovelace"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={loading || Boolean(provisionedOrganization)}
+              required
+              className="bg-zinc-900 text-white placeholder:text-zinc-500 h-10"
+            />
+          </div>
+
+          <div>
             <label htmlFor="orgName" className="block text-sm font-medium text-zinc-300 mb-1.5">
               Organization Name
             </label>
             <Input
+              ref={orgNameInputRef}
               id="orgName"
               placeholder="e.g. Acme Corp"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
+              disabled={loading || Boolean(provisionedOrganization)}
               className="bg-zinc-900 text-white placeholder:text-zinc-500 h-10"
             />
           </div>
@@ -213,12 +341,14 @@ function OnboardingContent() {
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => setPlan(p.id)}
+                  onClick={() => handlePlanSelect(p.id)}
+                  disabled={loading}
+                  aria-pressed={plan === p.id}
                   className={`relative rounded-lg p-4 text-left transition-all ${
                     plan === p.id
                       ? "bg-zinc-900 ring-1 ring-blue-500"
                       : "bg-zinc-900/50 hover:bg-zinc-900/80"
-                  }`}
+                  } disabled:cursor-wait disabled:opacity-60`}
                 >
                   {p.popular && (
                     <span className="absolute -top-2.5 right-3 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-semibold text-black">
@@ -244,16 +374,29 @@ function OnboardingContent() {
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-4">
             By continuing, you agree to the{" "}
-            <a href="/terms" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
+            <Link href="/terms" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
               Terms of Service
-            </a>{" "}
+            </Link>{" "}
             and{" "}
-            <a href="/privacy" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
+            <Link href="/privacy" className="underline underline-offset-2 hover:text-zinc-400 transition-colors">
               Privacy Policy
-            </a>.
+            </Link>.
           </p>
         </div>
       </div>
+
+      {provisionedOrganization && (
+        <UpgradeDialog
+          open={checkoutOpen}
+          onOpenChange={setCheckoutOpen}
+          orgId={provisionedOrganization.id}
+          orgSlug={provisionedOrganization.slug}
+          orgName={provisionedOrganization.name}
+          currentTier="free"
+          recommendedTier="pro"
+          checkoutMode="direct"
+        />
+      )}
     </div>
   );
 }

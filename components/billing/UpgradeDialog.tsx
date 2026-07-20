@@ -536,15 +536,20 @@ export function UpgradeDialog({
         </SheetHeader>
 
         {checkoutOptions && sessionId ? (
-          <PaymentForm
-            error={error}
-            orgSlug={orgSlug}
-            paymentFirst={checkoutMode === "direct"}
-            sessionId={sessionId}
-            onError={setError}
-            onSubmittingChange={setPaymentSubmitting}
+          <CheckoutElementsProvider
+            key={clientSecret}
+            stripe={stripePromise}
+            options={checkoutOptions}
           >
-            <CheckoutDetails
+            <PaymentForm
+              error={error}
+              orgSlug={orgSlug}
+              paymentFirst={checkoutMode === "direct"}
+              sessionId={sessionId}
+              onError={setError}
+              onSubmittingChange={setPaymentSubmitting}
+            >
+              <CheckoutDetails
                 availablePlans={availablePlans}
                 checkoutMode={checkoutMode}
                 clientSecret={clientSecret}
@@ -555,8 +560,9 @@ export function UpgradeDialog({
                 selectedTier={selectedTier}
                 setInterval={setInterval}
                 setSelectedTier={setSelectedTier}
-            />
-          </PaymentForm>
+              />
+            </PaymentForm>
+          </CheckoutElementsProvider>
         ) : (
           <>
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -612,18 +618,6 @@ export function UpgradeDialog({
       </SheetContent>
     </Sheet>
   );
-
-  if (checkoutOptions && sessionId) {
-    return (
-      <CheckoutElementsProvider
-        key={clientSecret}
-        stripe={stripePromise}
-        options={checkoutOptions}
-      >
-        {checkoutSheet}
-      </CheckoutElementsProvider>
-    );
-  }
 
   return checkoutSheet;
 }

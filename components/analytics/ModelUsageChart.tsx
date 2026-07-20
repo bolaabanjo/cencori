@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Pie, PieChart, Cell, ResponsiveContainer } from 'recharts';
 import {
     ChartConfig,
@@ -13,14 +14,12 @@ interface ModelUsageChartProps {
 }
 
 const COLORS = [
-    'hsl(217, 91%, 60%)',  // Blue
-    'hsl(142, 71%, 45%)',  // Green
-    'hsl(262, 83%, 58%)',  // Purple
-    'hsl(24, 96%, 53%)',   // Orange
-    'hsl(340, 82%, 52%)',  // Pink
-    'hsl(48, 96%, 53%)',   // Yellow
-    'hsl(187, 100%, 42%)', // Cyan
-    'hsl(0, 84%, 60%)',    // Red
+    'hsl(262, 83%, 58%)',
+    'hsl(24, 96%, 53%)',
+    'hsl(48, 96%, 53%)',
+    'hsl(217, 91%, 60%)',
+    'hsl(340, 82%, 52%)',
+    'hsl(187, 84%, 42%)',
 ];
 
 const chartConfig = {
@@ -30,16 +29,27 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function ModelUsageChart({ data }: ModelUsageChartProps) {
-    const chartData = Object.entries(data)
-        .map(([name, value], index) => ({
+    const [activeIndex, setActiveIndex] = useState<number | null>(null);
+    const rankedModels = Object.entries(data)
+        .filter(([, value]) => value > 0)
+        .map(([name, value]) => ({
             name: name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
             value,
-            fill: COLORS[index % COLORS.length],
         }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 8); // Top 8 models
+        .sort((a, b) => b.value - a.value);
 
-    const total = chartData.reduce((sum, item) => sum + item.value, 0);
+    const total = rankedModels.reduce((sum, item) => sum + item.value, 0);
+    const leadingModels = rankedModels.slice(0, 5);
+    const otherRequests = rankedModels.slice(5).reduce((sum, item) => sum + item.value, 0);
+    const chartData = [
+        ...leadingModels,
+        ...(otherRequests > 0 ? [{ name: 'Other models', value: otherRequests }] : []),
+    ].map((item, index) => ({
+        ...item,
+        fill: COLORS[index % COLORS.length],
+    }));
+
+    const activeItem = activeIndex === null ? null : chartData[activeIndex];
 
     if (total === 0) {
         return (
@@ -56,13 +66,13 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
     }
 
     return (
-        <div className="bg-card p-4">
+        <div className="flex h-full flex-col bg-card p-4">
             <div className="mb-3">
-                <h3 className="text-xs font-medium">Model Usage</h3>
+                <h3 className="text-xs font-medium">Model usage</h3>
                 <p className="text-[10px] text-muted-foreground">Requests by model</p>
             </div>
 
-            <div className="h-[180px]">
+            <div className="relative h-[190px]">
                 <ChartContainer config={chartConfig} className="h-full w-full">
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -84,32 +94,65 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
                                 data={chartData}
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={45}
-                                outerRadius={70}
+                                innerRadius={51}
+                                outerRadius={78}
                                 paddingAngle={2}
+                                cornerRadius={3}
                                 dataKey="value"
                                 nameKey="name"
+                                onMouseEnter={(_, index) => setActiveIndex(index)}
+                                onMouseLeave={() => setActiveIndex(null)}
                             >
                                 {chartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.fill} strokeWidth={0} />
+                                    <Cell
+                                        key={entry.name}
+                                        fill={entry.fill}
+                                        strokeWidth={0}
+                                        opacity={activeIndex === null || activeIndex === index ? 1 : 0.24}
+                                        className="transition-opacity duration-200"
+                                    />
                                 ))}
                             </Pie>
                         </PieChart>
                     </ResponsiveContainer>
                 </ChartContainer>
+
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="max-w-24 text-center">
+                        <p className="font-mono text-lg font-medium tracking-[-0.04em] tabular-nums">
+                            {activeItem ? `${((activeItem.value / total) * 100).toFixed(0)}%` : total.toLocaleString()}
+                        </p>
+                        <p className="mt-0.5 truncate text-[9px] text-muted-foreground">
+                            {activeItem?.name ?? `${rankedModels.length} model${rankedModels.length === 1 ? '' : 's'}`}
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            {/* Legend */}
-            <div className="mt-3 grid grid-cols-2 gap-1.5">
-                {chartData.slice(0, 6).map((item, index) => (
-                    <div key={index} className="flex items-center gap-1.5 text-[10px]">
-                        <div
-                            className="h-2 w-2 rounded-full shrink-0"
+            <div className="mt-3 grid grid-cols-2 gap-1">
+                {chartData.map((item, index) => (
+                    <button
+                        key={item.name}
+                        type="button"
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onMouseLeave={() => setActiveIndex(null)}
+                        onFocus={() => setActiveIndex(index)}
+                        onBlur={() => setActiveIndex(null)}
+                        className="flex min-w-0 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-[border-color,background-color,opacity,transform] duration-200 hover:border-border/55 hover:bg-muted/25 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                        aria-label={`${item.name}: ${item.value.toLocaleString()} requests, ${((item.value / total) * 100).toFixed(1)} percent`}
+                    >
+                        <span
+                            className="size-2 shrink-0 rounded-[2px]"
                             style={{ backgroundColor: item.fill }}
                         />
-                        <span className="text-muted-foreground truncate">{item.name}</span>
-                        <span className="font-mono ml-auto">{((item.value / total) * 100).toFixed(0)}%</span>
-                    </div>
+                        <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[10px] text-muted-foreground">{item.name}</span>
+                            <span className="block font-mono text-[8px] tabular-nums text-muted-foreground/60">
+                                {item.value.toLocaleString()} requests
+                            </span>
+                        </span>
+                        <span className="font-mono text-[10px] tabular-nums">{((item.value / total) * 100).toFixed(0)}%</span>
+                    </button>
                 ))}
             </div>
         </div>

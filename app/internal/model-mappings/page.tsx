@@ -19,7 +19,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Search, Upload, Loader2, ArrowRightLeft } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/toast";
 
 interface ModelMapping {
     id: string;
