@@ -10,6 +10,14 @@ const serverPath = path.join(__dirname, '..', 'dist', 'index.js');
 const BASE = process.env.CENCORI_DOCS_BASE_URL ?? 'https://cencori.com';
 const API_KEY = process.env.CENCORI_API_KEY?.trim();
 
+function skipWithoutApiKey(t) {
+    console.warn(
+        '[cencori-mcp tests] Skipping authenticated test: CENCORI_API_KEY is not set. ' +
+            'Non-auth coverage still runs; set CENCORI_API_KEY for full suite.',
+    );
+    t.skip('CENCORI_API_KEY not set');
+}
+
 function parseToolText(result) {
     const text = result.content?.find((item) => item.type === 'text')?.text;
     assert.ok(text, 'Expected text tool result');
@@ -125,7 +133,7 @@ test('MCP server: list_docs tool returns sections', async () => {
 
 test('MCP server: feature flag docs-only hides platform tools even with API key', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 
@@ -145,7 +153,7 @@ test('MCP server: feature flag docs-only hides platform tools even with API key'
 
 test('MCP server: authenticated mode exposes all 7 tools', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 
@@ -173,7 +181,7 @@ test('MCP server: authenticated mode exposes all 7 tools', async (t) => {
 
 test('MCP server: list_models returns model list', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 
@@ -198,7 +206,7 @@ test('MCP server: list_models returns model list', async (t) => {
 
 test('MCP server: get_metrics returns usage JSON', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 
@@ -225,7 +233,7 @@ test('MCP server: get_metrics returns usage JSON', async (t) => {
 
 test('MCP server: list_agents returns data array', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 
@@ -248,7 +256,7 @@ test('MCP server: list_agents returns data array', async (t) => {
 
 test('MCP server: get_agent returns config for first agent', async (t) => {
     if (!API_KEY) {
-        t.skip('CENCORI_API_KEY not set');
+        skipWithoutApiKey(t);
         return;
     }
 

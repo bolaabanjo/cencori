@@ -79,7 +79,7 @@ const mcpConfig = JSON.stringify(
         command: "npx",
         args: ["-y", "@cencori/mcp"],
         env: {
-          CENCORI_API_KEY: "csk_...",
+          CENCORI_API_KEY: "",
           CENCORI_MCP_FEATURES: "docs,gateway,agents",
         },
       },
