@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { invalidateCache } from '@/lib/cache/prompt-cache';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
@@ -8,6 +9,8 @@ export async function GET(
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 50);
@@ -59,6 +62,8 @@ export async function DELETE(
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const body = await req.json();
 
     const result = await invalidateCache({

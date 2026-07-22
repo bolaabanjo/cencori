@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { extractVariableNames } from '@/lib/prompts/registry';
 import { writeAuditLog } from '@/lib/audit-log';
@@ -9,6 +10,8 @@ export async function GET(
     { params }: { params: Promise<{ projectId: string; promptId: string }> }
 ) {
     const { projectId, promptId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const supabase = createAdminClient();
     const url = new URL(req.url);
 
@@ -38,6 +41,8 @@ export async function POST(
     { params }: { params: Promise<{ projectId: string; promptId: string }> }
 ) {
     const { projectId, promptId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const body = await req.json();
     const supabase = createAdminClient();
 

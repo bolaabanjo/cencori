@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange } from '@/lib/entitlements';
@@ -19,6 +20,8 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     try {
         const searchParams = req.nextUrl.searchParams;

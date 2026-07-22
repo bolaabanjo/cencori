@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { encryptApiKey } from '@/lib/encryption';
 import { trackEvent } from '@/lib/track-event';
@@ -14,6 +15,8 @@ export async function GET(
 
     try {
         const { projectId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
 
         const { data: project, error: projectError } = await supabase
             .from('projects')
@@ -61,6 +64,8 @@ export async function POST(
 
     try {
         const { projectId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
 
         const { data: project, error: projectError } = await supabase
             .from('projects')

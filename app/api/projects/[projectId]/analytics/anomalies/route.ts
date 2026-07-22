@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
@@ -24,6 +25,8 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     try {
         const { data: project, error: projectError } = await supabaseAdmin

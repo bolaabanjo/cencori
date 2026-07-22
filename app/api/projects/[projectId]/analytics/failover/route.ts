@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange, hasFeature } from '@/lib/entitlements';
@@ -9,6 +10,8 @@ interface RouteParams {
 
 export async function GET(request: Request, { params }: RouteParams) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const { searchParams } = new URL(request.url);
     const environment = searchParams.get('environment') || 'production';
 

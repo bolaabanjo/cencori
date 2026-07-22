@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
 export async function GET(
@@ -6,6 +7,8 @@ export async function GET(
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const supabaseAdmin = createAdminClient();
 
     const encoder = new TextEncoder();

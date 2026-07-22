@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { fetchRagMetricsResult } from '@/lib/integrations/ragmetrics';
 
@@ -8,6 +9,8 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, requestId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     try {
         const { data: request, error } = await supabaseAdmin

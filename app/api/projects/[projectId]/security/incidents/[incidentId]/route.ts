@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
@@ -9,6 +10,8 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, incidentId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
     if (gate) return gate;
@@ -77,6 +80,8 @@ export async function PATCH(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, incidentId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
     if (gate) return gate;
