@@ -4,6 +4,8 @@
 |---------|----------|-----------|
 | SDK | [`cencori`](https://www.npmjs.com/package/cencori) | `packages/sdk` |
 | CLI scaffold | [`create-cencori-app`](https://www.npmjs.com/package/create-cencori-app) | `packages/create-cencori-app` |
+| MCP (docs) | [`@cencori/mcp`](https://www.npmjs.com/package/@cencori/mcp) | `packages/mcp` |
+| Security scanner | [`@cencori/scan`](https://www.npmjs.com/package/@cencori/scan) | `packages/scan` |
 
 ## Prerequisites
 

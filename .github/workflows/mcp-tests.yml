@@ -1,0 +1,37 @@
+name: MCP tests
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'packages/mcp/**'
+      - '.github/workflows/mcp-tests.yml'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'packages/mcp/**'
+      - '.github/workflows/mcp-tests.yml'
+
+jobs:
+  mcp-integration:
+    name: MCP package tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/mcp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run MCP tests
+        run: npm test
+        # Authenticated tests skip without CENCORI_API_KEY; non-auth + docs API tests still run against public cencori.com.

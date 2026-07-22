@@ -72,8 +72,26 @@ const menuItems = {
   ),
 };
 
+const mcpConfig = JSON.stringify(
+  {
+    mcpServers: {
+      cencori: {
+        command: "npx",
+        args: ["-y", "@cencori/mcp"],
+        env: {
+          CENCORI_API_KEY: "",
+          CENCORI_MCP_FEATURES: "docs,gateway,agents",
+        },
+      },
+    },
+  },
+  null,
+  2,
+);
+
 export function DocsCopyPage({ mdx, url }: { mdx: string; url: string }) {
   const { copy, copied } = useClipboard();
+  const { copy: copyMcp, copied: mcpCopied } = useClipboard();
 
   const trigger = (
     <Button
@@ -113,6 +131,29 @@ export function DocsCopyPage({ mdx, url }: { mdx: string; url: string }) {
                 {value(url)}
               </DropdownMenuItem>
             ))}
+            <DropdownMenuItem
+              className="hover:bg-muted/50! text-muted-foreground/80 hover:text-primary! cursor-pointer text-[13px]"
+              onSelect={(e) => e.preventDefault()}
+              asChild
+            >
+              <button type="button" onClick={() => copyMcp(mcpConfig)}>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-3.5"
+                >
+                  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+                  <rect width="20" height="8" x="6" y="14" rx="2" ry="2" />
+                  <path d="M6 6h.01M6 18h.01" />
+                </svg>
+                {mcpCopied ? "Copied!" : "Copy MCP Config"}
+              </button>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
