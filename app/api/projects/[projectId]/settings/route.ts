@@ -1,6 +1,7 @@
 "use server";
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/audit-log";
 
@@ -33,6 +34,8 @@ export async function PATCH(
 ) {
     try {
         const { projectId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
         const body: ProviderSettings = await request.json();
 
         const { data: project, error: projectError } = await supabaseAdmin
@@ -148,6 +151,8 @@ export async function GET(
 ) {
     try {
         const { projectId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
 
         const { data: settings, error } = await supabaseAdmin
             .from("project_settings")

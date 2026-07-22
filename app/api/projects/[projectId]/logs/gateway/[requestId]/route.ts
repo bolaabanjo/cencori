@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
 export async function GET(
@@ -7,6 +8,8 @@ export async function GET(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId, requestId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     try {
         const { data: log, error } = await supabaseAdmin

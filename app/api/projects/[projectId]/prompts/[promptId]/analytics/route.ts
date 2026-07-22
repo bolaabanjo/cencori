@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
@@ -7,6 +8,8 @@ export async function GET(
     { params }: { params: Promise<{ projectId: string; promptId: string }> }
 ) {
     const { projectId, promptId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const url = new URL(req.url);
     const range = url.searchParams.get('range') || '7d';
     const supabase = createAdminClient();

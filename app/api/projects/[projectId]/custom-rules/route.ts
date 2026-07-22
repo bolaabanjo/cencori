@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
@@ -11,6 +12,8 @@ interface RouteParams {
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const supabase = createAdminClient();
 
     try {
@@ -35,6 +38,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const supabase = createAdminClient();
 
     try {

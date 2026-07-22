@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
@@ -12,6 +13,8 @@ export async function GET(
 
     try {
         const { projectId, providerId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
 
         const { data: provider, error } = await supabase
             .from('custom_providers')
@@ -47,6 +50,8 @@ export async function PATCH(
 
     try {
         const { projectId, providerId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
         const body = await req.json();
         const { name, baseUrl, isActive, format } = body;
 
@@ -129,6 +134,8 @@ export async function DELETE(
 
     try {
         const { projectId, providerId } = await params;
+        const projectAccess = await requireProjectAccess(projectId);
+        if (!projectAccess.ok) return projectAccess.response;
 
         const { data: project, error: projectError } = await supabase
             .from('projects')

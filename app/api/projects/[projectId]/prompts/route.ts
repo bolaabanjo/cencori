@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { slugify, extractVariableNames } from '@/lib/prompts/registry';
 import { trackEvent } from '@/lib/track-event';
@@ -10,6 +11,8 @@ export async function GET(
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const supabase = createAdminClient();
 
     const gate = await requireTierFeatureForProject(projectId, 'promptRegistry');
@@ -60,6 +63,8 @@ export async function POST(
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const body = await req.json();
     const supabase = createAdminClient();
 

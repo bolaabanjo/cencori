@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
 export async function POST(
@@ -7,6 +8,8 @@ export async function POST(
 ) {
     const supabaseAdmin = createAdminClient();
     const { projectId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
 
     try {
         const body = await req.json();

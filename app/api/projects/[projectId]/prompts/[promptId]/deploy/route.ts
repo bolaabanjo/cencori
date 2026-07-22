@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
@@ -8,6 +9,8 @@ export async function POST(
     { params }: { params: Promise<{ projectId: string; promptId: string }> }
 ) {
     const { projectId, promptId } = await params;
+    const projectAccess = await requireProjectAccess(projectId);
+    if (!projectAccess.ok) return projectAccess.response;
     const body = await req.json();
     const supabase = createAdminClient();
 
