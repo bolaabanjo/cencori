@@ -123,7 +123,10 @@ INSERT INTO public.model_pricing (
     ('cerebras', 'gemma-4-31b',  0.00099000, 0.00149000, 50.00, true, 'https://api.cerebras.ai/public/v1/models/gemma-4-31b', '2026-07-15T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Production public model price.'),
 
     -- Z.AI first-party standard text price.
-    ('zai', 'glm-5.2', 0.00140000, 0.00440000, 50.00, true, 'https://docs.z.ai/guides/overview/pricing', '2026-07-15T00:00:00Z', NULL, 0.00026000, NULL, NULL, NULL, NULL, 'Standard text price; excludes built-in web search fees.')
+    ('zai', 'glm-5.2', 0.00140000, 0.00440000, 50.00, true, 'https://docs.z.ai/guides/overview/pricing', '2026-07-15T00:00:00Z', NULL, 0.00026000, NULL, NULL, NULL, NULL, 'Standard text price; excludes built-in web search fees.'),
+
+    -- Helix (Launchverse) engineering agent personas. Advisor is read-only chat.
+    ('helix', 'helix-advisor', 0.00150000, 0.00600000, 50.00, true, 'https://launchverse.app', '2026-07-22T00:00:00Z', NULL, NULL, NULL, NULL, NULL, NULL, 'Advisor persona wholesale token rate; sandbox/build/deploy execution fees metered separately.')
 ON CONFLICT (provider, model_name) DO UPDATE SET
     input_price_per_1k_tokens = EXCLUDED.input_price_per_1k_tokens,
     output_price_per_1k_tokens = EXCLUDED.output_price_per_1k_tokens,

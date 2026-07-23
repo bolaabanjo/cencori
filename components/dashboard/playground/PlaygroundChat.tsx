@@ -102,6 +102,9 @@ const chatCatalogModels = allCatalogModels.filter(
 const MaximoIcon = ({ size }: { size: number }) => (
     <img src="/partners/max.jpeg" alt="Maximo AI" width={size} height={size} className="rounded-sm object-cover" style={{ width: size, height: size }} />
 );
+const HelixIcon = ({ size }: { size: number }) => (
+    <img src="/providers/helix.svg" alt="Helix" width={size} height={size} style={{ width: size, height: size }} />
+);
 
 const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
     openai: (s) => <OpenAI size={s} />,
@@ -123,6 +126,7 @@ const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
     zai: (s) => <ZAI size={s} />,
     cerebras: (s) => <Cerebras.Color size={s} />,
     maximo: (s) => <MaximoIcon size={s} />,
+    helix: (s) => <HelixIcon size={s} />,
 };
 
 function ProviderIcon({ providerId, size = 14 }: { providerId: string; size?: number }) {

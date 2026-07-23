@@ -28,6 +28,8 @@ const OPENAI_COMPATIBLE_ENV_VARS: Record<string, string[]> = {
     cerebras: ['CEREBRAS_API_KEY'],
     // Support the historical deployment variable as well as the canonical one.
     maximo: ['MAXIMO_API_KEY', 'MAXIMOAI_API_KEY'],
+    // Helix customer key (provisioned via the Launchverse partner secret).
+    helix: ['HELIX_API_KEY'],
 };
 
 function firstConfiguredEnv(names: string[]): string | undefined {

@@ -529,6 +529,17 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'maximo-atlas-preview', name: 'Maximo Atlas Preview', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Opus-class coding & agent model, free preview until Jul 21, $0.20/$1.00 after', free: true },
         ],
     },
+    {
+        id: 'helix',
+        name: 'Helix',
+        icon: '/providers/helix.svg',
+        website: 'https://launchverse.app',
+        docsUrl: 'https://launchverse.app',
+        keyPrefix: 'csk_cencori_',
+        models: [
+            { id: 'helix-advisor', name: 'Helix Advisor', type: ['chat', 'reasoning', 'code'], contextWindow: 128000, description: 'Autonomous engineering agent (advisor mode) by Launchverse — architecture, debugging, and planning guidance. Read-only.' },
+        ],
+    },
     // ── Voice providers (BYOK) ──────────────────────────────────
     // Models are chosen per-call on the Voice endpoints, so these carry no
     // `models` list here — the entry exists so users can add a BYOK key and the

@@ -70,6 +70,10 @@ const MaximoIcon = ({ size }: { size: number }) => (
     <img src="/partners/max.jpeg" alt="Maximo AI" width={size} height={size} className="rounded-sm object-cover" style={{ width: size, height: size }} />
 );
 
+const HelixIcon = ({ size }: { size: number }) => (
+    <img src="/providers/helix.svg" alt="Helix" width={size} height={size} style={{ width: size, height: size }} />
+);
+
 // ─── Provider icon mapping ──────────────────────────────────────────────────
 
 const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
@@ -106,6 +110,7 @@ const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
     baidu: (s) => <Baidu.Color size={s} />,
     zai: (s) => <ZAI size={s} />,
     maximo: (s) => <MaximoIcon size={s} />,
+    helix: (s) => <HelixIcon size={s} />,
 };
 
 function ProviderIcon({ providerId, size = 16 }: { providerId: string; size?: number }) {
