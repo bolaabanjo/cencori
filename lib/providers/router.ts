@@ -34,6 +34,8 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'allam-2-7b': 'groq',
     // Maximo AI (defaults to openai)
     'maximo-atlas-preview': 'maximo',
+    // Helix (Launchverse) — autonomous engineering agent personas
+    'helix-advisor': 'helix',
 };
 
 /**
