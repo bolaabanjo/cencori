@@ -1,0 +1,77 @@
+---
+title: "Helix is on Cencori"
+slug: "helix-on-cencori"
+date: "2026-07-22"
+excerpt: "Helix — Launchverse's autonomous AI cloud engineer — is now on Cencori. Get its advisor brain for architecture, debugging, and deployment guidance through the same billable, logged, PII-redacted gateway as every other model."
+coverImage: "/blog/images/covers/heli.png"
+tags: ["Product", "Helix", "Launchverse", "AI Models", "Release"]
+category: "changelog"
+published: true
+---
+
+**Helix** is on Cencori.
+
+Built by Launchverse, Helix is an autonomous AI cloud engineer — a model that plans, reasons about real infrastructure, and (on its own platform) deploys, troubleshoots, and remediates live applications. Starting today, you can reach its **advisor** persona through Cencori with zero new setup: pick `helix-advisor` and the gateway routes to it, with billing, logging, and PII redaction applied like any other model.
+
+## What makes Helix different
+
+Most chat models reason about code in the abstract. Helix reasons like an engineer who actually ships — it's the brain of an agent that inspects deployment logs, diagnoses build failures, plans migrations, and verifies health before calling a change done. `helix-advisor` brings that grounded, operations-aware perspective to a normal chat call:
+
+- **Architecture & design** — trade-offs, service boundaries, scaling strategy.
+- **Debugging guidance** — reason through build failures, runtime errors, and misconfiguration.
+- **Deployment planning** — migration steps, rollout strategy, what to check before and after.
+- **Cost estimates** — sizing and spend reasoning for cloud workloads.
+
+`helix-advisor` is **read-only** — it advises, it doesn't act on your infrastructure. That makes it a safe, drop-in reasoning model for engineering workflows.
+
+## Specs & pricing
+
+| | |
+|---|---|
+| **Model ID** | `helix-advisor` |
+| **Mode** | Advisor (read-only) |
+| **Context Window** | 128,000 tokens |
+| **Pricing** | $1.50 / 1M input · $6.00 / 1M output |
+| **Provider** | Helix by Launchverse (via Cencori Gateway) |
+| **API** | OpenAI-compatible, streaming supported |
+
+## Using Helix in Cencori
+
+It's OpenAI-compatible — switch the model ID and go.
+
+```typescript
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const response = await cencori.ai.chat({
+  model: 'helix-advisor',
+  messages: [
+    { role: 'user', content: 'My Next.js build fails on Prisma generate in CI. How should I debug it?' }
+  ]
+});
+```
+
+```bash
+curl -X POST https://cencori.com/api/ai/chat \
+  -H "CENCORI_API_KEY: $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "helix-advisor",
+    "messages": [{"role":"user","content":"Plan a zero-downtime Postgres migration for a Node app."}]
+  }'
+```
+
+Or select **Helix Advisor** directly in the playground and model catalog.
+
+## What we shipped in Cencori
+
+- Helix registered as a native provider in the Cencori model catalog.
+- `helix-advisor` available across the gateway — SDK, REST, and playground — no custom setup.
+- Cencori's cost tracking, logging, data rules, and observability apply automatically.
+
+## What's next
+
+Helix's advisor is the first step. Its **autonomous** personas — the ones that create sandboxes, apply multi-file changes, deploy, and verify — operate on a project with an autonomy level and human-approval gates. Bringing those to Cencori means mapping that execution context onto Cencori's agent and session surface, which is on the roadmap. For now, `helix-advisor` gives you Helix's engineering judgment as a clean, billable chat model.
+
+Select `helix-advisor` from your project dashboard, or see the [Models Catalog](/docs/ai/models).
