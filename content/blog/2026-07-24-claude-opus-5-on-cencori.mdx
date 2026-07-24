@@ -1,0 +1,60 @@
+---
+title: "Claude Opus 5 is on Cencori"
+slug: "claude-opus-5-on-cencori"
+date: "2026-07-24"
+excerpt: "Anthropic's Claude Opus 5 is now live on Cencori — the new flagship for complex agentic coding and enterprise work, priced the same as Opus 4.8."
+coverImage: "/blog/images/covers/antt.png"
+tags: ["Product", "Anthropic", "AI Models", "Release"]
+category: "changelog"
+published: true
+---
+
+**Claude Opus 5** is live on Cencori.
+
+Anthropic's new Opus-tier flagship succeeds Claude Opus 4.8 as the recommended default for complex agentic coding and enterprise work — with Anthropic describing it as coming close to the frontier intelligence of Claude Fable 5 at half the price. Opus 4.8 remains fully supported on Cencori if you need to pin to it.
+
+Starting today, you can target `claude-opus-5` across our entire unified API Gateway, with all billing trackers and security layers configured automatically.
+
+## Introducing Claude Opus 5
+
+Opus 5 is Anthropic's pick for the hardest agentic coding and enterprise workloads — the model to reach for when a task is genuinely complex rather than routine. It supports the same adaptive thinking, vision, tool use, and streaming capabilities as the rest of the current Claude lineup, with a 1,000,000 token context window and up to 128,000 tokens of output per request.
+
+## Pricing & Specs
+
+Claude Opus 5 is priced identically to Opus 4.8 — no premium for the upgrade.
+
+| Metric | Value |
+|---|---|
+| **Input Price** | $5.00 / million tokens |
+| **Output Price** | $25.00 / million tokens |
+| **Context Window** | 1,000,000 tokens |
+| **Max Output** | 128,000 tokens |
+| **Model ID** | `claude-opus-5` |
+
+## Powering Claude Opus 5 with Cencori
+
+Integrating new frontier models is trivial when your applications are built on Cencori's **intelligence infrastructure**:
+
+1. **Decoupled Billing & Credit Quotas**: Cencori manages credit allocations, end-user billing, and budget caps at the proxy level. Switching your workloads to `claude-opus-5` doesn't require touching your billing logic — Cencori tracks provider cost and markup automatically at the new model's rates.
+2. **Enterprise Security Layer**: Cencori's input and output security pipeline — PII detection, jailbreak detection, and custom data rules — applies to Opus 5 traffic the same way it does to every other model on the gateway, with full audit logging.
+3. **Seamless Model Failovers**: Opus 5 is now the default Anthropic fallback target for our GPT-5.5 and o3 traffic on Cencori. If your Claude Opus 5 usage hits provider rate limits, traffic can automatically route to GPT-5.5 or Gemini 3.1 Pro Preview without breaking active client sessions.
+
+### Using Claude Opus 5 in Cencori
+
+You can begin targeting the new model immediately using our TypeScript SDK:
+
+```typescript
+import { cencori } from 'cencori';
+
+const response = await cencori.chat.create({
+  model: 'claude-opus-5',
+  messages: [
+    {
+      role: 'user',
+      content: 'Refactor this service to handle concurrent writes safely.'
+    }
+  ]
+});
+```
+
+*Claude Opus 5 is available now for all Cencori customers. Check your [Model Catalog](/ai/models) to see it in action.*

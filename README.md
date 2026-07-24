@@ -395,7 +395,7 @@ AI design tools, coding assistants, chatbots, content generators?
 | Provider | Models | Streaming |
 |----------|--------|-----------|
 | **OpenAI** | GPT-5, GPT-4o, GPT-4o Mini, o3, o1 | ✅ |
-| **Anthropic** | Claude Opus 4, Sonnet 4, 3.5 Sonnet | ✅ |
+| **Anthropic** | Claude Opus 5, Sonnet 5, Opus 4.8 | ✅ |
 | **Google** | Gemini 3 Pro, 2.5 Flash, 2.0 Flash | ✅ |
 | **xAI** | Grok 4, Grok 4.1, Grok 3 | ✅ |
 | **Mistral** | Mistral Large 3, Codestral, Devstral | ✅ |
