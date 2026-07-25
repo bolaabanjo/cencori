@@ -20,6 +20,8 @@ export type GatewayInputPipelineSuccess = {
     inputSecurity: SecurityCheckResult;
     customRules: CustomRulesPipelineResult;
     tokenMap?: Map<string, string>;
+    /** Policy `route` directive (PRD M1) — caller overrides the model/provider. */
+    route?: { region?: string; provider?: string; model?: string };
 };
 
 export type GatewayInputPipelineResult = GatewayInputPipelineSuccess | GatewayGuardBlock;

@@ -386,6 +386,10 @@ export async function POST(req: NextRequest) {
             tier,
             messages: unifiedMessages,
             endUserId,
+            // Policy-as-code enforcement (PRD M1.2)
+            organizationId: ctx.organizationId,
+            model,
+            region: ctx.countryCode,
         });
 
         if (!inputPipeline.ok) {
@@ -425,8 +429,16 @@ export async function POST(req: NextRequest) {
 
         // ── Model resolution (legacy chain, incl. hardcoded fallback) ──
         const resolvedModel = model === 'auto' || model === 'cencori/auto' ? null : model;
-        const requestedModel =
+        let requestedModel =
             resolvedModel || agentConfigModel || ctx.defaultModel || 'gemini-2.5-flash';
+        // Policy `route` directive (PRD M1): override the model per governance
+        // policy — either a specific model, or the equivalent on a target provider.
+        if (inputPipeline.route?.model) {
+            requestedModel = inputPipeline.route.model;
+        } else if (inputPipeline.route?.provider) {
+            const { getFallbackModel } = await import('@/lib/providers/failover');
+            requestedModel = await getFallbackModel(requestedModel, inputPipeline.route.provider);
+        }
 
         // ── Prompt cache (skip both directions when memory retrieval active) ──
         const cacheEligible =
