@@ -6,6 +6,7 @@ import {
 import { triggerSecurityWebhook } from '@/lib/webhooks';
 import type { UnifiedMessage } from '@/lib/providers/base';
 import type { GatewayGuardBlock } from '@/lib/gateway/guard-types';
+import { enforcePolicies, type PolicyRedaction } from '@/lib/governance/policy-enforcement';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -19,10 +20,14 @@ export type OutputGuardParams = {
     inputSecurity: SecurityCheckResult;
     conversationHistory: UnifiedMessage[];
     endUserId?: string | null;
+    /** Set to enable policy-as-code enforcement (PRD M1.2). Omit = policy skipped. */
+    organizationId?: string | null;
+    model?: string | null;
+    region?: string | null;
 };
 
 export type OutputGuardResult =
-    | { ok: true }
+    | { ok: true; redactions?: PolicyRedaction[] }
     | (GatewayGuardBlock & { ok: false });
 
 export async function runGatewayOutputGuard(
@@ -35,6 +40,34 @@ export async function runGatewayOutputGuard(
     });
 
     if (outputSecurity.safe) {
+        // Policy-as-code enforcement on the output phase (PRD M1.2).
+        if (params.organizationId) {
+            const enforcement = await enforcePolicies(params.supabase, {
+                orgId: params.organizationId,
+                projectId: params.projectId,
+                direction: 'output',
+                model: params.model,
+                environment: params.environment,
+                region: params.region,
+                content: params.outputText,
+                signals: { risk_score: outputSecurity.riskScore },
+                apiKeyId: params.apiKeyId,
+            });
+            if (enforcement.block) {
+                return {
+                    ok: false,
+                    status: enforcement.block.status,
+                    code: enforcement.block.code,
+                    message: enforcement.block.message,
+                    reasons: enforcement.block.reasons,
+                };
+            }
+            // Return redact/tokenize directives; the caller applies them to the
+            // actual emitted text (the guard scans a joined string for signals).
+            if (enforcement.redactions.length > 0) {
+                return { ok: true, redactions: enforcement.redactions };
+            }
+        }
         return { ok: true };
     }
 

@@ -17,6 +17,7 @@ import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
 import { logGatewayEvent } from '@/lib/gateway-reliability';
 import { getCachedApiKeyConfig, setCachedApiKeyConfig, invalidateApiKeyCache } from '@/lib/config-cache';
 import { processUsageQueue } from '@/lib/queue';
+import { recordGatewayGovernanceDecision } from '@/lib/governance/record-decision';
 
 // ──────────────────────────────────────────────
 // Types
@@ -708,6 +709,12 @@ export function handleCorsPreFlight(): NextResponse {
  */
 export async function logGatewayRequest(context: GatewayContext, params: LogRequestParams): Promise<string | null> {
     const latencyMs = Date.now() - context.startTime;
+
+    // Immutable governance decision record (PRD M0.1/M0.2) — durable delivery
+    // via waitUntil (survives past the response) with retry + dead-letter, so
+    // the log is provably complete. Independent of the ai_requests insert;
+    // never blocks or throws.
+    waitUntil(recordGatewayGovernanceDecision(context, params));
 
     try {
         const { data } = await context.supabase.from('ai_requests').insert({

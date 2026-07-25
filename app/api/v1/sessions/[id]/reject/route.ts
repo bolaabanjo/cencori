@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
+import { recordSessionApprovalResolved } from "@/lib/governance/record-session";
 import { extractGatewayCallerIdentity, logApiGatewayRequest } from "@/lib/api-gateway-logs";
 import {
     validateGatewayRequest,
@@ -122,6 +123,18 @@ export async function POST(
             const status = code === 'session_not_found' ? 404 : 409;
             return respondError(status, 'Session pause was already resolved or no longer matches', code);
         }
+
+        // Governance: immutable record of the human rejection (who/what/when).
+        void recordSessionApprovalResolved(adminClient, {
+            orgId: gatewayCtx.organizationId,
+            projectId: gatewayCtx.projectId,
+            sessionId,
+            actionId: action_id,
+            resolution: 'rejected',
+            tool: typeof pausedPayload.tool === 'string' ? pausedPayload.tool : null,
+            apiKeyId: gatewayCtx.apiKeyId,
+            actorIp: gatewayCtx.clientIp,
+        });
 
         return respond(NextResponse.json({
             id: sessionId,

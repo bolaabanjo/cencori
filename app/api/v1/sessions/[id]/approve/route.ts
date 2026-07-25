@@ -11,6 +11,7 @@ import {
 } from "@/lib/gateway-middleware";
 import { extractCencoriApiKeyFromHeaders } from "@/lib/api-keys";
 import { resumeSessionTurn, type SupabaseAdmin } from "@/lib/gateway/session-engine";
+import { recordSessionApprovalResolved } from "@/lib/governance/record-session";
 import type { SubscriptionTier } from "@/lib/entitlements";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
 import type { UnifiedMessage } from "@/lib/providers/base";
@@ -221,6 +222,18 @@ export async function POST(
             const status = code === 'session_not_found' ? 404 : 409;
             return respondError(status, 'Session pause was already resolved or no longer matches', code);
         }
+
+        // Governance: immutable record of the human approval (who/what/when).
+        void recordSessionApprovalResolved(adminClient as SupabaseAdmin, {
+            orgId: gatewayCtx.organizationId,
+            projectId: gatewayCtx.projectId,
+            sessionId,
+            actionId: action_id,
+            resolution: 'approved',
+            tool: typeof pausedPayload.tool === 'string' ? pausedPayload.tool : null,
+            apiKeyId: gatewayCtx.apiKeyId,
+            actorIp: gatewayCtx.clientIp,
+        });
 
         // Resume the turn and return its SSE stream.
         const execResult = await resumeSessionTurn({

@@ -9,6 +9,7 @@ import {
     applyCustomRulesToUserMessages,
 } from '@/lib/gateway/custom-rules';
 import type { GatewayGuardBlock, GatewayInputPipelineResult } from '@/lib/gateway/guard-types';
+import { enforcePolicies, applyPolicyRedactions, type PolicyRedaction } from '@/lib/governance/policy-enforcement';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -20,6 +21,10 @@ export type RunGatewayInputPipelineParams = {
     tier: SubscriptionTier;
     messages: UnifiedMessage[];
     endUserId?: string | null;
+    /** Set to enable policy-as-code enforcement (PRD M1.2). Omit = policy skipped. */
+    organizationId?: string | null;
+    model?: string | null;
+    region?: string | null;
 };
 
 async function logSecurityBlock(
@@ -144,6 +149,42 @@ export async function runGatewayInputPipeline(
         return block;
     }
 
+    // Policy-as-code enforcement (PRD M1.2): evaluate active governance policies
+    // against the request, using the security scan as signals. Blocks inline;
+    // redact/tokenize directives are applied to user messages below.
+    let policyRedactions: PolicyRedaction[] = [];
+    let policyRoute: { region?: string; provider?: string; model?: string } | undefined;
+    if (params.organizationId) {
+        const enforcement = await enforcePolicies(params.supabase, {
+            orgId: params.organizationId,
+            projectId: params.projectId,
+            direction: 'input',
+            model: params.model,
+            environment: params.environment,
+            region: params.region,
+            content: inputText,
+            signals: {
+                jailbreak_score: inputSecurity.details?.jailbreakCheck?.risk ?? inputSecurity.riskScore,
+                risk_score: inputSecurity.riskScore,
+            },
+            apiKeyId: params.apiKeyId,
+            tier: params.tier,
+        });
+        if (enforcement.block) {
+            const block: GatewayGuardBlock = {
+                ok: false,
+                status: enforcement.block.status,
+                code: enforcement.block.code,
+                message: enforcement.block.message,
+                assistantMessage: 'This request was blocked by a governance policy.',
+                reasons: enforcement.block.reasons,
+            };
+            return block;
+        }
+        policyRedactions = enforcement.redactions;
+        policyRoute = enforcement.route;
+    }
+
     let messages = params.messages;
     let tokenMap = customRules.inputResult.tokenMap;
 
@@ -157,6 +198,17 @@ export async function runGatewayInputPipeline(
         tokenMap = applied.tokenMap;
     }
 
+    // Apply policy redact/tokenize to user message content (reversible tokens
+    // are recorded in tokenMap so a downstream deTokenize can restore them).
+    if (policyRedactions.length > 0) {
+        messages = messages.map((m) => {
+            if (m.role !== 'user' || typeof m.content !== 'string') return m;
+            const { text, tokenMap: nextMap } = applyPolicyRedactions(m.content, policyRedactions, tokenMap);
+            tokenMap = nextMap;
+            return { ...m, content: text };
+        });
+    }
+
     return {
         ok: true,
         messages,
@@ -164,5 +216,6 @@ export async function runGatewayInputPipeline(
         inputSecurity,
         customRules,
         tokenMap,
+        route: policyRoute,
     };
 }
