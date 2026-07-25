@@ -21,6 +21,8 @@ import {
 import type { SessionEventType, SessionEventPayloadMap } from '@/lib/gateway/session-types';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { recordSessionApprovalRequested } from '@/lib/governance/record-session';
+import { applyPolicyRedactions } from '@/lib/governance/policy-enforcement';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 
@@ -278,6 +280,9 @@ function makeStream(params: {
                             inputSecurity: safeInputSecurity,
                             conversationHistory: messages,
                             endUserId,
+                            organizationId: gatewayCtx.organizationId,
+                            model: resolved.model,
+                            region: gatewayCtx.countryCode,
                         });
 
                         const streamProvider =
@@ -324,6 +329,11 @@ function makeStream(params: {
                             return;
                         }
 
+                        // Apply policy output redactions before the (buffered) emit.
+                        if (outputCheck.redactions?.length) {
+                            fullText = applyPolicyRedactions(fullText, outputCheck.redactions).text;
+                        }
+
                         if (fullText) {
                             await el('output_text.delta', { delta: fullText });
                         }
@@ -356,6 +366,16 @@ function makeStream(params: {
                                         arguments: tc.args,
                                     })),
                                 }, 'paused', cc);
+                                // Governance: an autonomous tool call is now gated on human approval.
+                                void recordSessionApprovalRequested(supabase, {
+                                    orgId: gatewayCtx.organizationId,
+                                    projectId: gatewayCtx.projectId,
+                                    sessionId,
+                                    turnNumber,
+                                    tool: callValues[0].name,
+                                    actionIds: callValues.map(tc => tc.id),
+                                    model: resolved.model,
+                                });
                                 logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
                                 incrementUsage(cc);
                                 if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
@@ -767,6 +787,9 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                                     confidence: 1,
                                 },
                                 conversationHistory: messages,
+                                organizationId: gatewayCtx.organizationId,
+                                model: resolved.model,
+                                region: gatewayCtx.countryCode,
                             });
                             const streamProvider =
                                 chunk.actualProvider !== resolved.providerName
@@ -799,6 +822,10 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                                 if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
                                 controller.close();
                                 return;
+                            }
+
+                            if (outputCheck.redactions?.length) {
+                                fullText = applyPolicyRedactions(fullText, outputCheck.redactions).text;
                             }
 
                             if (fullText) await es('output_text.delta', { delta: fullText });

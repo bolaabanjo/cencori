@@ -7,6 +7,16 @@ import { revalidatePath } from "next/cache";
 import { listPayins } from "@/lib/bachsClient";
 import type { BachsPayin } from "@/lib/bachsClient";
 import { getStripeBillingClient } from "@/lib/stripe-billing";
+import {
+    upsertStripeCustomerProfile,
+    syncStripeCustomerTaxId,
+    type BillingProfileAddress,
+} from "@/lib/billing/stripe-customer-profile";
+import {
+    getBillingTaxIdOptions,
+    isBillingTaxIdType,
+    type BillingTaxIdType,
+} from "@/lib/billing/tax-id-types";
 
 type OrgBillingDetails = {
     id: string;
@@ -14,6 +24,13 @@ type OrgBillingDetails = {
     name: string;
     owner_id: string;
     billing_email: string | null;
+    billing_address_line1: string | null;
+    billing_address_line2: string | null;
+    billing_city: string | null;
+    billing_state: string | null;
+    billing_zip: string | null;
+    billing_country: string | null;
+    billing_tax_id: string | null;
     bachs_customer_id: string | null;
     stripe_customer_id: string | null;
     billing_provider: 'stripe' | 'bachs' | 'polar' | null;
@@ -78,7 +95,7 @@ async function getAuthorizedOrgBillingDetails(orgSlug: string): Promise<{ org: O
 
     const { data: org, error: orgError } = await supabase
         .from('organizations')
-        .select('id, slug, name, owner_id, billing_email, bachs_customer_id, stripe_customer_id, billing_provider, subscription_id, subscription_tier')
+        .select('id, slug, name, owner_id, billing_email, billing_address_line1, billing_address_line2, billing_city, billing_state, billing_zip, billing_country, billing_tax_id, bachs_customer_id, stripe_customer_id, billing_provider, subscription_id, subscription_tier')
         .eq('slug', orgSlug)
         .maybeSingle();
 
@@ -300,6 +317,73 @@ export async function getPaymentMethods(
     }
 }
 
+export type BillingAddressProfileUpdate = {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+};
+
+function normalizeText(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function toNullableText(value: unknown): string | null {
+    const normalized = normalizeText(value);
+    return normalized.length > 0 ? normalized : null;
+}
+
+function toBillingProfileAddress(input: BillingAddressProfileUpdate): BillingProfileAddress {
+    return {
+        line1: normalizeText(input.line1),
+        line2: normalizeText(input.line2),
+        city: normalizeText(input.city),
+        state: normalizeText(input.state),
+        postalCode: normalizeText(input.postalCode),
+        country: normalizeText(input.country).toUpperCase(),
+    };
+}
+
+async function persistStripeCustomerId(organizationId: string, customerId: string): Promise<string | null> {
+    const admin = createAdminClient();
+    const { error } = await admin
+        .from('organizations')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', organizationId);
+
+    if (error) {
+        console.error('[Billing Actions] Failed to persist Stripe customer ID:', error);
+        return 'Stripe was updated, but its customer reference could not be saved locally.';
+    }
+
+    return null;
+}
+
+export async function getBillingTaxIdType(orgSlug: string): Promise<BillingTaxIdType | null> {
+    const orgResult = await getAuthorizedOrgBillingDetails(orgSlug);
+    if ('error' in orgResult || !orgResult.org.stripe_customer_id || !orgResult.org.billing_tax_id) {
+        return null;
+    }
+
+    try {
+        const stripe = getStripeBillingClient();
+        const taxIds = await stripe.customers.listTaxIds(orgResult.org.stripe_customer_id, { limit: 100 });
+        const normalizedValue = orgResult.org.billing_tax_id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        const matchingTaxId = taxIds.data.find((item) => (
+            item.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedValue
+        ));
+
+        return matchingTaxId && isBillingTaxIdType(matchingTaxId.type)
+            ? matchingTaxId.type
+            : null;
+    } catch (error) {
+        console.error('[Billing Actions] Failed to read Stripe tax ID type:', error);
+        return null;
+    }
+}
+
 export async function updateBillingDetails(orgSlug: string, formData: FormData) {
     const orgResult = await getAuthorizedOrgBillingDetails(orgSlug);
     if ('error' in orgResult) {
@@ -309,28 +393,49 @@ export async function updateBillingDetails(orgSlug: string, formData: FormData) 
     const supabase = await createServerClient();
     const name = String(formData.get('name') || '').trim();
     const email = String(formData.get('email') || '').trim();
+    const address = toBillingProfileAddress({
+        line1: normalizeText(formData.get('line1')),
+        line2: normalizeText(formData.get('line2')),
+        city: normalizeText(formData.get('city')),
+        state: normalizeText(formData.get('state')),
+        postalCode: normalizeText(formData.get('zip')),
+        country: normalizeText(formData.get('country')),
+    });
+    const taxId = normalizeText(formData.get('taxId'));
+    const requestedTaxType = normalizeText(formData.get('taxType'));
 
     if (!name || !email) {
         return { error: 'Organization name and billing email are required.' };
     }
 
-    const toNullable = (value: FormDataEntryValue | null) => {
-        const normalized = typeof value === 'string' ? value.trim() : '';
-        return normalized.length > 0 ? normalized : null;
-    };
+    const taxTypeOptions = getBillingTaxIdOptions(address.country);
+    const requestedTypeIsValid = requestedTaxType
+        && isBillingTaxIdType(requestedTaxType)
+        && taxTypeOptions.some((option) => option.value === requestedTaxType);
+    const taxType = taxId
+        ? requestedTypeIsValid
+            ? requestedTaxType as BillingTaxIdType
+            : taxTypeOptions.length === 1
+                ? taxTypeOptions[0].value
+                : null
+        : null;
+
+    if (taxId && taxTypeOptions.length > 0 && !taxType) {
+        return { error: 'Select the tax ID type before saving.' };
+    }
 
     const { error } = await supabase
         .from('organizations')
         .update({
             name,
             billing_email: email,
-            billing_address_line1: toNullable(formData.get('line1')),
-            billing_address_line2: toNullable(formData.get('line2')),
-            billing_city: toNullable(formData.get('city')),
-            billing_state: toNullable(formData.get('state')),
-            billing_zip: toNullable(formData.get('zip')),
-            billing_country: toNullable(formData.get('country')),
-            billing_tax_id: toNullable(formData.get('taxId')),
+            billing_address_line1: toNullableText(address.line1),
+            billing_address_line2: toNullableText(address.line2),
+            billing_city: toNullableText(address.city),
+            billing_state: toNullableText(address.state),
+            billing_zip: toNullableText(address.postalCode),
+            billing_country: toNullableText(address.country),
+            billing_tax_id: toNullableText(taxId),
         })
         .eq('id', orgResult.org.id);
 
@@ -339,8 +444,101 @@ export async function updateBillingDetails(orgSlug: string, formData: FormData) 
         return { error: error.message };
     }
 
+    const warnings: string[] = [];
+    try {
+        const customer = await upsertStripeCustomerProfile({
+            customerId: orgResult.org.stripe_customer_id,
+            organizationId: orgResult.org.id,
+            organizationSlug: orgResult.org.slug,
+            name,
+            email,
+            address,
+            clearEmptyAddress: true,
+            validateTaxLocation: true,
+        });
+
+        if (!orgResult.org.stripe_customer_id) {
+            const persistenceWarning = await persistStripeCustomerId(orgResult.org.id, customer.id);
+            if (persistenceWarning) warnings.push(persistenceWarning);
+        }
+
+        if (!taxId || taxType) {
+            await syncStripeCustomerTaxId({
+                customer,
+                previousTaxId: orgResult.org.billing_tax_id,
+                taxId: taxId || null,
+                taxType,
+            });
+        } else {
+            warnings.push('The billing profile was saved, but Stripe does not support a tax ID type for the selected country.');
+        }
+    } catch (stripeError) {
+        console.error('[Billing Actions] Stripe billing profile sync failed:', stripeError);
+        warnings.push('Billing details were saved locally, but Stripe could not be updated.');
+    }
+
     revalidatePath(`/${orgSlug}/~/billing`);
-    return { success: true };
+    return {
+        success: true,
+        warning: warnings.length > 0 ? warnings.join(' ') : undefined,
+    };
+}
+
+export async function updateBillingAddressFromPaymentMethod(
+    orgSlug: string,
+    input: BillingAddressProfileUpdate,
+) {
+    const orgResult = await getAuthorizedOrgBillingDetails(orgSlug);
+    if ('error' in orgResult) {
+        return { error: orgResult.error };
+    }
+
+    const address = toBillingProfileAddress(input);
+    if (!address.country || !/^[A-Z]{2}$/.test(address.country)) {
+        return { error: 'A valid billing country is required.' };
+    }
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('organizations')
+        .update({
+            billing_address_line1: toNullableText(address.line1),
+            billing_address_line2: toNullableText(address.line2),
+            billing_city: toNullableText(address.city),
+            billing_state: toNullableText(address.state),
+            billing_zip: toNullableText(address.postalCode),
+            billing_country: address.country,
+        })
+        .eq('id', orgResult.org.id);
+
+    if (error) {
+        console.error('[Billing Actions] Failed to update the billing address:', error);
+        return { error: error.message };
+    }
+
+    let warning: string | undefined;
+    try {
+        const customer = await upsertStripeCustomerProfile({
+            customerId: orgResult.org.stripe_customer_id,
+            organizationId: orgResult.org.id,
+            organizationSlug: orgResult.org.slug,
+            name: orgResult.org.name,
+            email: orgResult.org.billing_email || '',
+            address,
+            preserveEmptyEmail: true,
+            validateTaxLocation: true,
+        });
+
+        if (!orgResult.org.stripe_customer_id) {
+            warning = await persistStripeCustomerId(orgResult.org.id, customer.id) || undefined;
+        }
+    } catch (stripeError) {
+        console.error('[Billing Actions] Stripe address sync failed:', stripeError);
+        warning = 'The invoice address was saved locally, but Stripe could not be updated.';
+    }
+
+    revalidatePath(`/${orgSlug}/~/billing`);
+    return { success: true, warning };
 }
 
 export async function getBillingOperationsState(orgSlug: string): Promise<BillingOperationsState> {

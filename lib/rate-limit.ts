@@ -84,6 +84,40 @@ function fallbackResult(
     };
 }
 
+/**
+ * Custom-keyed, custom-limit sliding window — used by policy-as-code rate_limit
+ * rules (PRD M1). Same Redis backing as checkRateLimit but with a caller-supplied
+ * key + limit + window. Fails open/closed per the gateway flag when Redis is down.
+ */
+export async function checkCustomRateLimit(
+    key: string,
+    limit: number,
+    windowSeconds: number = RATE_LIMIT_WINDOW,
+): Promise<{ allowed: boolean; remaining: number; reset: number }> {
+    const now = Date.now();
+    const flags = getGatewayFeatureFlags();
+    if (!flags.rateLimitEnabled) {
+        return { allowed: true, remaining: limit, reset: now + windowSeconds * 1000 };
+    }
+    const client = getRedisClient();
+    if (!client) {
+        return { allowed: flags.rateLimitFailOpen, remaining: flags.rateLimitFailOpen ? limit : 0, reset: now + windowSeconds * 1000 };
+    }
+    try {
+        const redisKey = `policy_rate_limit:${key}`;
+        const pipeline = client.pipeline();
+        pipeline.incr(redisKey);
+        pipeline.expire(redisKey, windowSeconds);
+        pipeline.ttl(redisKey);
+        const results = await pipeline.exec<[number, number, number]>();
+        const requests = results[0];
+        const ttl = results[2] > 0 ? results[2] : windowSeconds;
+        return { allowed: requests <= limit, remaining: Math.max(0, limit - requests), reset: now + ttl * 1000 };
+    } catch {
+        return { allowed: flags.rateLimitFailOpen, remaining: 0, reset: now + windowSeconds * 1000 };
+    }
+}
+
 export async function checkRateLimit(
     projectId: string,
     context?: RateLimitTelemetryContext

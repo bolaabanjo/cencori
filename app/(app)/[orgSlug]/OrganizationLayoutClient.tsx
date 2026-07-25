@@ -258,7 +258,7 @@ export default function OrganizationLayoutClient({
             className={isPlayground ? "h-full min-h-0 overflow-hidden" : undefined}
         >
             {!isProjectCreation && (
-                <Sidebar className="top-12 h-[calc(100vh-3rem)] hidden lg:block border-r border-border/40 bg-sidebar">
+                <Sidebar className="top-12 hidden h-[calc(100vh-3rem)] border-r border-sidebar-border/70 bg-sidebar lg:block">
                     <SidebarContent>
                         <SidebarGroup className="pt-3">
                             <SidebarMenu>

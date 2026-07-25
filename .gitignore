@@ -80,3 +80,6 @@ pnpm-workspace.yaml
 .source
 eve
 /mydocs/
+
+# internal codebase audit — never ship
+AUDIT.md

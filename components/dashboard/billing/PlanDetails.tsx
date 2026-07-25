@@ -1,17 +1,20 @@
 "use client";
 
-import React from 'react';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import React from "react";
 import Link from "next/link";
-import { CENCORI_PAID_PLANS } from '@/lib/billing/plans';
+import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/currency";
 
 interface PlanProps {
     tier: string;
     status: string;
     currentPeriodEnd: string | null;
     price: number;
+    monthlyRequestsUsed: number;
+    monthlyRequestLimit: number;
+    projectCount: number;
+    projectLimit: number;
+    creditBalance: number;
     actionUrl?: string | null;
     actionLabel?: string;
     actionExternal?: boolean;
@@ -23,123 +26,104 @@ export function PlanDetails({
     status,
     currentPeriodEnd,
     price,
+    monthlyRequestsUsed,
+    monthlyRequestLimit,
+    projectCount,
+    projectLimit,
+    creditBalance,
     actionUrl,
-    actionLabel = 'Manage Plan',
+    actionLabel = "Manage plan",
     actionExternal = false,
-    onAction
+    onAction,
 }: PlanProps) {
-    const freeFeatures = [
-        "1,000 requests each month",
-        "100+ AI models",
-        "Streaming & tool calling",
-        "Bring your own keys (BYOK)",
-    ];
-    
-    const proFeatures = CENCORI_PAID_PLANS.pro.features;
-    
-    const teamFeatures = CENCORI_PAID_PLANS.team.features;
-    
-    const enterpriseFeatures = [
-        "Everything in Team",
-        "SSO & SAML",
-        "Dedicated support",
-        "Custom SLAs",
-    ];
-    
-    const tierFeatures = tier === 'free' ? freeFeatures 
-        : tier === 'pro' ? proFeatures 
-        : tier === 'team' ? teamFeatures 
-        : enterpriseFeatures;
+    const renewalLabel = currentPeriodEnd
+        ? new Date(currentPeriodEnd).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+        })
+        : tier === "free"
+            ? "No renewal"
+            : "Monthly";
+    const planName = tier === "free"
+        ? "Free"
+        : `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
+    const projectValue = projectLimit >= 999999
+        ? projectCount.toLocaleString()
+        : `${projectCount.toLocaleString()} of ${projectLimit.toLocaleString()}`;
+
+    const action = onAction ? (
+        <Button onClick={onAction} className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none">
+            {actionLabel}
+        </Button>
+    ) : actionUrl ? (
+        actionExternal ? (
+            <Button
+                className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none"
+                onClick={() => window.open(actionUrl, "_blank", "noopener,noreferrer")}
+            >
+                {actionLabel}
+            </Button>
+        ) : (
+            <Button asChild className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none">
+                <Link href={actionUrl}>
+                    {actionLabel}
+                </Link>
+            </Button>
+        )
+    ) : null;
 
     return (
-        <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-            <div className="grid md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border/20">
-                {/* Status Column */}
-                <div className="md:col-span-2">
-                    <div className="px-4 py-3 border-b border-border/40">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Plan Status</p>
-                    </div>
-                    <div className="p-4 space-y-4">
-                        <div>
-                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Current Tier</div>
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-medium capitalize tabular-nums">{tier}</h3>
-                                <Badge variant="outline" className="text-[10px] h-5 gap-1.5 border-emerald-500/20 text-emerald-600 bg-emerald-500/5">
-                                    <span className="size-1 rounded-full bg-emerald-500" />
-                                    {status}
-                                </Badge>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Renewal Date</div>
-                            <div className="text-xs font-medium">
-                                {currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : (tier === 'free' ? 'Lifetime access' : 'Monthly renewal')}
-                            </div>
-                        </div>
-
-                        <div className="pt-2">
-                            <div className="text-xl font-medium tabular-nums">
-                                ${price}<span className="text-[11px] text-muted-foreground font-normal ml-1">/ month</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Features Column */}
-                <div className="md:col-span-3">
-                    <div className="px-4 py-3 border-b border-border/40">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Included Features</p>
-                    </div>
-                    <div className="p-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mb-4">
-                            {tierFeatures.map((feature, i) => (
-                                <div key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground">
-                                    <span className="text-emerald-500/60 mt-0.5 shrink-0">•</span>
-                                    <span>{feature}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="pt-4 border-t border-border/20 flex items-center justify-between">
-                            <p className="text-[10px] text-muted-foreground max-w-[200px] leading-relaxed">
-                                Need more? Explore our Team and Enterprise plans for custom scaling.
-                            </p>
-                            {onAction ? (
-                                <Button
-                                    variant="link"
-                                    className="w-full h-auto p-0 text-[10px] font-medium text-muted-foreground uppercase tracking-widest hover:text-foreground hover:no-underline transition-colors w-auto"
-                                    onClick={onAction}
-                                >
-                                    {actionLabel}
-                                    <ArrowRight size={12} className="ml-1 transition-transform group-hover:translate-x-0.5" />
-                                </Button>
-                            ) : actionUrl ? (
-                                actionExternal ? (
-                                    <Button
-                                        variant="link"
-                                        className="w-full h-auto p-0 text-[10px] font-medium text-muted-foreground uppercase tracking-widest hover:text-foreground hover:no-underline transition-colors w-auto"
-                                        onClick={() => window.open(actionUrl, '_blank', 'noopener,noreferrer')}
-                                    >
-                                        {actionLabel}
-                                        <ArrowRight size={12} className="ml-1 transition-transform group-hover:translate-x-0.5" />
-                                    </Button>
-                                ) : (
-                                    <Button asChild variant="link" className="w-full h-auto p-0 text-[10px] font-medium text-muted-foreground uppercase tracking-widest hover:text-foreground hover:no-underline transition-colors w-auto">
-                                        <Link href={actionUrl}>
-                                            {actionLabel}
-                                            <ArrowRight size={12} className="ml-1 transition-transform group-hover:translate-x-0.5" />
-                                        </Link>
-                                    </Button>
-                                )
-                            ) : (
-                                <Button variant="link" className="w-full h-auto p-0 text-[10px] font-medium text-muted-foreground uppercase tracking-widest opacity-50 cursor-not-allowed w-auto" disabled>
-                                    {actionLabel}
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-                </div>
+        <section className="grid gap-6 border-t border-border/30 py-9 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-12">
+            <div>
+                <h2 className="text-sm font-medium">Plan</h2>
+                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                    Your subscription and included account capacity.
+                </p>
             </div>
-        </div>
+
+            <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+                <div className="flex flex-col gap-5 bg-muted/50 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-base font-medium">{planName} plan</h3>
+                            <span className="text-[10px] capitalize text-emerald-600 dark:text-emerald-400">
+                                {status || "active"}
+                            </span>
+                        </div>
+                        <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="font-mono text-2xl font-medium tabular-nums">
+                                {formatCurrency(price, "USD")}
+                            </span>
+                            <span className="text-xs text-muted-foreground">per month</span>
+                        </div>
+                    </div>
+                    {action}
+                </div>
+
+                <dl className="divide-y divide-border/30 border-t border-border/30 text-xs">
+                    <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                        <dt className="text-muted-foreground">Monthly requests</dt>
+                        <dd className="font-mono tabular-nums">
+                            {monthlyRequestsUsed.toLocaleString()} of {monthlyRequestLimit.toLocaleString()}
+                        </dd>
+                    </div>
+                    <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                        <dt className="text-muted-foreground">Active projects</dt>
+                        <dd className="font-mono tabular-nums">{projectValue}</dd>
+                    </div>
+                    <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                        <dt className="text-muted-foreground">Prepaid balance</dt>
+                        <dd className="font-mono tabular-nums">
+                            {formatCurrency(creditBalance, "USD", { maximumFractionDigits: 4 })}
+                        </dd>
+                    </div>
+                    <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                        <dt className="text-muted-foreground">Next renewal</dt>
+                        <dd className="font-mono tabular-nums">{renewalLabel}</dd>
+                    </div>
+                </dl>
+            </div>
+        </section>
     );
 }

@@ -120,8 +120,8 @@ export default function OrgProjectsPage({
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-7 w-28" />
         </div>
-        <div className="bg-card border border-border/40 rounded-md">
-          <div className="border-b border-border/40 px-4 py-2">
+        <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+          <div className="border-b border-border/30 bg-muted/50 px-4 py-2">
             <div className="grid grid-cols-4 gap-4">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-3 w-12" />
@@ -130,7 +130,7 @@ export default function OrgProjectsPage({
             </div>
           </div>
           {[1, 2, 3].map((i) => (
-            <div key={i} className="border-b border-border/40 px-4 py-3 last:border-b-0">
+            <div key={i} className="border-b border-border/30 px-4 py-3 last:border-b-0">
               <div className="grid grid-cols-4 gap-4 items-center">
                 <div className="space-y-1">
                   <Skeleton className="h-3.5 w-24" />
@@ -187,7 +187,7 @@ export default function OrgProjectsPage({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             autoComplete="off"
-            className="w-48 sm:w-64 h-7 pl-7 text-xs rounded border-border/50 bg-transparent placeholder:text-muted-foreground/60"
+            className="h-7 w-48 rounded border-border/45 bg-muted/20 pl-7 text-xs placeholder:text-muted-foreground/60 sm:w-64"
           />
         </div>
         <DropdownMenu>
@@ -221,10 +221,10 @@ export default function OrgProjectsPage({
 
       {/* Projects Table */}
       {filteredProjects.length > 0 ? (
-        <div className="bg-card border border-border/40 rounded-md overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/20">
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent border-b border-border/40">
+              <TableRow className="border-b border-border/30 bg-muted/50 hover:bg-muted/50">
                 <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 px-4">Project</TableHead>
                 <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Region</TableHead>
                 <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Created</TableHead>
@@ -235,7 +235,7 @@ export default function OrgProjectsPage({
               {filteredProjects.map((project) => (
                 <TableRow
                   key={project.id}
-                  className="cursor-pointer hover:bg-secondary/30 border-b border-border/40 last:border-b-0 transition-colors"
+                  className="cursor-pointer border-b border-border/30 transition-colors last:border-b-0 hover:bg-muted/45"
                   onClick={() => router.push(`/${orgSlug}/${project.slug}`)}
                 >
                   <TableCell className="py-3 px-4">
