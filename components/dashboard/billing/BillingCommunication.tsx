@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
+
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { BillingEditSidebar } from './BillingEditSidebar';
+import { BillingEditDialog } from "./BillingEditDialog";
 
 interface BillingCommunicationProps {
     orgSlug: string;
@@ -19,67 +20,65 @@ interface BillingCommunicationProps {
 }
 
 export function BillingCommunication({ orgSlug, email, address }: BillingCommunicationProps) {
-    const [isEditSidebarOpen, setIsEditSidebarOpen] = useState(false);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const hasAddress = Boolean(address.line1 || address.city || address.country);
+    const locality = [address.city, address.state, address.zip].filter(Boolean).join(", ");
 
     return (
         <>
-            <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                <div className="px-6 py-4 border-b border-border/40 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-sm font-medium tracking-tight">Billing Records</h3>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                            Your contact details and invoice address.
-                        </p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => setIsEditSidebarOpen(true)}
-                    >
-                        Edit Details
-                    </Button>
+            <section className="grid gap-6 border-t border-border/30 py-9 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-12">
+                <div>
+                    <h2 className="text-sm font-medium">Billing details</h2>
+                    <p className="mt-1.5 max-w-[30ch] text-sm leading-6 text-muted-foreground">
+                        The identity and address shown on receipts, invoices, and tax records.
+                    </p>
                 </div>
 
-                <div className="p-6 grid gap-8 md:grid-cols-2">
-                    <div className="space-y-3">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">Notification Email</div>
-                        <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-secondary/30 flex items-center justify-center text-muted-foreground">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
-                            </div>
-                            <span className="text-sm font-medium">{email}</span>
-                        </div>
+                <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+                    <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-5">
+                        <div className="text-sm font-medium">Invoice information</div>
+                        <Button
+                            className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none"
+                            onClick={() => setIsEditDialogOpen(true)}
+                        >
+                            Edit
+                        </Button>
                     </div>
-
-                    <div className="space-y-3">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">Billing Address</div>
-                        <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 rounded-full bg-secondary/30 flex items-center justify-center text-muted-foreground mt-0.5 shrink-0">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
-                            </div>
-                            <div className="text-sm leading-relaxed">
-                                <p className="font-semibold text-foreground mb-1">{address.name}</p>
-                                <div className="text-muted-foreground space-y-0.5">
-                                    <p>{address.line1}</p>
-                                    {address.line2 && <p>{address.line2}</p>}
-                                    <p>{address.city}, {address.state} {address.zip}</p>
-                                    <p>{address.country}</p>
-                                    {address.taxId && (
-                                        <div className="mt-2 pt-2 border-t border-border/40 inline-flex items-center gap-1.5 text-xs font-mono">
-                                            <span className="text-[9px] uppercase tracking-wider opacity-70">Tax ID</span>
-                                            <span>{address.taxId}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                    <dl className="divide-y divide-border/30 border-t border-border/30 bg-muted/50">
+                        <div className="grid gap-1 px-4 py-3 text-sm transition-colors hover:bg-muted/80 sm:grid-cols-[140px_minmax(0,1fr)] sm:px-5">
+                            <dt className="text-muted-foreground">Billing email</dt>
+                            <dd className="min-w-0 break-words sm:text-right">{email || "Not provided"}</dd>
                         </div>
-                    </div>
+                        <div className="grid gap-1 px-4 py-3 text-sm transition-colors hover:bg-muted/80 sm:grid-cols-[140px_minmax(0,1fr)] sm:px-5">
+                            <dt className="text-muted-foreground">Legal name</dt>
+                            <dd className="sm:text-right">{address.name || "Not provided"}</dd>
+                        </div>
+                        <div className="grid gap-1 px-4 py-3 text-sm transition-colors hover:bg-muted/80 sm:grid-cols-[140px_minmax(0,1fr)] sm:px-5">
+                            <dt className="text-muted-foreground">Billing address</dt>
+                            <dd className="leading-5 sm:text-right">
+                                {hasAddress ? (
+                                    <>
+                                        {address.line1 && <div>{address.line1}</div>}
+                                        {address.line2 && <div>{address.line2}</div>}
+                                        {locality && <div>{locality}</div>}
+                                        {address.country && <div>{address.country}</div>}
+                                    </>
+                                ) : (
+                                    "Not provided"
+                                )}
+                            </dd>
+                        </div>
+                        <div className="grid gap-1 px-4 py-3 text-sm transition-colors hover:bg-muted/80 sm:grid-cols-[140px_minmax(0,1fr)] sm:px-5">
+                            <dt className="text-muted-foreground">Tax ID</dt>
+                            <dd className="font-mono text-xs sm:text-right">{address.taxId || "Not provided"}</dd>
+                        </div>
+                    </dl>
                 </div>
-            </div>
+            </section>
 
-            <BillingEditSidebar
-                isOpen={isEditSidebarOpen}
-                onClose={() => setIsEditSidebarOpen(false)}
+            <BillingEditDialog
+                open={isEditDialogOpen}
+                onOpenChange={setIsEditDialogOpen}
                 initialData={{ ...address, email }}
                 orgSlug={orgSlug}
             />

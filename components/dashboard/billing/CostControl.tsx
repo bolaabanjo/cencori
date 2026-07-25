@@ -1,10 +1,9 @@
 "use client";
 
-import React from 'react';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChevronRight } from "lucide-react";
+import React from "react";
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Project {
     id: string;
@@ -21,90 +20,86 @@ interface CostControlProps {
     projects: Project[];
 }
 
+function formatAmount(amount: number | null): string {
+    if (amount === null) return "Not set";
+    return `$${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 export function CostControl({ orgSlug, projects }: CostControlProps) {
     const firstProject = projects[0];
 
     return (
-        <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-            <div className="px-6 py-4 border-b border-border/40 flex items-center justify-between">
-                <div>
-                    <h3 className="text-sm font-medium tracking-tight">Cost Control</h3>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                        Configure budgets and spending limits for each project.
-                    </p>
-                </div>
-                {firstProject ? (
-                    <Button asChild variant="outline" className="h-7 text-xs">
-                        <Link href={`/${orgSlug}/${firstProject.slug}/settings`}>
-                            Configure Alerts
-                        </Link>
-                    </Button>
-                ) : (
-                    <Button variant="outline" className="h-7 text-xs" disabled>
-                        Configure Alerts
-                    </Button>
-                )}
-            </div>
-
-            <div className="p-0">
-                <table className="w-full text-left text-xs">
-                    <thead>
-                        <tr className="border-b border-border/40 bg-muted/30">
-                            <th className="px-6 py-3 font-medium text-muted-foreground uppercase tracking-wider w-[40%]">Project</th>
-                            <th className="px-6 py-3 font-medium text-muted-foreground uppercase tracking-wider text-right">Budget</th>
-                            <th className="px-6 py-3 font-medium text-muted-foreground uppercase tracking-wider text-right">Spend</th>
-                            <th className="px-6 py-3 font-medium text-muted-foreground uppercase tracking-wider text-right">Limit</th>
-                            <th className="px-6 py-3 w-[50px]"></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/20">
-                        {projects.map((project) => (
-                            <tr key={project.id} className="group hover:bg-muted/20 transition-colors">
-                                <td className="px-6 py-4 font-medium">
-                                    <div className="flex items-center gap-2">
-                                        <span>{project.name}</span>
-                                        {project.enforceSpendCap && (
-                                            <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-destructive/30 text-destructive/80 font-mono tracking-tight">
-                                                HARD CAP
-                                            </Badge>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right tabular-nums text-muted-foreground">
-                                    ${project.monthlyBudget?.toLocaleString() || '0'}
-                                </td>
-                                <td className="px-6 py-4 text-right tabular-nums font-medium">
-                                    ${project.currentSpend.toLocaleString()}
-                                </td>
-                                <td className="px-6 py-4 text-right tabular-nums text-muted-foreground">
-                                    {project.spendCap ? `$${project.spendCap.toLocaleString()}` : 'Unlimited'}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <Button asChild variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Link href={`/${orgSlug}/${project.slug}/settings`}>
-                                            <ChevronRight size={14} className="text-muted-foreground" />
-                                        </Link>
-                                    </Button>
-                                </td>
-                            </tr>
-                        ))}
-                        {projects.length === 0 && (
-                            <tr>
-                                <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground italic">
-                                    No projects found.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            <div className="px-6 py-3 border-t border-border/40 bg-muted/10 flex justify-between items-center">
-                <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
-                    Updates may take up to 15 minutes.
+        <section className="grid gap-6 border-t border-border/30 py-9 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-12">
+            <div>
+                <h2 className="text-sm font-medium">Spend limits</h2>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                    Set monthly budgets and choose whether projects stop when they reach their limit.
                 </p>
             </div>
-        </div>
+
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+                <div className="flex items-center justify-between gap-4 border-b border-border/30 bg-muted/50 px-4 py-3">
+                    <p className="text-sm font-medium">Projects</p>
+                    {firstProject ? (
+                        <Button asChild className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none">
+                            <Link href={`/${orgSlug}/${firstProject.slug}/settings`}>
+                                Manage limits
+                                <ArrowUpRight className="size-3" />
+                            </Link>
+                        </Button>
+                    ) : null}
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[680px] text-left text-xs">
+                        <thead>
+                            <tr className="border-b border-border/30 text-muted-foreground">
+                                <th className="px-4 py-2.5 font-normal">Project</th>
+                                <th className="px-4 py-2.5 text-right font-normal">Monthly budget</th>
+                                <th className="px-4 py-2.5 text-right font-normal">Current spend</th>
+                                <th className="px-4 py-2.5 text-right font-normal">Spend cap</th>
+                                <th className="w-12 px-4 py-2.5" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {projects.map((project) => (
+                                <tr key={project.id} className="border-b border-border/30 last:border-b-0 hover:bg-muted/30">
+                                    <td className="px-4 py-3.5">
+                                        <div className="font-medium">{project.name}</div>
+                                        <div className="mt-0.5 text-[11px] text-muted-foreground">/{project.slug}</div>
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right tabular-nums text-muted-foreground">
+                                        {formatAmount(project.monthlyBudget)}
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right tabular-nums">
+                                        {formatAmount(project.currentSpend)}
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right">
+                                        <div className="tabular-nums text-muted-foreground">{formatAmount(project.spendCap)}</div>
+                                        <div className={project.enforceSpendCap ? "mt-0.5 text-[11px] text-red-600 dark:text-red-400" : "mt-0.5 text-[11px] text-muted-foreground"}>
+                                            {project.enforceSpendCap ? "Hard stop" : "Advisory only"}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right">
+                                        <Button asChild variant="ghost" size="icon" className="size-7 rounded-md text-muted-foreground shadow-none hover:text-foreground">
+                                            <Link href={`/${orgSlug}/${project.slug}/settings`} aria-label={`Configure limits for ${project.name}`}>
+                                                <ArrowUpRight className="size-3" />
+                                            </Link>
+                                        </Button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {projects.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                                        Create a project to configure spend limits.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     );
 }

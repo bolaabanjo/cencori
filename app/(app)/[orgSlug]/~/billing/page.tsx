@@ -13,8 +13,6 @@ import Link from 'next/link';
 import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 import { CENCORI_PAID_PLANS, isPaidPlanTier, type PaidPlanTier } from '@/lib/billing/plans';
 
-// Import modular components
-import { UsageOverview } from "@/components/dashboard/billing/UsageOverview";
 import { PlanDetails } from "@/components/dashboard/billing/PlanDetails";
 import { CostControl } from "@/components/dashboard/billing/CostControl";
 import { CreditBalance } from "@/components/dashboard/billing/CreditBalance";
@@ -191,20 +189,17 @@ export default function BillingPage({ params }: PageProps) {
 
     if (isLoading) {
         return (
-            <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-6 animate-pulse text-current/[0.1]">
-                <div className="space-y-4">
-                    <Skeleton className="h-6 w-32 rounded bg-current/10" />
-                    <Skeleton className="h-4 w-48 rounded bg-current/5" />
+            <div className="mx-auto w-full max-w-[1120px] animate-pulse space-y-6 px-4 py-8 text-current/[0.1] sm:px-6 lg:px-8">
+                <div className="space-y-3">
+                    <Skeleton className="h-3 w-20 rounded-full bg-current/5" />
+                    <Skeleton className="h-8 w-36 rounded bg-current/10" />
+                    <Skeleton className="h-4 w-80 max-w-full rounded bg-current/5" />
                 </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                    <Skeleton className="h-32 rounded-lg bg-current/5" />
-                    <Skeleton className="h-32 rounded-lg bg-current/5" />
-                    <Skeleton className="h-32 rounded-lg bg-current/5" />
-                </div>
-                <div className="grid gap-6 lg:grid-cols-3">
-                    <Skeleton className="h-96 lg:col-span-2 rounded-lg bg-current/5" />
-                    <Skeleton className="h-96 rounded-lg bg-current/5" />
-                </div>
+                <Skeleton className="h-72 rounded-[18px] bg-current/5" />
+                <Skeleton className="h-72 rounded-[18px] bg-current/5" />
+                <Skeleton className="h-56 rounded-[18px] bg-current/5" />
+                <Skeleton className="h-64 rounded-[18px] bg-current/5" />
+                <Skeleton className="h-80 rounded-[18px] bg-current/5" />
             </div>
         );
     }
@@ -215,11 +210,17 @@ export default function BillingPage({ params }: PageProps) {
                 <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/[0.03] text-destructive/60">
                     <CreditCard className="h-8 w-8" />
                 </div>
-                <h2 className="text-lg font-bold tracking-tight">Billing Offline</h2>
-                <p className="text-xs text-current/40 max-w-[240px] text-center font-medium">
-                    We were unable to synchronize with our financial backend. Please check your connection.
+                <h2 className="text-lg font-medium tracking-tight">Billing unavailable</h2>
+                <p className="max-w-[280px] text-center text-xs leading-5 text-muted-foreground">
+                    Cencori could not load this organization&apos;s billing data. Check your connection and try again.
                 </p>
-                <Button variant="outline" className="h-8 px-4 text-xs font-bold border-current/20" onClick={() => window.location.reload()}>RETRY SYNC</Button>
+                <Button
+                    variant="outline"
+                    className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none"
+                    onClick={() => window.location.reload()}
+                >
+                    Try again
+                </Button>
             </div>
         );
     }
@@ -245,10 +246,14 @@ export default function BillingPage({ params }: PageProps) {
     }));
 
     return (
-        <div className="w-full max-w-5xl mx-auto px-6 py-8 pb-32">
-            <div className="mb-8">
-                <h1 className="text-base font-medium">Billing</h1>
-            </div>
+        <main className="mx-auto w-full max-w-[1120px] px-4 py-8 pb-28 sm:px-6 sm:py-10 lg:px-8">
+            <header className="mb-9">
+                <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Finance</div>
+                <h1 className="mt-3 text-3xl font-medium tracking-[-0.04em]">Billing</h1>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                    Plans, prepaid capacity, and spend controls for {org.name}.
+                </p>
+            </header>
             <AnimatePresence>
                 {checkoutNotice && (
                     <motion.div
@@ -257,14 +262,14 @@ export default function BillingPage({ params }: PageProps) {
                         exit={{ opacity: 0, scale: 0.98 }}
                         className="mb-6"
                     >
-                        <div className={`flex items-center gap-2.5 rounded border px-4 py-2.5 ${
+                        <div className={`flex items-center gap-2.5 rounded-xl border px-4 py-3 ${
                             checkoutNotice.kind === 'cancelled'
-                                ? 'border-border/50 bg-secondary/20 text-muted-foreground'
+                                ? 'border-border bg-secondary/20 text-muted-foreground'
                                 : checkoutConfirmed
                                     ? 'border-emerald-500/20 bg-emerald-500/[0.03] text-emerald-600 dark:text-emerald-400'
                                     : 'border-amber-500/20 bg-amber-500/[0.03] text-amber-600 dark:text-amber-400'
                         }`}>
-                            <div className="text-[10px] font-bold uppercase tracking-wider">
+                            <div className="text-xs font-medium">
                                 {checkoutNotice.kind === 'cancelled'
                                     ? 'Checkout cancelled — no changes were made'
                                     : checkoutConfirmed
@@ -276,20 +281,17 @@ export default function BillingPage({ params }: PageProps) {
                 )}
             </AnimatePresence>
 
-            <div className="space-y-8">
-                <UsageOverview
-                    monthlyRequestsUsed={org.monthly_requests_used}
-                    monthlyRequestLimit={org.monthly_request_limit}
-                    projectCount={projects.length}
-                    projectLimit={org.subscription_tier === 'free' ? 1 : 999999}
-                    tier={org.subscription_tier}
-                />
-
+            <div>
                 <PlanDetails
                     tier={org.subscription_tier}
                     status={org.subscription_status}
                     currentPeriodEnd={org.subscription_current_period_end}
                     price={isPaidPlanTier(org.subscription_tier) ? CENCORI_PAID_PLANS[org.subscription_tier].prices.month / 100 : 0}
+                    monthlyRequestsUsed={org.monthly_requests_used}
+                    monthlyRequestLimit={org.monthly_request_limit}
+                    projectCount={projects.length}
+                    projectLimit={org.subscription_tier === 'free' ? 1 : 999999}
+                    creditBalance={org.credits_balance || 0}
                     actionLabel={org.subscription_tier === 'free' ? 'Upgrade Plan' : 'Current Plan'}
                     onAction={org.subscription_tier === 'free' ? () => setShowUpgradeDialog(true) : undefined}
                 />
@@ -300,23 +302,18 @@ export default function BillingPage({ params }: PageProps) {
                     transactions={formattedTransactions}
                 />
 
-                <OperationalControls orgSlug={orgSlug} />
-
                 <PaymentMethods
-                    methods={paymentMethods}
-                />
-
-                <CostControl orgSlug={orgSlug} projects={formattedProjects} />
-
-                <InvoiceHistory invoices={invoices} />
-
-                <UpgradeDialog
-                    open={showUpgradeDialog}
-                    onOpenChange={setShowUpgradeDialog}
-                    orgId={org.id}
                     orgSlug={orgSlug}
-                    orgName={org.name}
-                    currentTier={org.subscription_tier === 'pro' || org.subscription_tier === 'team' ? org.subscription_tier : 'free'}
+                    methods={paymentMethods}
+                    billingAddress={{
+                        name: org.name,
+                        line1: org.billing_address_line1 || '',
+                        line2: org.billing_address_line2 || '',
+                        city: org.billing_city || '',
+                        state: org.billing_state || '',
+                        zip: org.billing_zip || '',
+                        country: org.billing_country || '',
+                    }}
                 />
 
                 <BillingCommunication
@@ -334,21 +331,36 @@ export default function BillingPage({ params }: PageProps) {
                     }}
                 />
 
-                <div className="rounded-md border border-dashed border-border/40 bg-card/50 p-4">
+                <CostControl orgSlug={orgSlug} projects={formattedProjects} />
+
+                <InvoiceHistory invoices={invoices} />
+
+                <OperationalControls orgSlug={orgSlug} />
+
+                <UpgradeDialog
+                    open={showUpgradeDialog}
+                    onOpenChange={setShowUpgradeDialog}
+                    orgId={org.id}
+                    orgSlug={orgSlug}
+                    orgName={org.name}
+                    currentTier={org.subscription_tier === 'pro' || org.subscription_tier === 'team' ? org.subscription_tier : 'free'}
+                />
+
+                <div className="flex flex-col gap-4 border-t border-border/30 py-8 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
-                        <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                            <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Support</h4>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
-                                For enterprise contracts or custom invoicing, please reach out to our team.
+                        <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <div>
+                            <div className="text-xs font-medium">Need a custom billing arrangement?</div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Talk to us about enterprise contracts, annual billing, and custom invoicing.
                             </p>
-                            <Button asChild variant="link" className="h-auto p-0 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:no-underline transition-colors uppercase tracking-wider">
-                                <Link href="mailto:support@cencori.com">Contact Support →</Link>
-                            </Button>
                         </div>
                     </div>
+                    <Button asChild className="h-7 rounded-md px-3 text-[11px] font-medium shadow-none">
+                        <Link href="mailto:support@cencori.com">Contact billing</Link>
+                    </Button>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

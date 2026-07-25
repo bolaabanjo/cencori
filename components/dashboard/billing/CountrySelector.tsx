@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
     Command,
-    CommandEmpty,
     CommandGroup,
     CommandInput,
     CommandItem,
@@ -266,48 +265,84 @@ interface CountrySelectorProps {
 
 export function CountrySelector({ value, onValueChange }: CountrySelectorProps) {
     const [open, setOpen] = React.useState(false);
+    const [query, setQuery] = React.useState("");
+    const selectedCountry = countries.find((country) => country.value === value);
+    const filteredCountries = React.useMemo(() => {
+        const normalizedQuery = query.trim().toLocaleLowerCase();
+        if (!normalizedQuery) return countries;
+
+        return countries.filter((country) => (
+            country.label.toLocaleLowerCase().includes(normalizedQuery)
+            || country.value.toLocaleLowerCase().includes(normalizedQuery)
+        ));
+    }, [query]);
+
+    const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setQuery("");
+    };
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={handleOpenChange} modal>
             <PopoverTrigger asChild>
                 <Button
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-full justify-between h-9 bg-secondary/5 border-border/40 hover:bg-secondary/10 hover:border-border/60 transition-colors font-normal text-[13px]"
+                    aria-label="Country"
+                    className="h-9 w-full justify-between rounded-md border-border/60 bg-muted/20 px-3 text-xs font-normal shadow-none transition-colors hover:border-border/80 hover:bg-muted/40"
                 >
-                    {value
-                        ? countries.find((country) => country.value === value)?.label
-                        : <span className="text-muted-foreground/50">Select country</span>}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    {selectedCountry?.label ?? <span className="text-muted-foreground">Select country</span>}
+                    <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-background border-border/50 z-[110]" align="start">
-                <Command className="bg-transparent">
-                    <CommandInput placeholder="Search country..." className="h-9 border-none focus:ring-0" />
-                    <CommandList className="max-h-[300px] overflow-y-auto">
-                        <CommandEmpty>No country found.</CommandEmpty>
-                        <CommandGroup>
-                            {countries.map((country) => (
+            <PopoverContent
+                align="start"
+                sideOffset={6}
+                className="z-[110] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg border-border/80 bg-popover p-0 text-popover-foreground shadow-[0_16px_48px_rgba(0,0,0,0.22)]"
+            >
+                <Command shouldFilter={false} className="rounded-lg bg-popover p-0 text-popover-foreground">
+                    <CommandInput
+                        value={query}
+                        onValueChange={setQuery}
+                        placeholder="Search countries"
+                        aria-label="Search countries"
+                        autoFocus
+                        className="h-9 border-none text-xs text-foreground focus:ring-0"
+                    />
+                    <CommandList className="h-72 max-h-72 overflow-y-auto overscroll-contain p-1.5">
+                        {filteredCountries.length === 0 ? (
+                            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                                No countries match that search.
+                            </div>
+                        ) : (
+                        <CommandGroup className="p-0 text-foreground">
+                            {filteredCountries.map((country) => (
                                 <CommandItem
                                     key={country.value}
-                                    value={country.label}
+                                    value={country.value}
                                     onSelect={() => {
-                                        onValueChange(country.value === value ? "" : country.value);
-                                        setOpen(false);
+                                        onValueChange(country.value);
+                                        handleOpenChange(false);
                                     }}
-                                    className="flex items-center justify-between text-[13px] hover:bg-accent transition-colors cursor-pointer py-2 px-3"
+                                    className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs text-foreground transition-colors data-[selected=true]:bg-muted/70 data-[selected=true]:text-foreground"
                                 >
-                                    {country.label}
-                                    <Check
-                                        className={cn(
-                                            "h-4 w-4",
-                                            value === country.value ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
+                                    <span className="min-w-0 truncate">{country.label}</span>
+                                    <span className="ml-4 flex shrink-0 items-center gap-2">
+                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                            {country.value}
+                                        </span>
+                                        <Check
+                                            className={cn(
+                                                "size-3.5 text-foreground",
+                                                value === country.value ? "opacity-100" : "opacity-0",
+                                            )}
+                                        />
+                                    </span>
                                 </CommandItem>
                             ))}
                         </CommandGroup>
+                        )}
                     </CommandList>
                 </Command>
             </PopoverContent>

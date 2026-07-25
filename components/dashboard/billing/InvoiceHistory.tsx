@@ -1,8 +1,9 @@
 "use client";
+
 import React from "react";
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { ArrowUpRight, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     Table,
     TableBody,
@@ -11,15 +12,15 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Search, Download, Eye } from "lucide-react";
-import { formatCurrency } from '@/lib/currency';
+import { formatCurrency } from "@/lib/currency";
+import { cn } from "@/lib/utils";
 
 interface Invoice {
     id: string;
     orderId?: string;
     date: string;
     amount: number;
-    status: 'paid' | 'pending' | 'failed' | 'refunded';
+    status: "paid" | "pending" | "failed" | "refunded";
     pdfUrl: string | null;
     currency?: string;
 }
@@ -28,129 +29,123 @@ interface InvoiceHistoryProps {
     invoices: Invoice[];
 }
 
+const STATUS_STYLES: Record<Invoice["status"], string> = {
+    paid: "text-emerald-600 dark:text-emerald-400",
+    pending: "text-amber-600 dark:text-amber-400",
+    failed: "text-red-600 dark:text-red-400",
+    refunded: "text-muted-foreground",
+};
+
 export function InvoiceHistory({ invoices }: InvoiceHistoryProps) {
-    const [query, setQuery] = React.useState('');
+    const [query, setQuery] = React.useState("");
 
     const filteredInvoices = React.useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase();
-        if (!normalizedQuery) {
-            return invoices;
-        }
+        if (!normalizedQuery) return invoices;
 
         return invoices.filter((invoice) => {
-            const date = new Date(invoice.date).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
+            const date = new Date(invoice.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
             }).toLowerCase();
 
-            return (
-                invoice.id.toLowerCase().includes(normalizedQuery)
-                || (invoice.orderId || '').toLowerCase().includes(normalizedQuery)
+            return invoice.id.toLowerCase().includes(normalizedQuery)
+                || (invoice.orderId || "").toLowerCase().includes(normalizedQuery)
                 || invoice.status.toLowerCase().includes(normalizedQuery)
-                || date.includes(normalizedQuery)
-            );
+                || date.includes(normalizedQuery);
         });
     }, [invoices, query]);
 
     const openInvoice = (url: string | null) => {
         if (!url) return;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(url, "_blank", "noopener,noreferrer");
     };
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4 mb-2">
-                <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                    <Input
-                        placeholder="Search for an invoice..."
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        className="w-48 sm:w-64 h-7 pl-7 text-xs rounded border-border/50 bg-transparent placeholder:text-muted-foreground/60"
-                    />
-                </div>
+        <section className="grid gap-6 border-t border-border/30 py-9 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-12">
+            <div>
+                <h2 className="text-sm font-medium">Invoices</h2>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                    Receipts and subscription charges for this organization.
+                </p>
             </div>
 
-            <div className="bg-card border border-border/40 rounded-md overflow-hidden">
-                <Table>
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+                <div className="border-b border-border/30 p-3">
+                    <div className="relative w-full sm:ml-auto sm:w-64">
+                        <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder="Search invoices"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            className="h-8 rounded-md border-border/60 bg-background pl-9 text-xs shadow-none"
+                        />
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <Table className="min-w-[650px]">
                     <TableHeader>
-                        <TableRow className="hover:bg-transparent border-b border-border/40">
-                            <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 px-4">Invoice ID</TableHead>
-                            <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Date</TableHead>
-                            <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Amount</TableHead>
-                            <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Status</TableHead>
-                            <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 text-right pr-4">Actions</TableHead>
+                        <TableRow className="border-border/30 hover:bg-transparent">
+                            <TableHead className="h-9 px-4 text-xs font-normal text-muted-foreground">Reference</TableHead>
+                            <TableHead className="h-9 text-xs font-normal text-muted-foreground">Issued</TableHead>
+                            <TableHead className="h-9 text-right text-xs font-normal text-muted-foreground">Amount</TableHead>
+                            <TableHead className="h-9 text-right text-xs font-normal text-muted-foreground">Status</TableHead>
+                            <TableHead className="h-9 px-4 text-right text-xs font-normal text-muted-foreground">Receipt</TableHead>
                         </TableRow>
                     </TableHeader>
-                    <TableBody>
+                    <TableBody className={filteredInvoices.length === 0 ? "bg-muted/50" : "bg-transparent"}>
                         {filteredInvoices.map((invoice) => (
-                            <TableRow
-                                key={invoice.id}
-                                className="cursor-default hover:bg-secondary/30 border-b border-border/40 last:border-b-0 transition-colors"
-                            >
-                                <TableCell className="py-3 px-4">
-                                    <div
-                                        className="text-[13px] font-medium max-w-[180px] truncate"
-                                        title={`#${invoice.id}`}
-                                    >
-                                        #{invoice.id}
+                            <TableRow key={invoice.id} className="border-border/30 hover:bg-muted/30">
+                                <TableCell className="px-4 py-3.5">
+                                    <div className="max-w-64 truncate text-xs font-medium" title={invoice.id}>
+                                        {invoice.orderId || invoice.id}
                                     </div>
+                                    {invoice.orderId && (
+                                        <div className="mt-1 max-w-64 truncate text-[10px] text-muted-foreground">{invoice.id}</div>
+                                    )}
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground py-3">
+                                <TableCell className="py-4 text-xs text-muted-foreground">
                                     {new Date(invoice.date).toLocaleDateString("en-US", {
                                         month: "short",
                                         day: "numeric",
-                                        year: "numeric"
+                                        year: "numeric",
                                     })}
                                 </TableCell>
-                                <TableCell className="text-xs font-medium py-3 tabular-nums">
-                                    {formatCurrency(invoice.amount, invoice.currency || 'USD')}
+                                <TableCell className="py-4 text-right font-mono text-xs tabular-nums">
+                                    {formatCurrency(invoice.amount, invoice.currency || "USD")}
                                 </TableCell>
-                                <TableCell className="py-3">
-                                    <Badge
-                                        variant="outline"
-                                        className="text-[11px] px-2 py-0.5 border-foreground/20 text-foreground capitalize"
-                                    >
+                                <TableCell className="py-4 text-right">
+                                    <span className={cn("text-xs capitalize", STATUS_STYLES[invoice.status])}>
                                         {invoice.status}
-                                    </Badge>
+                                    </span>
                                 </TableCell>
-                                <TableCell className="py-3 pr-4 text-right">
-                                    <div className="flex items-center justify-end gap-3">
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                                onClick={() => openInvoice(invoice.pdfUrl)}
-                                                disabled={!invoice.pdfUrl}
-                                            >
-                                                <Eye className="h-3.5 w-3.5" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                                onClick={() => openInvoice(invoice.pdfUrl)}
-                                                disabled={!invoice.pdfUrl}
-                                            >
-                                                <Download className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </div>
-                                    </div>
+                                <TableCell className="px-4 py-3.5 text-right">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-7 rounded-md text-muted-foreground shadow-none hover:text-foreground"
+                                        onClick={() => openInvoice(invoice.pdfUrl)}
+                                        disabled={!invoice.pdfUrl}
+                                        aria-label={`Open invoice ${invoice.id}`}
+                                    >
+                                        <ArrowUpRight className="size-3" />
+                                    </Button>
                                 </TableCell>
                             </TableRow>
                         ))}
                         {filteredInvoices.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={5} className="py-16 text-center text-xs text-muted-foreground font-medium">
-                                    No financial records found.
+                            <TableRow className="hover:bg-muted/70">
+                                <TableCell colSpan={5} className="h-36 text-center text-xs text-muted-foreground">
+                                    {invoices.length === 0 ? "Your first invoice will appear here." : "No invoices match that search."}
                                 </TableCell>
                             </TableRow>
                         )}
                     </TableBody>
-                </Table>
+                    </Table>
+                </div>
             </div>
-        </div>
+        </section>
     );
 }
