@@ -112,7 +112,7 @@ function MetricCell({
   loading: boolean;
 }) {
   return (
-    <div className="group min-h-32 border-b border-border/50 px-5 py-5 transition-colors duration-150 hover:bg-secondary/35 lg:border-b-0 lg:border-r lg:last:border-r-0">
+    <div className="group min-h-32 border-b border-border/30 px-5 py-5 transition-colors duration-150 hover:bg-muted/65 lg:border-b-0 lg:border-r lg:last:border-r-0">
       <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
       {loading ? (
         <div className="mt-5 space-y-3">
@@ -174,14 +174,14 @@ function RequestHealth({
   ];
 
   return (
-    <section aria-labelledby="request-health-heading" className="min-w-0 border-t border-border/50 xl:border-l xl:border-t-0">
-      <div className="border-b border-border/50 px-5 py-4">
+    <section aria-labelledby="request-health-heading" className="min-w-0 border-t border-border/30 bg-muted/15 xl:border-l xl:border-t-0">
+      <div className="border-b border-border/30 bg-muted/30 px-5 py-4">
         <h2 id="request-health-heading" className="text-xs font-medium">
           Request health
         </h2>
         <p className="mt-1 text-[11px] text-muted-foreground">Outcome distribution for this period</p>
       </div>
-      <div className="divide-y divide-border/40 px-5">
+      <div className="divide-y divide-border/30 px-5">
         {rows.map((row) => {
           const share = percentage(row.value, total);
           const chartConfig = {
@@ -242,7 +242,7 @@ function RequestHealth({
           );
         })}
       </div>
-      <div className="border-t border-border/50 px-5 py-4">
+      <div className="border-t border-border/30 bg-muted/20 px-5 py-4">
         <div className="flex items-center justify-between text-[11px]">
           <span className="text-muted-foreground">Processed outcomes</span>
           <span className="font-mono tabular-nums">
@@ -267,8 +267,8 @@ function ModelUsage({
   );
 
   return (
-    <section aria-labelledby="model-usage-heading" className="border-t border-border/50">
-      <div className="flex items-end justify-between gap-4 border-b border-border/50 px-5 py-4">
+    <section aria-labelledby="model-usage-heading" className="border-t border-border/30">
+      <div className="flex items-end justify-between gap-4 border-b border-border/30 bg-muted/30 px-5 py-4">
         <div>
           <h2 id="model-usage-heading" className="text-xs font-medium">
             Usage by model
@@ -281,7 +281,7 @@ function ModelUsage({
       </div>
 
       {sortedModels.length > 0 ? (
-        <div className="divide-y divide-border/40">
+        <div className="divide-y divide-border/30">
           <div className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_7rem] gap-4 px-5 py-2.5 text-[10px] text-muted-foreground md:grid">
             <span>Model</span>
             <span className="text-right">Requests</span>
@@ -293,7 +293,7 @@ function ModelUsage({
             return (
               <div
                 key={model.model}
-                className="group relative grid gap-2 px-5 py-3.5 transition-colors duration-150 hover:bg-secondary/35 md:grid-cols-[minmax(0,1fr)_7rem_7rem_7rem] md:items-center md:gap-4"
+                className="group relative grid gap-2 px-5 py-3.5 transition-colors duration-150 hover:bg-muted/45 md:grid-cols-[minmax(0,1fr)_7rem_7rem_7rem] md:items-center md:gap-4"
               >
                 <div
                   className="absolute inset-y-0 left-0 origin-left bg-foreground/[0.025] transition-transform duration-300 dark:bg-foreground/[0.04]"
@@ -415,7 +415,7 @@ export function ProjectOverviewDashboard({
           </div>
 
           <Select value={period} onValueChange={onPeriodChange}>
-            <SelectTrigger className="h-9 w-full rounded-md border-border/60 bg-background px-3 text-xs shadow-none sm:w-[9rem]">
+            <SelectTrigger className="h-9 w-full rounded-md border-border/45 bg-muted/20 px-3 text-xs shadow-none sm:w-[9rem]">
               <SelectValue placeholder="Period" />
             </SelectTrigger>
             <SelectContent>
@@ -428,7 +428,7 @@ export function ProjectOverviewDashboard({
           </Select>
         </header>
 
-        <div className="overflow-hidden border border-black/[0.08] dark:border-white/[0.09]">
+        <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/20">
           {error && (
             <div className="flex flex-col gap-3 border-b border-red-500/20 bg-red-500/[0.04] px-5 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-7 lg:px-8">
               <p className="text-red-600 dark:text-red-400">We couldn&apos;t refresh this project&apos;s analytics.</p>
@@ -442,20 +442,20 @@ export function ProjectOverviewDashboard({
             </div>
           )}
 
-          <section aria-label="Key metrics" className="grid sm:grid-cols-2 lg:grid-cols-5">
+          <section aria-label="Key metrics" className="grid bg-muted/50 sm:grid-cols-2 lg:grid-cols-5">
             {metrics.map((metric) => (
               <MetricCell key={metric.label} {...metric} loading={loading} />
             ))}
           </section>
 
-          <div className="grid border-t border-border/50 xl:grid-cols-[minmax(0,1fr)_21rem]">
+          <div className="grid border-t border-border/30 xl:grid-cols-[minmax(0,1fr)_21rem]">
           <section aria-labelledby="traffic-heading" className="min-w-0">
-            <div className="flex flex-col gap-4 border-b border-border/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 border-b border-border/30 bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 id="traffic-heading" className="text-xs font-medium">Traffic</h2>
                 <p className="mt-1 text-[11px] text-muted-foreground">Activity across {periodLabel.toLowerCase()}</p>
               </div>
-              <div className="flex w-fit rounded-md border border-border/60 bg-secondary/40 p-0.5" aria-label="Traffic metric">
+              <div className="flex w-fit rounded-md border border-border/45 bg-muted/40 p-0.5" aria-label="Traffic metric">
                 {(Object.keys(SERIES) as TrafficSeries[]).map((series) => (
                   <button
                     key={series}

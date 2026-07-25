@@ -190,12 +190,12 @@
 /* Dashboard-only surface contrast. Marketing and docs keep the global palette. */
 .dashboard-theme {
     --border: #dedede;
-    --sidebar-border: #ededed;
+    --sidebar-border: #f0f0f0;
 }
 
 .dark .dashboard-theme {
     --border: #2b2b2b;
-    --sidebar-border: #1d1d1d;
+    --sidebar-border: #181818;
 }
 
 /* ── Docs route theme  scoped to .docs-theme only ── */
