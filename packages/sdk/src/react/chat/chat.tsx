@@ -43,6 +43,10 @@ export interface ChatMemoryProp {
     topK?: number;
     threshold?: number;
     namespace?: string;
+    /** Temporal recall: memory as it was valid at this instant (ISO 8601). */
+    asOf?: string;
+    /** 'inject' (default) full contents, or 'index' compact table-of-contents. */
+    mode?: 'inject' | 'index';
     extract?: {
         model?: string;
         prompt?: string;
