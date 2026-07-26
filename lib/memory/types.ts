@@ -26,17 +26,23 @@ export const DEFAULT_RETRIEVAL_THRESHOLD: Record<'openai' | 'google', number> = 
 };
 
 /**
- * Memory is a MANAGED, Google-only product: extraction + reconciliation run on
- * Cencori's dedicated Gemini key. Non-Google models are never used — routing a
- * memory call through OpenAI means the paid-key override doesn't apply and the
- * request cascades into the (unfunded) fallback chain. This is the managed model.
+ * Memory is a MANAGED product: extraction + reconciliation + entity extraction
+ * run on a Cencori-managed model, never a customer's BYOK key. Allowed managed
+ * generative models are Gemini (`gemini-*`, default) and open GPT-OSS
+ * (`gpt-oss-*` on Cerebras, `openai/gpt-oss-*` on Groq) — the latter free and
+ * not Google, so memory need not depend on Gemini for its reasoning calls.
+ *
+ * OpenAI/Anthropic/etc. are intentionally NOT allowed — a memory call must not
+ * cascade into an unfunded paid provider. Anything unrecognized coerces here.
  */
 export const MEMORY_MANAGED_MODEL = 'gemini-2.5-flash';
 
-/** Coerce any configured/overridden model to a Google model for memory calls. */
-export function ensureGoogleMemoryModel(model: string | null | undefined): string {
+const ALLOWED_MEMORY_MODEL = /^(gemini|gpt-oss|openai\/gpt-oss|llama)/i;
+
+/** Coerce a configured/overridden model to an allowed managed memory model. */
+export function resolveMemoryModel(model: string | null | undefined): string {
     const trimmed = typeof model === 'string' ? model.trim() : '';
-    return /^gemini/i.test(trimmed) ? trimmed : MEMORY_MANAGED_MODEL;
+    return ALLOWED_MEMORY_MODEL.test(trimmed) ? trimmed : MEMORY_MANAGED_MODEL;
 }
 
 export interface MemoryExtractOverride {

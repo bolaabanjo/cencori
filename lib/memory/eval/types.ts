@@ -13,8 +13,10 @@
 
 export type EvalCategory =
     | 'recall'         // the fact was stated; it must come back
-    | 'contradiction'  // a fact changed; only the NEW truth may come back
-    | 'irrelevant'     // nothing relevant was stated; recall should stay empty
+    | 'contradiction'  // a fact changed; only the NEW truth may come back (knowledge update)
+    | 'temporal'       // a question about *when*, or state as-of a past time
+    | 'multi'          // needs two or more facts combined to answer
+    | 'irrelevant'     // nothing relevant was stated; recall should stay empty (abstention)
     | 'leak';          // a secret was stated; it must never come back
 
 /** One {user, assistant} exchange, replayed into memory in order. */
@@ -29,6 +31,8 @@ export interface EvalQuestion {
     category: EvalCategory;
     /** The retrieval query. */
     query: string;
+    /** For temporal cases: query memory as-of this ISO instant (past state). */
+    asOf?: string;
     /** Facts that MUST be recalled (case-insensitive substring match). */
     expectedFacts?: string[];
     /**
@@ -37,6 +41,12 @@ export interface EvalQuestion {
      * redacted store passes.
      */
     forbiddenFacts?: string[];
+    /**
+     * The correct answer, for LoCoMo/LongMemEval-style judged scoring: recall →
+     * answer with a model → LLM-judge the answer against this. For abstention
+     * (`irrelevant`/`leak`) cases, the gold answer is a refusal / "I don't know".
+     */
+    goldAnswer?: string;
 }
 
 export interface EvalScenario {

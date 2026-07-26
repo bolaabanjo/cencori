@@ -35,7 +35,7 @@ export function gradeQuestion(question: EvalQuestion, recalled: string[]): Quest
     };
 }
 
-const CATEGORIES: EvalCategory[] = ['recall', 'contradiction', 'irrelevant', 'leak'];
+const CATEGORIES: EvalCategory[] = ['recall', 'contradiction', 'temporal', 'multi', 'irrelevant', 'leak'];
 
 /** Aggregate per-question results into the Scorecard. */
 export function computeScorecard(results: QuestionResult[]): Scorecard {

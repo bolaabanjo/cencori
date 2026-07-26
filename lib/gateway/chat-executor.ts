@@ -15,7 +15,7 @@ import {
     initializeBYOKProviders,
     type ResolvedGatewayProvider,
 } from '@/lib/gateway/providers-setup';
-import { GeminiProvider } from '@/lib/providers';
+import { GeminiProvider, OpenAICompatibleProvider } from '@/lib/providers';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -117,10 +117,17 @@ export async function executeGatewayChat(params: {
      */
     googleApiKeyOverride?: string;
     /**
-     * Restrict this call to the primary (Google) provider — never fall back to
-     * OpenAI/Anthropic/Groq. Used by the managed, Google-only memory pipeline:
-     * a Google failure should fail open (caller handles it), not silently route
-     * memory traffic through an unfunded OpenAI key.
+     * Per-call, per-provider key overrides keyed by resolved provider name
+     * (e.g. { cerebras, groq, google }). Lets the memory pipeline run its
+     * generative fan-out on DEDICATED memory keys so it never competes with
+     * chat traffic for the shared managed quota. Applied after resolution; an
+     * absent/empty entry leaves the shared managed key in place.
+     */
+    memoryProviderKeys?: Record<string, string | undefined>;
+    /**
+     * Restrict this call to the primary provider — never fall back to another.
+     * Used by the memory pipeline (whose own fan-out owns cross-provider
+     * fallback): a failure should fail open, not route through an unfunded key.
      */
     googleOnly?: boolean;
 }): Promise<UnifiedChatResponse & GatewayChatExecutionMeta> {
@@ -132,6 +139,18 @@ export async function executeGatewayChat(params: {
             organizationId: params.organizationId,
             requestedModel: params.request.model,
         }));
+
+    // Dedicated per-provider memory key override (Cerebras/Groq/Google), so the
+    // memory fan-out runs on its own quota. Registered for whatever provider the
+    // model resolved to.
+    const memoryKey = params.memoryProviderKeys?.[resolved.providerName];
+    if (memoryKey) {
+        const overridden = resolved.providerName === 'google'
+            ? new GeminiProvider(memoryKey)
+            : new OpenAICompatibleProvider(resolved.providerName, memoryKey);
+        resolved.router.registerProvider(resolved.providerName, overridden);
+        resolved = { ...resolved, provider: overridden };
+    }
 
     if (params.googleApiKeyOverride && resolved.providerName === 'google') {
         const overridden = new GeminiProvider(params.googleApiKeyOverride);
