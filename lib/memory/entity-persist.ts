@@ -11,8 +11,7 @@
  * persistence mechanics are unit-tested with mocks.
  */
 
-import { executeGatewayChat } from '@/lib/gateway/chat-executor';
-import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
+import { callMemoryLlm } from './llm';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
@@ -22,7 +21,7 @@ import {
     type ExistingEntity,
 } from './entities';
 import { parseEntityExtraction } from './entities';
-import { ensureGoogleMemoryModel } from './types';
+import { resolveMemoryModel } from './types';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -58,37 +57,36 @@ export async function extractEntities(params: {
     assistantText: string;
     requestId?: string;
 }): Promise<ExtractEntitiesResult> {
-    const model = ensureGoogleMemoryModel(params.model);
+    const preferModel = resolveMemoryModel(params.model);
     try {
-        const response = await executeGatewayChat({
+        // Fan out across Cerebras → Groq → Gemini; first provider to answer wins.
+        const response = await callMemoryLlm({
             supabase: params.supabase,
             projectId: params.projectId,
             organizationId: params.organizationId,
             tier: params.tier,
             requestId: params.requestId,
-            googleApiKeyOverride: getMemoryGoogleApiKey() ?? undefined,
-            googleOnly: true,
-            request: {
-                model,
-                temperature: 0,
-                maxTokens: 800,
-                messages: [
-                    { role: 'system', content: ENTITY_EXTRACTION_PROMPT },
-                    {
-                        role: 'user',
-                        content: `USER:\n${params.userText.slice(0, 8000)}\n\nASSISTANT:\n${params.assistantText.slice(0, 8000)}`,
-                    },
-                ],
-            },
+            preferModel,
+            maxTokens: 800,
+            messages: [
+                { role: 'system', content: ENTITY_EXTRACTION_PROMPT },
+                {
+                    role: 'user',
+                    content: `USER:\n${params.userText.slice(0, 8000)}\n\nASSISTANT:\n${params.assistantText.slice(0, 8000)}`,
+                },
+            ],
         });
+        if (!response) {
+            return { extraction: { entities: [], relations: [] }, costUsd: 0, model: preferModel };
+        }
         return {
-            extraction: parseEntityExtraction(response.content ?? ''),
-            costUsd: response.cost?.cencoriChargeUsd ?? 0,
-            model: response.actualModel ?? model,
+            extraction: parseEntityExtraction(response.content),
+            costUsd: response.costUsd,
+            model: response.model,
         };
     } catch (error) {
         console.warn('[Memory] Entity extraction failed:', error);
-        return { extraction: { entities: [], relations: [] }, costUsd: 0, model };
+        return { extraction: { entities: [], relations: [] }, costUsd: 0, model: preferModel };
     }
 }
 

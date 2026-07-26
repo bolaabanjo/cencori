@@ -17,11 +17,10 @@
  */
 
 import { createHash } from 'crypto';
-import { executeGatewayChat } from '@/lib/gateway/chat-executor';
-import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
+import { callMemoryLlm } from './llm';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { SubscriptionTier } from '@/lib/entitlements';
-import { ensureGoogleMemoryModel, type ExtractedFact } from './types';
+import { resolveMemoryModel, type ExtractedFact } from './types';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -53,7 +52,7 @@ export function hashContent(content: string): string {
     return createHash('sha256').update(normalized).digest('hex');
 }
 
-const RECONCILE_SYSTEM_PROMPT = `You maintain a user's long-term memory so it stays consistent and non-redundant.
+export const RECONCILE_SYSTEM_PROMPT = `You maintain a user's long-term memory so it stays consistent and non-redundant.
 
 You are given EXISTING memories (each labelled E0, E1, ...) and NEW candidate facts (each labelled N0, N1, ...). For EACH new fact, choose exactly one action:
 
@@ -64,8 +63,13 @@ You are given EXISTING memories (each labelled E0, E1, ...) and NEW candidate fa
 Separately, you MAY retire an existing memory that a new fact makes false WITHOUT a replacement:
 - DELETE: give the existing label; use this only when the fact says something is no longer true and there is nothing to store in its place.
 
+Recognizing conflicts (important — do not rely on wording alone):
+- Many facts describe a SINGLE-VALUED current attribute of the user: their current employer, job title, current location/city, relationship status, primary programming language, main project, current device. A person has ONE of each at a time. When a new fact gives a new value for such an attribute, the old value is no longer true even if the two sentences are not word-for-word opposites — UPDATE the old memory to the new value.
+- Treat transition/departure language as a retirement signal for the memory it refers to: "left", "no longer", "former", "used to", "switched from", "moved from/to", "quit", "replaced X with Y", "now uses/works at/lives in". If the new fact both retires an old value AND states a new one, UPDATE the old memory to the new value; if it only retires (no replacement), DELETE it.
+- Example: EXISTING "The user works as a data engineer at Zap Corp." + NEW "The user joined Northwind as a staff engineer" (or "left Zap Corp") → UPDATE the existing to "The user works as a staff engineer at Northwind." Do not keep both.
+
 Rules:
-- Prefer UPDATE over ADD when a new fact conflicts with or refines an existing memory — never leave two contradictory memories.
+- Prefer UPDATE over ADD when a new fact conflicts with, replaces, or refines an existing memory — never leave two memories that state different values for the same single-valued attribute.
 - Each existing memory may be targeted by at most one UPDATE or DELETE.
 - Keep rewritten text a single self-contained sentence, no more than 300 characters.
 
@@ -246,28 +250,30 @@ export async function reconcileFacts(params: ReconcileParams): Promise<Reconcile
     }
 
     try {
-        const response = await executeGatewayChat({
+        // Fan out across Cerebras → Groq → Gemini; first provider to answer wins.
+        const response = await callMemoryLlm({
             supabase,
             projectId,
             organizationId,
             tier,
             requestId,
-            googleApiKeyOverride: getMemoryGoogleApiKey() ?? undefined,
-            googleOnly: true,
-            request: {
-                model: ensureGoogleMemoryModel(model),
-                temperature: 0,
-                maxTokens: 800,
-                messages: [
-                    { role: 'system', content: RECONCILE_SYSTEM_PROMPT },
-                    { role: 'user', content: buildReconcileUserMessage(remaining, candidates) },
-                ],
-            },
+            preferModel: resolveMemoryModel(model),
+            maxTokens: 800,
+            messages: [
+                { role: 'system', content: RECONCILE_SYSTEM_PROMPT },
+                { role: 'user', content: buildReconcileUserMessage(remaining, candidates) },
+            ],
         });
+        if (!response) {
+            // Whole chain exhausted — fail open to all-ADD (never drop a fact).
+            const plan = allAdd(true).plan;
+            plan.noops = exactNoops;
+            return { plan, costUsd: 0 };
+        }
 
-        const plan = parseReconcilePlan(response.content ?? '', remaining, candidates);
+        const plan = parseReconcilePlan(response.content, remaining, candidates);
         plan.noops += exactNoops;
-        return { plan, costUsd: response.cost?.cencoriChargeUsd ?? 0 };
+        return { plan, costUsd: response.costUsd };
     } catch (error) {
         console.warn('[Memory] Reconciliation failed, falling back to ADD-all:', error);
         const plan = allAdd(true).plan;

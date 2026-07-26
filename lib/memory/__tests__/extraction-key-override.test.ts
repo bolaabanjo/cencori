@@ -1,16 +1,16 @@
 /**
  * @vitest-environment node
  *
- * Extraction key isolation: managed Gemini extraction must run on the
- * memory-dedicated key (MEMORY_GEMINI_API_KEY) via googleApiKeyOverride so it
- * shares memory's isolated quota, not general chat's. When no memory Google key
- * resolves, the override is undefined and the executor resolves normally.
+ * Memory key isolation: the generative fan-out must run on DEDICATED memory keys
+ * (MEMORY_GEMINI/GROQ/CEREBRAS) so memory never competes with chat traffic for
+ * the shared managed quota. Extraction routes through callMemoryLlm →
+ * executeGatewayChat, which receives the per-provider memory keys.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     executeGatewayChat: vi.fn(),
-    getMemoryGoogleApiKey: vi.fn(),
+    getMemoryProviderKey: vi.fn(),
 }));
 
 vi.mock('@/lib/gateway/chat-executor', () => ({
@@ -18,7 +18,7 @@ vi.mock('@/lib/gateway/chat-executor', () => ({
 }));
 
 vi.mock('@/lib/providers/google-env', () => ({
-    getMemoryGoogleApiKey: (...a: unknown[]) => mocks.getMemoryGoogleApiKey(...a),
+    getMemoryProviderKey: (...a: unknown[]) => mocks.getMemoryProviderKey(...a),
 }));
 
 import { extractFacts } from '../extraction';
@@ -39,33 +39,35 @@ const baseParams = {
     assistantText: 'Nice',
 };
 
-describe('extractFacts key isolation', () => {
+describe('extractFacts memory-key isolation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.executeGatewayChat.mockResolvedValue({
             content: '[{"fact":"The user uses Rust","importance":0.7}]',
             actualModel: 'gemini-2.5-flash',
+            actualProvider: 'google',
             cost: { cencoriChargeUsd: 0 },
         });
     });
 
-    it('passes the memory-dedicated key as googleApiKeyOverride', async () => {
-        mocks.getMemoryGoogleApiKey.mockReturnValue('memory-only-key');
+    it('passes the dedicated per-provider memory keys through to the executor', async () => {
+        mocks.getMemoryProviderKey.mockImplementation((p: string) =>
+            ({ google: 'mem-google', groq: 'mem-groq', cerebras: 'mem-cerebras' } as Record<string, string>)[p]
+        );
 
         const res = await extractFacts(baseParams);
 
         expect(res.facts).toEqual([{ content: 'The user uses Rust', importance: 0.7 }]);
-        expect(mocks.executeGatewayChat).toHaveBeenCalledTimes(1);
-        const arg = mocks.executeGatewayChat.mock.calls[0][0] as { googleApiKeyOverride?: string };
-        expect(arg.googleApiKeyOverride).toBe('memory-only-key');
+        const arg = mocks.executeGatewayChat.mock.calls[0][0] as { memoryProviderKeys?: Record<string, string> };
+        expect(arg.memoryProviderKeys).toEqual({ google: 'mem-google', groq: 'mem-groq', cerebras: 'mem-cerebras' });
     });
 
-    it('passes undefined override when no memory Google key resolves', async () => {
-        mocks.getMemoryGoogleApiKey.mockReturnValue(null);
+    it('leaves keys undefined when no dedicated memory key is set (uses shared managed key)', async () => {
+        mocks.getMemoryProviderKey.mockReturnValue(undefined);
 
         await extractFacts(baseParams);
 
-        const arg = mocks.executeGatewayChat.mock.calls[0][0] as { googleApiKeyOverride?: string };
-        expect(arg.googleApiKeyOverride).toBeUndefined();
+        const arg = mocks.executeGatewayChat.mock.calls[0][0] as { memoryProviderKeys?: Record<string, string | undefined> };
+        expect(arg.memoryProviderKeys).toEqual({ google: undefined, groq: undefined, cerebras: undefined });
     });
 });
