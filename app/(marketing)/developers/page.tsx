@@ -82,7 +82,7 @@ async function CodeBlock({ label, lang, code }: { label: string; lang: string; c
 /* Snippets                                                           */
 /* ------------------------------------------------------------------ */
 
-const QUICKSTART_TS = `import { Cencori } from '@cencori/sdk';
+const QUICKSTART_TS = `import { Cencori } from 'cencori';
 
 const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
@@ -101,7 +101,7 @@ await cencori.chat.completions.create({ model: 'gemini-2.5-flash', messages });
 await cencori.chat.completions.create({ model: 'mistral-large-latest', messages });
 await cencori.chat.completions.create({ model: 'grok-4', messages });`;
 
-const REACT_SNIPPET = `import { Chat, VisionUploader } from '@cencori/react';
+const REACT_SNIPPET = `import { Chat, VisionUploader } from 'cencori/react';
 
 export default function App() {
     return (
@@ -393,7 +393,7 @@ export default async function DevelopersPage() {
                         <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border/30">
                             <div className="px-6 py-16 md:py-24 md:pr-12 flex flex-col justify-center">
                                 <p className="mb-4 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-                                    @cencori/react
+                                    cencori/react
                                 </p>
                                 <h2 className="font-serif text-3xl font-normal leading-tight tracking-tight sm:text-4xl lg:text-5xl text-foreground">
                                     We ship the UI too.

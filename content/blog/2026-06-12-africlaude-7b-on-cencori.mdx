@@ -43,7 +43,9 @@ You can route requests to Africlaude-7B today using our SDK, REST API, or by sel
 ### SDK Example
 
 ```typescript
-import { cencori } from '@cencori/sdk';
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
 const response = await cencori.chat.create({
   model: 'axiveri/africlaude-7b',
