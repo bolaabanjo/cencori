@@ -22,7 +22,7 @@ import { executeSessionTurn, expireStaleSessions } from "@/lib/gateway/session-e
 import type { TurnRequestBody } from "@/lib/gateway/session-types";
 import { waitUntil } from "@vercel/functions";
 import {
-    buildMemorySystemBlock,
+    buildMemoryBlock,
     getProjectMemorySettings,
     parseMemoryDirective,
     retrieveMemories,
@@ -348,7 +348,7 @@ export async function POST(
         if (retrievedMemories.length > 0) {
             const memoryMessage: UnifiedMessage = {
                 role: "system",
-                content: buildMemorySystemBlock(retrievedMemories),
+                content: buildMemoryBlock(retrievedMemories, memoryDirective?.mode ?? "inject"),
             };
             let insertAt = 0;
             while (insertAt < guardedInput.length && guardedInput[insertAt].role === "system") {

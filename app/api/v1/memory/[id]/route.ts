@@ -13,7 +13,7 @@ import {
     handleCorsPreFlight,
     logGatewayRequest,
 } from '@/lib/gateway-middleware';
-import { fromMemoryId, toMemoryId } from '@/lib/memory';
+import { fromMemoryId, toMemoryId, fetchMemoryById } from '@/lib/memory';
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -34,35 +34,11 @@ export async function GET(
         addGatewayHeaders(NextResponse.json(body, { status }), { requestId: ctx.requestId });
 
     try {
-        const { data, error } = await ctx.supabase
-            .from('gateway_memories')
-            .select('id, scope, scope_key, namespace, content, metadata, importance, created_at, updated_at, last_accessed_at, access_count, expires_at')
-            .eq('id', fromMemoryId(id))
-            .eq('organization_id', ctx.organizationId)
-            .eq('project_id', ctx.projectId)
-            .maybeSingle();
-
-        if (error || !data) {
+        const memory = await fetchMemoryById(ctx.supabase, ctx.organizationId, ctx.projectId, id);
+        if (!memory) {
             return respond({ error: 'not_found', message: 'Memory not found' }, 404);
         }
-
-        return respond(
-            {
-                id: toMemoryId(data.id),
-                scope: data.scope,
-                scopeKey: data.scope_key,
-                namespace: data.namespace,
-                content: data.content,
-                metadata: data.metadata,
-                importance: Number(data.importance),
-                accessCount: data.access_count,
-                lastAccessedAt: data.last_accessed_at,
-                expiresAt: data.expires_at,
-                createdAt: data.created_at,
-                updatedAt: data.updated_at,
-            },
-            200
-        );
+        return respond(memory, 200);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         return respond({ error: 'internal_error', message }, 500);
