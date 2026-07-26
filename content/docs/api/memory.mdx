@@ -66,6 +66,10 @@ For managing memories outside a chat — settings pages, GDPR panels, manual see
 | `POST /v1/memory/search` | Semantic search over a user's memories |
 | `GET /v1/memory/list` | Paginate a user's memories |
 | `GET /v1/memory/:id` | Fetch one memory's full content by id (`cencori.memory.fetch(id)`) |
+| `GET /v1/memory/forget-suggestions` | Propose stale, low-value memories worth forgetting (candidates only) |
+| `POST /v1/memory/graph` | Extract entities + relations from an exchange into the memory graph |
+| `GET /v1/memory/graph` | Traverse the graph outward from an entity (multi-hop) |
+| `GET /v1/memory/entities` | List the entities in a user's memory graph |
 | `DELETE /v1/memory/:id` | Forget a memory — a hard delete, not an annotation |
 
 ```typescript
@@ -135,6 +139,61 @@ const response = await cencori.chat.completions.create({
 });
 // When the model calls memory_fetch({ id }), resolve it with cencori.memory.fetch(id).
 ```
+
+## Forgetting — suggestions, never silent
+
+A memory store is only as good as its forgetting, but Cencori never deletes a
+user's memories on its own. `forgetSuggestions` returns **candidates** — stale,
+low-strength, long-unused memories — ranked weakest-first. You decide what to
+actually forget.
+
+```typescript
+const { suggestions } = await cencori.memory.forgetSuggestions({
+  userId: user.id,
+  minIdleDays: 90, // only memories untouched for 90+ days
+});
+
+// Review, then forget explicitly.
+for (const s of suggestions) {
+  await cencori.memory.forget(s.id);
+}
+```
+
+Strength is query-independent: it rewards importance, recent *use*, and repeated
+usefulness, and decays neglect. Contradicted facts are already superseded (see
+Temporal recall), so they never show up here — this is for genuine dead weight.
+
+## Entity graph — multi-hop recall
+
+Flat facts answer "what is Sarah's role?" but not "who does Sarah report to, and
+where do they work?" — that's a walk across relationships. The graph layer
+extracts entities (people, orgs, projects, places) and typed relations from
+exchanges, resolves them (so "John from Zap" and "John Smith" are one node), and
+lets you traverse.
+
+```typescript
+// Build the graph from an exchange (entities are resolved + merged).
+await cencori.memory.rememberGraph({
+  userId: user.id,
+  user: 'Sarah moved to Northwind and now reports to Marcus.',
+  assistant: 'Got it.',
+});
+
+// Traverse outward from an entity.
+const { seed, nodes, edges } = await cencori.memory.graph({
+  userId: user.id,
+  entity: 'Sarah',
+  hops: 2,
+});
+// nodes: [{ name: 'Sarah', hops: 0 }, { name: 'Marcus', hops: 1, path: ['reports_to'] }, ...]
+// edges: [{ source: 'Sarah', relation: 'reports_to', target: 'Marcus' }, ...]
+
+// List what the graph knows about a user.
+const { entities } = await cencori.memory.entities({ userId: user.id });
+```
+
+Entity extraction runs on Cencori's managed model. The graph shares the same
+tenant boundary as every other memory — no entity or edge ever crosses orgs.
 
 ## Use with any provider — `recall` + `remember`
 

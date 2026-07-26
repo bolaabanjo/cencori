@@ -173,6 +173,88 @@ export interface RememberResult {
     scope: MemoryScope;
 }
 
+export interface ForgetSuggestionsOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    namespace?: string;
+    /** Max suggestions (weakest first). Default 20. */
+    limit?: number;
+    /** Only suggest memories not used in at least this many days. Default 60. */
+    minIdleDays?: number;
+}
+
+export interface ForgetSuggestionsResult {
+    suggestions: Array<{
+        id: string;
+        content: string;
+        /** Query-independent durability score, 0–1 (lower = safer to forget). */
+        strength: number;
+        idleDays: number;
+        importance: number;
+    }>;
+    count: number;
+    /** How many active memories were evaluated. */
+    evaluated: number;
+}
+
+// ── Entity graph (Layer 5) ──
+export interface RememberGraphOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    namespace?: string;
+    user?: string;
+    assistant?: string;
+}
+
+export interface RememberGraphResult {
+    entities: number;
+    created: number;
+    merged: number;
+    relations: number;
+    costUsd: number;
+}
+
+export interface GraphQueryOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    namespace?: string;
+    /** Entity name to start the traversal from. */
+    entity: string;
+    /** How many hops outward (1–4). Default 2. */
+    hops?: number;
+}
+
+export interface GraphResult {
+    seed: { id: string; name: string; type: string } | null;
+    nodes: Array<{ id: string; name: string; type: string; hops: number; path: string[] }>;
+    edges: Array<{ source: string; relation: string; target: string }>;
+    message?: string;
+}
+
+export interface ListEntitiesOptions {
+    userId?: string;
+    sessionId?: string;
+    scope?: MemoryScope;
+    namespace?: string;
+    type?: string;
+    limit?: number;
+}
+
+export interface EntitiesResult {
+    entities: Array<{
+        id: string;
+        name: string;
+        type: string;
+        aliases: string[];
+        mentionCount: number;
+        createdAt: string;
+    }>;
+    count: number;
+}
+
 /** Full memory returned by `memory.fetch(id)` / GET /v1/memory/:id. */
 export interface FetchedMemory {
     id: string;
@@ -329,6 +411,80 @@ export class MemoryClient {
         if (options.cursor) params.set('cursor', options.cursor);
 
         return this.request<ScopedMemoryList>(`/v1/memory/list?${params.toString()}`);
+    }
+
+    /**
+     * Suggest memories worth forgetting — stale, low-strength, long-idle
+     * candidates (never auto-deleted). Review, then `forget(id)` the ones you
+     * want gone. The product never silently forgets a user's memories.
+     *
+     * @example
+     * ```typescript
+     * const { suggestions } = await cencori.memory.forgetSuggestions({ userId });
+     * for (const s of suggestions) await cencori.memory.forget(s.id);
+     * ```
+     */
+    async forgetSuggestions(options: ForgetSuggestionsOptions): Promise<ForgetSuggestionsResult> {
+        const params = new URLSearchParams();
+        if (options.userId) params.set('userId', options.userId);
+        if (options.sessionId) params.set('sessionId', options.sessionId);
+        if (options.scope) params.set('scope', options.scope);
+        if (options.namespace) params.set('namespace', options.namespace);
+        if (options.limit) params.set('limit', String(options.limit));
+        if (options.minIdleDays != null) params.set('minIdleDays', String(options.minIdleDays));
+
+        return this.request<ForgetSuggestionsResult>(`/v1/memory/forget-suggestions?${params.toString()}`);
+    }
+
+    /**
+     * Extract entities + relations from an exchange and add them to the user's
+     * memory graph (Layer 5). Enables multi-hop recall — "who does Sarah report
+     * to, and where do they work?".
+     *
+     * @example
+     * ```typescript
+     * await cencori.memory.rememberGraph({ userId, user: message, assistant: reply });
+     * ```
+     */
+    async rememberGraph(options: RememberGraphOptions): Promise<RememberGraphResult> {
+        return this.request<RememberGraphResult>('/v1/memory/graph', {
+            method: 'POST',
+            body: JSON.stringify(options),
+        });
+    }
+
+    /**
+     * Traverse the memory graph outward from an entity, returning connected
+     * entities and the relations linking them.
+     *
+     * @example
+     * ```typescript
+     * const { nodes, edges } = await cencori.memory.graph({ userId, entity: 'Sarah', hops: 2 });
+     * ```
+     */
+    async graph(options: GraphQueryOptions): Promise<GraphResult> {
+        const params = new URLSearchParams();
+        if (options.userId) params.set('userId', options.userId);
+        if (options.sessionId) params.set('sessionId', options.sessionId);
+        if (options.scope) params.set('scope', options.scope);
+        if (options.namespace) params.set('namespace', options.namespace);
+        params.set('entity', options.entity);
+        if (options.hops != null) params.set('hops', String(options.hops));
+        return this.request<GraphResult>(`/v1/memory/graph?${params.toString()}`);
+    }
+
+    /**
+     * List the entities in a user's memory graph (most-mentioned first).
+     */
+    async entities(options: ListEntitiesOptions): Promise<EntitiesResult> {
+        const params = new URLSearchParams();
+        if (options.userId) params.set('userId', options.userId);
+        if (options.sessionId) params.set('sessionId', options.sessionId);
+        if (options.scope) params.set('scope', options.scope);
+        if (options.namespace) params.set('namespace', options.namespace);
+        if (options.type) params.set('type', options.type);
+        if (options.limit != null) params.set('limit', String(options.limit));
+        return this.request<EntitiesResult>(`/v1/memory/entities?${params.toString()}`);
     }
 
     /**

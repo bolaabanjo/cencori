@@ -68,5 +68,14 @@ export type {
 } from './entities';
 export { traverseGraph, reachableEntityIds } from './graph';
 export type { GraphEdge, TraversalHit, TraverseOptions } from './graph';
+export {
+    memoryStrength,
+    classifyStrength,
+    suggestForForgetting,
+    daysSinceUse,
+} from './strength';
+export type { StrengthInput, StrengthBand, ForgetSuggestion } from './strength';
+export { extractEntities, persistEntityGraph, ENTITY_EXTRACTION_PROMPT } from './entity-persist';
+export type { ExtractEntitiesResult, PersistEntityGraphResult } from './entity-persist';
 export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';
 export type { RememberExchangeResult } from './writeback';

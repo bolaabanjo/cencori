@@ -397,6 +397,11 @@ await cencori.memory.remember(user.id, { user: message, assistant: reply });
 // Direct: write / searchUser / list / fetch(id) / forget(id).
 await cencori.memory.write({ userId: user.id, content: 'Prefers TypeScript.' });
 const { results } = await cencori.memory.searchUser({ userId: user.id, query: 'preferences' });
+
+// Forgetting (candidates only — never auto-deleted) and the entity graph.
+const { suggestions } = await cencori.memory.forgetSuggestions({ userId: user.id });
+await cencori.memory.rememberGraph({ userId: user.id, user: message, assistant: reply });
+const { nodes, edges } = await cencori.memory.graph({ userId: user.id, entity: 'Sarah', hops: 2 });
 ```
 
 `memory` field / `searchUser` / `recall` options:
