@@ -27,6 +27,19 @@ export interface ChatMemoryOptions {
     topK?: number;
     threshold?: number;
     namespace?: string;
+    /**
+     * Temporal recall: retrieve memory as it was valid at this instant
+     * (ISO 8601), including facts later superseded. Omit for current state.
+     */
+    asOf?: string;
+    /**
+     * How recalled memories are surfaced to the model:
+     * - 'inject' (default): full memory contents in context.
+     * - 'index': a compact table of contents (id + summary); the model fetches
+     *   a full note on demand via GET /v1/memory/:id. Best for agents — avoids
+     *   burying the signal under full-text every turn.
+     */
+    mode?: 'inject' | 'index';
     extract?: {
         model?: string;
         prompt?: string;

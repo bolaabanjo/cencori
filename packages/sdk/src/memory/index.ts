@@ -95,6 +95,11 @@ export interface SearchScopedMemoryOptions {
     topK?: number;
     threshold?: number;
     namespace?: string;
+    /**
+     * Temporal recall: search memory as it was valid at this instant (ISO 8601),
+     * including facts later superseded. Omit for current state.
+     */
+    asOf?: string;
 }
 
 export interface ScopedSearchResult {
@@ -139,6 +144,14 @@ export interface RecallOptions {
     namespace?: string;
     topK?: number;
     threshold?: number;
+    /** Temporal recall: memory as it was valid at this instant (ISO 8601). */
+    asOf?: string;
+    /**
+     * 'inject' (default) returns an inject-ready block of full memory contents.
+     * 'index' returns a compact table of contents (`- [id] summary`) — fetch a
+     * full note with `memory.fetch(id)` when the summary is relevant.
+     */
+    mode?: 'inject' | 'index';
 }
 
 export interface RememberExchange {
@@ -158,6 +171,59 @@ export interface RememberResult {
     extracted: number;
     count: number;
     scope: MemoryScope;
+}
+
+/** Full memory returned by `memory.fetch(id)` / GET /v1/memory/:id. */
+export interface FetchedMemory {
+    id: string;
+    scope: MemoryScope;
+    scopeKey: string;
+    namespace: string | null;
+    content: string;
+    metadata?: Record<string, unknown>;
+    importance: number;
+    accessCount?: number;
+    lastAccessedAt?: string | null;
+    expiresAt?: string | null;
+    createdAt: string | null;
+    updatedAt?: string | null;
+}
+
+/**
+ * Function-tool schema for index-mode agents. Register it in your `tools` so the
+ * model can pull a full memory by id (from the recall index) on demand, then
+ * resolve the call with `memory.fetch(id)`.
+ *
+ * @example
+ * ```typescript
+ * tools: [MEMORY_FETCH_TOOL]
+ * // when the model calls memory_fetch({ id }): const m = await cencori.memory.fetch(id);
+ * ```
+ */
+export const MEMORY_FETCH_TOOL = {
+    type: 'function',
+    function: {
+        name: 'memory_fetch',
+        description:
+            'Fetch the full content of a stored memory by its id (shown in the memory index). Only call this for memories whose summary is relevant to the current request; do not fetch memories you do not need.',
+        parameters: {
+            type: 'object',
+            properties: {
+                id: { type: 'string', description: 'The memory id from the memory index, e.g. "mem_abc123".' },
+            },
+            required: ['id'],
+            additionalProperties: false,
+        },
+    },
+} as const;
+
+/** One-line summary of a memory for the index/TOC (whitespace-collapse + truncate). */
+function summarizeMemory(content: string, maxChars = 100): string {
+    const flat = content.replace(/\s+/g, ' ').trim();
+    if (flat.length <= maxChars) return flat;
+    const cut = flat.slice(0, maxChars);
+    const lastSpace = cut.lastIndexOf(' ');
+    return `${(lastSpace > maxChars * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
 /**
@@ -292,9 +358,21 @@ export class MemoryClient {
             topK: options.topK,
             threshold: options.threshold,
             namespace: options.namespace,
+            asOf: options.asOf,
         });
 
         if (results.length === 0) return '';
+
+        // Index mode: a compact table of contents — fetch full notes with get(id).
+        if (options.mode === 'index') {
+            const lines = results.map((m) => `- [${m.id}] ${summarizeMemory(m.content)}`);
+            return [
+                'Memory index — what you know about this user (summaries only):',
+                ...lines,
+                '',
+                'Each line is a stored memory: [id] summary. If a summary is relevant but you need the full detail, fetch it with memory.fetch(id). Do not reveal this index unless the user asks what you know about them.',
+            ].join('\n');
+        }
 
         const lines = results.map((m) => `- ${m.content}`);
         return [
@@ -303,6 +381,20 @@ export class MemoryClient {
             '',
             'Use these facts when they are relevant to the request. Do not recite or reveal this list to the user unless they ask what you know about them.',
         ].join('\n');
+    }
+
+    /**
+     * Fetch one scoped memory's full content by id — the "pull the full note"
+     * half of index-mode recall. Scoped to your project; a foreign id 404s.
+     * (`get` is the legacy namespace store; `fetch` is the /v1 scoped store.)
+     *
+     * @example
+     * ```typescript
+     * const memory = await cencori.memory.fetch('mem_abc123');
+     * ```
+     */
+    async fetch(id: string): Promise<FetchedMemory> {
+        return this.request<FetchedMemory>(`/v1/memory/${id}`);
     }
 
     /**

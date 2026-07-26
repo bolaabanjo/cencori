@@ -36,6 +36,8 @@ When `memory` is present, retrieval and writeback both default to **on**. Omit t
 | `topK` | number | `5` | How many memories to inject. |
 | `threshold` | number | `0.7` | Minimum similarity for a memory to be injected. |
 | `namespace` | string | — | Sub-scope partition. Maps cleanly to per-project sidebars for multi-project users. |
+| `asOf` | string (ISO 8601) | — | Temporal recall — retrieve memory as it was valid at this instant, including facts later superseded. Omit for current state. |
+| `mode` | `"inject" \| "index"` | `"inject"` | How recalled memories are surfaced. `inject` = full contents in context. `index` = a compact table of contents the model fetches from on demand. See [Progressive disclosure](#progressive-disclosure--index-mode). |
 | `extract` | object | — | Override fact extraction: `{ model, prompt, minImportance }`. |
 
 The response carries a `memory` block:
@@ -63,6 +65,7 @@ For managing memories outside a chat — settings pages, GDPR panels, manual see
 | `POST /v1/memory/remember` | Extract durable facts from a `{ user, assistant }` exchange and store them |
 | `POST /v1/memory/search` | Semantic search over a user's memories |
 | `GET /v1/memory/list` | Paginate a user's memories |
+| `GET /v1/memory/:id` | Fetch one memory's full content by id (`cencori.memory.fetch(id)`) |
 | `DELETE /v1/memory/:id` | Forget a memory — a hard delete, not an annotation |
 
 ```typescript
@@ -81,6 +84,56 @@ const { results } = await cencori.memory.searchUser({
 
 // Forget
 await cencori.memory.forget(results[0].id);
+```
+
+## Temporal recall — `asOf`
+
+Memory is bi-temporal: when a fact changes, the old one isn't deleted, it's **superseded**. Current recall returns only what's true now, but you can ask what was true at any past instant with `asOf`.
+
+```typescript
+// What does the user prefer now? → "Rust"
+const now = await cencori.memory.recall(userId, 'preferred language');
+
+// What did they prefer back in January? → "Python" (the superseded fact)
+const then = await cencori.memory.searchUser({
+  userId,
+  query: 'preferred language',
+  asOf: '2026-01-15T00:00:00Z',
+});
+```
+
+`asOf` works on the `memory` field, `searchUser`, and `recall`. Superseded facts never surface in normal recall — only when you explicitly ask for a point in time.
+
+## Progressive disclosure — index mode
+
+Injecting the full text of every recalled memory on every turn buries the signal. **Index mode** shows the model a compact table of contents — `id` + one-line summary — and lets it pull the full note only when it needs it. Best for agents and long-running sessions.
+
+```typescript
+// Inject mode (default): full contents in context.
+const block = await cencori.memory.recall(userId, message);
+
+// Index mode: a table of contents. The model fetches full notes on demand.
+const toc = await cencori.memory.recall(userId, message, { mode: 'index' });
+// → "Memory index — what you know about this user (summaries only):
+//    - [mem_abc123] User switched their primary language to Rust
+//    - [mem_def456] User is building a fintech app called Ledgerkit"
+
+// Fetch a full note by id when a summary is relevant.
+const memory = await cencori.memory.fetch('mem_abc123');
+```
+
+For tool-calling agents, register `MEMORY_FETCH_TOOL` so the model fetches autonomously:
+
+```typescript
+import { Cencori, MEMORY_FETCH_TOOL } from 'cencori';
+
+const response = await cencori.chat.completions.create({
+  model: 'gpt-4o',
+  messages,
+  memory: { userId, mode: 'index' }, // inject the index
+  tools: [MEMORY_FETCH_TOOL],         // let the model pull full notes
+});
+// When the model calls memory_fetch({ id }), resolve it with cencori.memory.fetch(id).
 ```
 
 ## Use with any provider — `recall` + `remember`
