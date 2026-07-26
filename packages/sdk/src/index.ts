@@ -129,7 +129,19 @@ export { ComputeNamespace } from './compute';
 export { WorkflowNamespace } from './workflow';
 export { StorageNamespace } from './storage';
 export { MemoryClient, MEMORY_FETCH_TOOL } from './memory';
-export type { FetchedMemory, RecallOptions, SearchScopedMemoryOptions } from './memory';
+export type {
+    FetchedMemory,
+    RecallOptions,
+    SearchScopedMemoryOptions,
+    ForgetSuggestionsOptions,
+    ForgetSuggestionsResult,
+    RememberGraphOptions,
+    RememberGraphResult,
+    GraphQueryOptions,
+    GraphResult,
+    ListEntitiesOptions,
+    EntitiesResult,
+} from './memory';
 export {
     ChatNamespace,
     type ChatMemoryOptions,
