@@ -29,17 +29,17 @@ export const FALLBACK_CHAINS: Record<string, string[]> = {
  */
 export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     // OpenAI models → fallbacks
-    'gpt-5.6-sol': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
+    'gpt-5.6-sol': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
     'gpt-5.6-terra': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-3.5-flash' },
     'gpt-5.6-luna': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-3-flash-preview' },
-    'gpt-5.5': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
-    'gpt-5.4': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
+    'gpt-5.5': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
+    'gpt-5.4': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
     'gpt-5.4-pro': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
     'gpt-5.3-chat-latest': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
     'gpt-5': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
     'gpt-4o': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash' },
     'gpt-4o-mini': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash-lite' },
-    'o3': { 'anthropic': 'claude-opus-4-8', 'google': 'gemini-3.1-pro-preview' },
+    'o3': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
     'o3-mini': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
     'o1': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-pro' },
 
@@ -60,7 +60,7 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     // Google models → fallbacks
     'gemini-3-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4' },
     'gemini-3.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
-    'gemini-3.1-pro-preview': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-4-8' },
+    'gemini-3.1-pro-preview': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-5' },
     'gemini-3-flash-preview': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-2.5-pro': { 'openai': 'gpt-5.4', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-2.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },

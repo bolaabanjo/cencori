@@ -36,7 +36,7 @@ import {
 } from "@/lib/gateway/chat-vision-router";
 import { waitUntil } from "@vercel/functions";
 import {
-    buildMemorySystemBlock,
+    buildMemoryBlock,
     getProjectMemorySettings,
     parseMemoryDirective,
     retrieveMemories,
@@ -506,7 +506,7 @@ export async function POST(req: NextRequest) {
         if (retrievedMemories.length > 0) {
             const memoryMessage: UnifiedMessage = {
                 role: "system",
-                content: buildMemorySystemBlock(retrievedMemories),
+                content: buildMemoryBlock(retrievedMemories, memoryDirective?.mode ?? "inject"),
             };
             let insertAt = 0;
             while (insertAt < guardedMessages.length && guardedMessages[insertAt].role === "system") {

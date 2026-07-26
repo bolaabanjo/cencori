@@ -92,7 +92,7 @@ await cencori.chat.completions.create({
 const FORGET_SNIPPET = `// GDPR-grade forget. Real deletion. Cryptographic receipt.
 await cencori.memory.forget({ userId: session.user.id });`;
 
-const REACT_SNIPPET = `import { Chat, MemoryInspector } from '@cencori/react';
+const REACT_SNIPPET = `import { Chat, MemoryInspector } from 'cencori/react';
 
 // One flag, memory-aware chat.
 <Chat model="gpt-4o" memory={{ userId }} />

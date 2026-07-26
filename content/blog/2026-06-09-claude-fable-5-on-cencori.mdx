@@ -52,7 +52,9 @@ We've updated our provider config and model catalog. You can use it today via th
 ### SDK Example
 
 ```typescript
-import { cencori } from '@cencori/sdk';
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
 const response = await cencori.chat.create({
   model: 'claude-fable-5',

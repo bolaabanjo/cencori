@@ -43,7 +43,9 @@ We've updated our provider config to handle the new `claude-opus-4.7` identifier
 ### SDK Example
 
 ```typescript
-import { cencori } from '@cencori/sdk';
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
 const agent = await cencori.agents.create({
   name: 'Senior Architect',

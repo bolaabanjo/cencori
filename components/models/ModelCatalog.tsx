@@ -204,6 +204,9 @@ function getModelPrice(modelId: string, type: string | string[], free?: boolean)
     if (id === "claude-opus-4.8") {
         return { input: "$5.00", output: "$25.00" };
     }
+    if (id === "claude-opus-5") {
+        return { input: "$5.00", output: "$25.00" };
+    }
     if (id.includes("opus")) {
         return { input: "$15.00", output: "$75.00" };
     }
@@ -296,7 +299,7 @@ function flattenModels(): FlatModel[] {
     }
 
     // Models pinned to the top (newly added, remove from this list after a while)
-    const pinnedIds = new Set(['claude-sonnet-5', 'glm-5.2', 'axiveri/africlaude-7b', 'claude-opus-4.8', 'gemini-3.5-flash']);
+    const pinnedIds = new Set(['claude-opus-5', 'claude-sonnet-5', 'glm-5.2', 'axiveri/africlaude-7b', 'claude-opus-4.8', 'gemini-3.5-flash']);
     const pinned: FlatModel[] = [];
     const rest: FlatModel[] = [];
 

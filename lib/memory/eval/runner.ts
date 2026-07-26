@@ -61,6 +61,7 @@ function userDirective(scopeKey: string, topK: number): MemoryDirective {
         namespace: null,
         extract: null,
         asOf: null,
+        mode: 'inject',
     };
 }
 

@@ -378,6 +378,43 @@ await cencori.telemetry.reportWebRequest({
 });
 ```
 
+### Memory
+
+Per-user memory that persists across sessions. Turn it on with a `memory` field
+on any chat call (native), or use `cencori.memory.*` directly with any provider
+(standalone). Managed and org-isolated; PII is redacted before write.
+
+```typescript
+// Native: memory-aware chat in one field. Retrieval + writeback are automatic.
+const res = await cencori.chat.completions.create({
+  model: 'gpt-4o',
+  messages,
+  memory: { userId: user.id },
+});
+
+// Standalone: bring any model. recall() → inject-ready string; remember() writes.
+const context = await cencori.memory.recall(user.id, message);
+await cencori.memory.remember(user.id, { user: message, assistant: reply });
+
+// Direct: write / searchUser / list / fetch(id) / forget(id).
+await cencori.memory.write({ userId: user.id, content: 'Prefers TypeScript.' });
+const { results } = await cencori.memory.searchUser({ userId: user.id, query: 'preferences' });
+
+// Forgetting (candidates only — never auto-deleted) and the entity graph.
+const { suggestions } = await cencori.memory.forgetSuggestions({ userId: user.id });
+await cencori.memory.rememberGraph({ userId: user.id, user: message, assistant: reply });
+const { nodes, edges } = await cencori.memory.graph({ userId: user.id, entity: 'Sarah', hops: 2 });
+```
+
+`memory` field / `searchUser` / `recall` options:
+- `scope`: `"user"` (persists) or `"session"` (ephemeral). Default `user`.
+- `topK`, `threshold`, `namespace` — retrieval controls.
+- `asOf` (ISO 8601) — temporal recall: memory as it was valid at a past instant,
+  including facts later superseded (contradictions supersede, they don't delete).
+- `mode`: `"inject"` (default, full contents) or `"index"` (compact table of
+  contents — the model fetches full notes on demand via `cencori.memory.fetch(id)`
+  or the exported `MEMORY_FETCH_TOOL` function tool). Use `index` for agents.
+
 ## SDK Chat Response Shape
 
 `cencori.ai.chat()` returns a TypeScript SDK response with camelCase usage fields:
