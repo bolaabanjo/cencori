@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
       // proxy, and they only knew about the intermediate URL shape.
     ];
   },
+  async rewrites() {
+    return [
+      // Most agents probe /llms.txt (llmstxt.org convention); our file lives at
+      // /llm.txt. Serve the same content at /llms.txt with a 200 (a rewrite, not
+      // a redirect, so fetchers that don't follow 3xx still get the guide).
+      { source: "/llms.txt", destination: "/llm.txt" },
+    ];
+  },
   // Configure images to allow all local paths (Next.js 16 requirement)
   images: {
     localPatterns: [
