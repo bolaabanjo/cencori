@@ -280,7 +280,7 @@ POST /v1/memory/forget
 ## API surface — TypeScript SDK
 
 ```ts
-import { Cencori } from '@cencori/sdk';
+import { Cencori } from 'cencori';
 const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
 // The magic path — one line makes chat stateful.
@@ -974,7 +974,7 @@ under those features. Distribution moment number two, after MCP.
 ## Not doing
 
 - No standalone `memory.cencori.com` product surface.
-- No separate SDK. Memory ships in `@cencori/sdk` and `@cencori/react`.
+- No separate SDK. Memory ships in `cencori` and `cencori/react`.
 - No unbounded storage — memories have caps per project and per user, with
   eviction policy configurable.
 - No "memory across customer apps" — memories never leave the org boundary
