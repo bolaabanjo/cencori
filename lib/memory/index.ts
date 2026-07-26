@@ -53,5 +53,20 @@ export {
 } from './fetch';
 export type { FetchedMemory, MemoryFetchToolResult } from './fetch';
 export { DEFAULT_EXTRACTION_PROMPT, extractFacts, parseExtractionOutput } from './extraction';
+export {
+    normalizeName,
+    normalizeEntityKey,
+    resolveEntity,
+    parseEntityExtraction,
+} from './entities';
+export type {
+    ExtractedEntity,
+    ExtractedRelation,
+    EntityExtraction,
+    ExistingEntity,
+    ResolveResult,
+} from './entities';
+export { traverseGraph, reachableEntityIds } from './graph';
+export type { GraphEdge, TraversalHit, TraverseOptions } from './graph';
 export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';
 export type { RememberExchangeResult } from './writeback';
