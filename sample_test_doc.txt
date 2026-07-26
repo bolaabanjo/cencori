@@ -23,13 +23,13 @@ Track every API call with detailed analytics. See which models cost the most, wh
 1. Sign up at cencori.com
 2. Create an organization and project
 3. Generate an API key
-4. Install the SDK: npm install @cencori/sdk
+4. Install the SDK: npm install cencori
 5. Initialize and start making requests
 
 ## SDK Quick Reference
 
 ```javascript
-import { Cencori } from '@cencori/sdk';
+import { Cencori } from 'cencori';
 
 const cencori = new Cencori({
     apiKey: process.env.CENCORI_API_KEY
