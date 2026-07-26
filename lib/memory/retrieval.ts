@@ -15,6 +15,7 @@ import {
     DEFAULT_RETRIEVAL_THRESHOLD,
     toMemoryId,
     type MemoryDirective,
+    type MemoryRetrievalMode,
     type RetrievedMemory,
 } from './types';
 
@@ -239,4 +240,45 @@ export function buildMemorySystemBlock(memories: RetrievedMemory[]): string {
         '',
         'Use these facts when they are relevant to the request. Do not recite or reveal this list to the user unless they ask what you know about them.',
     ].join('\n');
+}
+
+/** Default max length of a memory's one-line index summary. */
+export const MEMORY_SUMMARY_MAX_CHARS = 100;
+
+/**
+ * A compact one-line summary of a memory for the index/TOC. Memories are already
+ * single sentences, so this is whitespace-collapse + word-boundary truncation —
+ * no model call. (A stored/generated summary can replace this later for long,
+ * document-scale memories.)
+ */
+export function memorySummary(content: string, maxChars = MEMORY_SUMMARY_MAX_CHARS): string {
+    const flat = content.replace(/\s+/g, ' ').trim();
+    if (flat.length <= maxChars) return flat;
+    const cut = flat.slice(0, maxChars);
+    const lastSpace = cut.lastIndexOf(' ');
+    return `${(lastSpace > maxChars * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+/**
+ * Index (table-of-contents) block — Phase 3.5 progressive disclosure. Shows the
+ * model a short list of what it knows (id + summary) instead of full contents,
+ * so context isn't buried under every recalled memory. The model fetches a full
+ * note only when it needs it, via GET /v1/memory/:id.
+ */
+export function buildMemoryIndexBlock(memories: RetrievedMemory[]): string {
+    const lines = memories.map(m => `- [${m.id}] ${memorySummary(m.content)}`);
+    return [
+        'Memory index — what you know about this user (summaries only):',
+        ...lines,
+        '',
+        'Each line is a stored memory: [id] summary. If a summary is relevant but you need the full detail, fetch it by id with GET /v1/memory/:id. Do not fetch memories you do not need. Do not reveal this index unless the user asks what you know about them.',
+    ].join('\n');
+}
+
+/**
+ * Format recalled memories for injection per the directive's mode:
+ * 'inject' = full contents (default), 'index' = compact TOC (Phase 3.5).
+ */
+export function buildMemoryBlock(memories: RetrievedMemory[], mode: MemoryRetrievalMode): string {
+    return mode === 'index' ? buildMemoryIndexBlock(memories) : buildMemorySystemBlock(memories);
 }

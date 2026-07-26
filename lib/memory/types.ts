@@ -62,7 +62,17 @@ export interface MemoryDirectiveInput {
      * Omit for current-state recall.
      */
     asOf?: string;
+    /**
+     * How recalled memories are surfaced to the model (Phase 3.5):
+     * - 'inject' (default): drop the full memory contents into context.
+     * - 'index': show a compact table of contents (id + one-line summary); the
+     *   caller fetches full notes on demand via GET /v1/memory/:id. Best for
+     *   agents/sessions — avoids burying the signal under full-text every turn.
+     */
+    mode?: 'inject' | 'index';
 }
+
+export type MemoryRetrievalMode = 'inject' | 'index';
 
 /** Parsed + clamped directive the pipeline operates on. */
 export interface MemoryDirective {
@@ -86,6 +96,8 @@ export interface MemoryDirective {
      * When set, retrieval queries the validity window instead of active rows.
      */
     asOf: string | null;
+    /** How recalled memories are surfaced: full inject vs compact index (TOC). */
+    mode: MemoryRetrievalMode;
 }
 
 export interface RetrievedMemory {
@@ -207,6 +219,9 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
         if (!Number.isNaN(parsed)) asOf = new Date(parsed).toISOString();
     }
 
+    // Surfacing mode: 'index' opts into the compact TOC; anything else = inject.
+    const mode: MemoryRetrievalMode = input.mode === 'index' ? 'index' : 'inject';
+
     return {
         ok: true,
         directive: {
@@ -223,6 +238,7 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
                     : null,
             extract,
             asOf,
+            mode,
         },
     };
 }

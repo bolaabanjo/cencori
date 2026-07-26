@@ -629,6 +629,51 @@ proven.
 contradiction — *and a public benchmark scorecard, produced by Layer 0, where
 Cencori beats Mem0/Zep on answer quality.*
 
+---
+
+### Phase 3.5 — Progressive disclosure: index-then-fetch retrieval (added 2026-07-25)
+
+**Origin.** Prompted by Aster (@try_aster / Chizi) shipping this pattern: "remembers
+a lot but only shows a little — each turn it sees a short list of what it knows,
+like a table of contents, and pulls the full note only when it actually needs it."
+His framing — *"remembering is easy; knowing what to bring up right now is the hard
+part, and that's where most of the work went"* — is our own thesis restated, and it
+validates the whole reasoning layer. But it also names one technique we don't do.
+
+**What we do today vs what this adds.** Retrieval currently *injects top-K*: rerank
+(Layer 2), then drop the full memory contents into the system block every turn. That
+is correct for the **single-shot gateway** (`/v1/chat/completions`) where there is no
+agentic loop to fetch on demand. It is *not* optimal for the **agent/session path**
+(Sessions API + Arcie), where dumping full memories every turn pollutes context and
+buries the signal (Aster's point #2).
+
+**The addition — a second retrieval MODE, not a replacement:**
+- **inject mode** (default, gateway): today's behaviour — rerank → inject top-K full
+  contents. Keep as-is for stateless completions.
+- **index mode** (sessions/agents): inject a compact **table of contents** — the
+  reranked top-N as `{id, one-line summary}` lines, cheap in tokens — and expose a
+  `memory.fetch(id)` tool the model calls only when it needs the full note. The
+  Layer-2 rank score decides TOC ordering; Layer-4 strength can prune what even makes
+  the TOC. Requires a stored/derived one-line summary per memory (cheap: generate at
+  write time alongside extraction, or lazily).
+
+**Why this is ours to win, not just copy.** Aster hand-built this for one local,
+single-user coding agent over plain-text files. We can offer it as a *managed mode*
+on multi-tenant infra, composed with conflict-resolution + temporal + decay + the
+org-isolation boundary — i.e. the reasoning layer he says "most of the work went
+into" becomes a config flag. It also sharpens the standalone pitch to Aster-*like*
+builders (see the standalone-as-product principle above): "bring any model; the
+what-to-surface layer you'd otherwise hand-roll is our product."
+
+**Scope guard.** This is a retrieval *mode*, not a new store. One store, one directive
+shape; `mode: 'inject' | 'index'` on the memory directive. Do NOT fork a second
+memory product for agents.
+
+**Ship criteria:** an Arcie/session agent runs with `memory.mode = 'index'`, sees a
+token-cheap TOC each turn, fetches full notes on demand, and the eval harness shows
+equal-or-better answer quality at materially lower injected-context tokens vs inject
+mode.
+
 ### Phase 4 — Ongoing
 
 - Cross-workflow memory — an agent chain can share memory with a chat

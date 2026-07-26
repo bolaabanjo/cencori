@@ -36,9 +36,22 @@ export {
 } from './session-store';
 export { buildQuotaCheckFailedBody, buildQuotaExceededBody, checkMemoryQuota } from './quota';
 export type { MemoryQuotaStatus } from './quota';
-export { buildMemorySystemBlock, retrieveMemories } from './retrieval';
+export {
+    buildMemorySystemBlock,
+    buildMemoryIndexBlock,
+    buildMemoryBlock,
+    memorySummary,
+    retrieveMemories,
+} from './retrieval';
 export type { MemoryEmbeddingUsage } from './retrieval';
 export { redactFact } from './redact';
+export {
+    fetchMemoryById,
+    executeMemoryFetchTool,
+    MEMORY_FETCH_TOOL,
+    MEMORY_FETCH_TOOL_NAME,
+} from './fetch';
+export type { FetchedMemory, MemoryFetchToolResult } from './fetch';
 export { DEFAULT_EXTRACTION_PROMPT, extractFacts, parseExtractionOutput } from './extraction';
 export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';
 export type { RememberExchangeResult } from './writeback';
