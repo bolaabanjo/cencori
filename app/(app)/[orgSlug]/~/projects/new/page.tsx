@@ -70,7 +70,7 @@ interface PageProps {
 // Hook to fetch org with caching
 function useOrganization(orgSlug: string) {
   return useQuery({
-    queryKey: ["organization", orgSlug],
+    queryKey: ["organizationProjectCreation", orgSlug],
     queryFn: async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("Not authenticated");

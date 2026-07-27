@@ -7,6 +7,7 @@ import { ChevronRight, ChevronLeft, Check, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 export interface CourseStep {
     id: string;
@@ -200,13 +201,11 @@ export function CourseLayout({ children, hero, courseId, courseTitle, steps }: C
             {user && (
                 <div className="px-4 py-3 border-t border-border/40">
                     <div className="flex items-center gap-2">
-                        {user.avatar_url ? (
-                            <img src={user.avatar_url} alt="" className="h-6 w-6 rounded-full" />
-                        ) : (
-                            <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium">
-                                {user.email?.[0]?.toUpperCase()}
-                            </div>
-                        )}
+                        <UserAvatar
+                            src={user.avatar_url}
+                            email={user.email}
+                            size={24}
+                        />
                         <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                     </div>
                 </div>

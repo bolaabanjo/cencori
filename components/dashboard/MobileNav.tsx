@@ -12,7 +12,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronsUpDown, HelpCircle, ExternalLink, CircleUserRound, CreditCard, Settings } from "lucide-react";
-import { GradientAvatar } from "@outpacelabs/avatars";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -236,11 +236,12 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                             className="w-7 h-7 flex items-center justify-center rounded-full border border-border/100 hover:bg-secondary transition-colors shrink-0 overflow-hidden"
                             aria-label="User menu"
                         >
-                            {typeof avatar === "string" && avatar.length > 0 ? (
-                                <img src={avatar} alt="User avatar" className="w-full h-full object-cover" />
-                            ) : (
-                                <GradientAvatar seed="Bola " size={28} />
-                            )}
+                            <UserAvatar
+                                src={avatar}
+                                email={user?.email}
+                                size={28}
+                                className="border-0"
+                            />
                         </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-66 p-1" align="end" forceMount>

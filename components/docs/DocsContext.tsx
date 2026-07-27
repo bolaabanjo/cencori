@@ -5,6 +5,7 @@ import { createContext, useContext, useState, ReactNode } from "react";
 interface UserProfile {
     name: string | null;
     avatar: string | null;
+    email?: string | null;
 }
 
 interface DocsContextType {
