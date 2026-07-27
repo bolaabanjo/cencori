@@ -21,7 +21,7 @@ import {
     buildReconcileUserMessage,
     type ReconcileCandidate,
 } from '../reconcile';
-import { ensureGoogleMemoryModel, MEMORY_MANAGED_MODEL, type ExtractedFact } from '../types';
+import { resolveMemoryModel, MEMORY_MANAGED_MODEL, type ExtractedFact } from '../types';
 
 const facts = (...contents: string[]): ExtractedFact[] =>
     contents.map(c => ({ content: c, importance: 0.7 }));
@@ -123,19 +123,25 @@ describe('parseReconcilePlan', () => {
     });
 });
 
-describe('ensureGoogleMemoryModel (managed, Google-only)', () => {
+describe('resolveMemoryModel (managed: Gemini or open GPT-OSS)', () => {
     it('keeps any gemini model as-is', () => {
-        expect(ensureGoogleMemoryModel('gemini-2.5-flash')).toBe('gemini-2.5-flash');
-        expect(ensureGoogleMemoryModel('gemini-3-pro')).toBe('gemini-3-pro');
-        expect(ensureGoogleMemoryModel('  Gemini-2.5-Flash  ')).toBe('Gemini-2.5-Flash');
+        expect(resolveMemoryModel('gemini-2.5-flash')).toBe('gemini-2.5-flash');
+        expect(resolveMemoryModel('gemini-3-pro')).toBe('gemini-3-pro');
+        expect(resolveMemoryModel('  Gemini-2.5-Flash  ')).toBe('Gemini-2.5-Flash');
     });
 
-    it('coerces any non-Google model (or empty) to the managed model', () => {
-        expect(ensureGoogleMemoryModel('gpt-4o-mini')).toBe(MEMORY_MANAGED_MODEL);
-        expect(ensureGoogleMemoryModel('claude-sonnet-4-6')).toBe(MEMORY_MANAGED_MODEL);
-        expect(ensureGoogleMemoryModel('')).toBe(MEMORY_MANAGED_MODEL);
-        expect(ensureGoogleMemoryModel(null)).toBe(MEMORY_MANAGED_MODEL);
-        expect(ensureGoogleMemoryModel(undefined)).toBe(MEMORY_MANAGED_MODEL);
+    it('allows open managed models (Cerebras gpt-oss, Groq llama), not Google', () => {
+        expect(resolveMemoryModel('gpt-oss-120b')).toBe('gpt-oss-120b');
+        expect(resolveMemoryModel('openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
+        expect(resolveMemoryModel('llama-3.3-70b-versatile')).toBe('llama-3.3-70b-versatile');
+    });
+
+    it('coerces OpenAI/Anthropic/unknown (or empty) to the managed default', () => {
+        expect(resolveMemoryModel('gpt-4o-mini')).toBe(MEMORY_MANAGED_MODEL);
+        expect(resolveMemoryModel('claude-sonnet-4-6')).toBe(MEMORY_MANAGED_MODEL);
+        expect(resolveMemoryModel('')).toBe(MEMORY_MANAGED_MODEL);
+        expect(resolveMemoryModel(null)).toBe(MEMORY_MANAGED_MODEL);
+        expect(resolveMemoryModel(undefined)).toBe(MEMORY_MANAGED_MODEL);
     });
 });
 

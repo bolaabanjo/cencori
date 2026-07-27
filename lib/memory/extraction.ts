@@ -7,12 +7,11 @@
  */
 
 import type { createAdminClient } from '@/lib/supabaseAdmin';
-import { executeGatewayChat } from '@/lib/gateway/chat-executor';
-import { getMemoryGoogleApiKey } from '@/lib/providers/google-env';
+import { callMemoryLlm } from './llm';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
-    ensureGoogleMemoryModel,
+    resolveMemoryModel,
     type ExtractedFact,
     type MemoryExtractOverride,
     type MemorySettings,
@@ -57,43 +56,40 @@ export async function extractFacts(params: {
         settings, extractOverride, userText, assistantText, requestId,
     } = params;
 
-    // Memory is managed + Google-only: coerce any configured/overridden model
-    // to a Gemini model so extraction runs on the dedicated key, never OpenAI.
-    const model = ensureGoogleMemoryModel(extractOverride?.model || settings.extractionModel);
+    // Managed memory model preference (Gemini or open GPT-OSS) — pins the first
+    // provider in the fan-out; callMemoryLlm falls across the rest if it fails.
+    const preferModel = resolveMemoryModel(extractOverride?.model || settings.extractionModel);
     const minImportance = extractOverride?.minImportance ?? settings.minImportance;
     const systemPrompt =
         extractOverride?.prompt || settings.extractionPrompt || DEFAULT_EXTRACTION_PROMPT;
 
     try {
-        const response = await executeGatewayChat({
+        // Fan out across Cerebras → Groq → Gemini; first provider to answer wins.
+        const response = await callMemoryLlm({
             supabase,
             projectId,
             organizationId,
             tier,
             requestId,
-            // Run managed Gemini extraction on the memory-dedicated key so it
-            // shares memory's isolated quota, not general chat's. googleOnly
-            // guarantees it never falls back to OpenAI (managed, Google-only).
-            googleApiKeyOverride: getMemoryGoogleApiKey() ?? undefined,
-            googleOnly: true,
-            request: {
-                model,
-                temperature: 0,
-                maxTokens: 500,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    {
-                        role: 'user',
-                        content:
-                            `Exchange to analyze:\n\n` +
-                            `USER:\n${userText.slice(0, 8000)}\n\n` +
-                            `ASSISTANT:\n${assistantText.slice(0, 8000)}`,
-                    },
-                ],
-            },
+            preferModel,
+            maxTokens: 500,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                {
+                    role: 'user',
+                    content:
+                        `Exchange to analyze:\n\n` +
+                        `USER:\n${userText.slice(0, 8000)}\n\n` +
+                        `ASSISTANT:\n${assistantText.slice(0, 8000)}`,
+                },
+            ],
         });
+        if (!response) {
+            // Whole chain exhausted — fail open with zero facts.
+            return { facts: [], costUsd: 0, model: preferModel };
+        }
 
-        const facts = parseExtractionOutput(response.content ?? '');
+        const facts = parseExtractionOutput(response.content);
         const filtered = facts
             .filter(f => f.importance >= minImportance)
             .slice(0, settings.maxMemoriesPerExchange)
@@ -104,12 +100,12 @@ export async function extractFacts(params: {
 
         return {
             facts: filtered,
-            costUsd: response.cost?.cencoriChargeUsd ?? 0,
-            model: response.actualModel ?? model,
+            costUsd: response.costUsd,
+            model: response.model,
         };
     } catch (error) {
         console.warn('[Memory] Fact extraction failed:', error);
-        return { facts: [], costUsd: 0, model };
+        return { facts: [], costUsd: 0, model: preferModel };
     }
 }
 
