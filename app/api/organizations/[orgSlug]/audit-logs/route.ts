@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabaseServer";
+import { hasFeature, type SubscriptionTier } from "@/lib/entitlements";
+import { featureGateResponse, requireTierFeatureForOrg } from "@/lib/require-tier-feature";
+
+const TEAM_ONLY_CATEGORIES = new Set(["member", "api_key", "sso"]);
+const TEAM_ONLY_TIME_RANGES = new Set(["30d", "90d"]);
+
+function getDevelopmentPreviewTier(url: URL): SubscriptionTier | null {
+    if (process.env.NODE_ENV !== "development") return null;
+    const previewTier = url.searchParams.get("preview_plan");
+    return previewTier === "pro" || previewTier === "team" || previewTier === "enterprise"
+        ? previewTier
+        : null;
+}
 
 function escapeCSV(value: string): string {
     if (value.includes(",") || value.includes('"') || value.includes("\n")) {
@@ -28,7 +41,7 @@ async function getOrgWithAccess(orgSlug: string) {
 
     const { data: org } = await supabase
         .from("organizations")
-        .select("id, name, slug")
+        .select("id, name, slug, subscription_tier")
         .eq("slug", orgSlug)
         .single();
 
@@ -61,6 +74,15 @@ export async function GET(
 
     const { org, supabase } = result;
     const url = new URL(req.url);
+    const previewTier = getDevelopmentPreviewTier(url);
+    const effectiveTier = previewTier
+        || (org.subscription_tier || "free") as SubscriptionTier;
+
+    if (!previewTier) {
+        const featureGate = await requireTierFeatureForOrg(org.id, "auditLogs");
+        if (featureGate) return featureGate;
+    }
+
     const format = url.searchParams.get("format");
     const category = url.searchParams.get("category") || "all";
     const timeRange = url.searchParams.get("time_range") || "7d";
@@ -68,6 +90,19 @@ export async function GET(
     const projectId = url.searchParams.get("project_id") || "";
     const page = parseInt(url.searchParams.get("page") || "1");
     const perPage = Math.min(parseInt(url.searchParams.get("per_page") || "50"), 100);
+
+    if (format && !hasFeature(effectiveTier, "auditLogExports")) {
+        return featureGateResponse("auditLogExports", "team");
+    }
+    if (TEAM_ONLY_TIME_RANGES.has(timeRange) && !hasFeature(effectiveTier, "auditLogExtendedHistory")) {
+        return featureGateResponse("auditLogExtendedHistory", "team");
+    }
+    if (timeRange === "all" && !hasFeature(effectiveTier, "auditLogAllTimeHistory")) {
+        return featureGateResponse("auditLogAllTimeHistory", "enterprise");
+    }
+    if (TEAM_ONLY_CATEGORIES.has(category) && !hasFeature(effectiveTier, "auditLogIdentityEvents")) {
+        return featureGateResponse("auditLogIdentityEvents", "team");
+    }
 
     const startDate = parseTimeRange(timeRange);
 
@@ -81,6 +116,8 @@ export async function GET(
 
     if (category !== "all") {
         query = query.eq("category", category);
+    } else if (!hasFeature(effectiveTier, "auditLogIdentityEvents")) {
+        query = query.not("category", "in", "(member,api_key,sso)");
     }
     if (projectId) {
         query = query.eq("project_id", projectId);

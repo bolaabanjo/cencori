@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { resolvePublicOrigin } from '@/lib/public-origin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForOrg } from '@/lib/require-tier-feature';
 
 const SENDBYTE_API_KEY = process.env.SENDBYTE_API_KEY || process.env.RESEND_API_KEY;
 const ORG_INVITE_FROM_EMAIL = process.env.RESEND_ORG_INVITE_FROM_EMAIL || process.env.RESEND_TEAM_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '';
@@ -59,6 +60,9 @@ export async function POST(
     if (!isOwner && !isAdmin) {
         return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
     }
+
+    const planGate = await requireTierFeatureForOrg(org.id, 'teams');
+    if (planGate) return planGate;
 
     const body = await req.json();
     const { email, role = 'member' } = body;
@@ -240,6 +244,9 @@ export async function GET(
     if (!membership) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    const planGate = await requireTierFeatureForOrg(org.id, 'teams');
+    if (planGate) return planGate;
 
     const { data: invites, error } = await supabase
         .from('organization_invites')

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { trackEvent } from '@/lib/track-event';
+import { requireTierFeatureForOrg } from '@/lib/require-tier-feature';
 
 export async function POST(
     req: NextRequest,
@@ -59,6 +60,9 @@ export async function POST(
             error: `This invite was sent to ${invite.email}. Please log in with that email address.`
         }, { status: 403 });
     }
+
+    const planGate = await requireTierFeatureForOrg(invite.organization_id, 'teams');
+    if (planGate) return planGate;
 
     const { data: existingMember } = await supabaseAdmin
         .from('organization_members')
@@ -143,6 +147,9 @@ export async function GET(
         .select('name')
         .eq('id', invite.organization_id)
         .single();
+
+    const planGate = await requireTierFeatureForOrg(invite.organization_id, 'teams');
+    if (planGate) return planGate;
 
     return NextResponse.json({
         email: invite.email,
