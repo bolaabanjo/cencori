@@ -1,8 +1,12 @@
 "use client";
 
-import React, { useState, use } from "react";
+import React, { useEffect, useState, use } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { FeatureUpgradeWall } from "@/components/billing/FeatureUpgradeWall";
 import { supabase } from "@/lib/supabaseClient";
+import { hasFeature, type SubscriptionTier } from "@/lib/entitlements";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,7 +36,6 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import {
     Users,
-    UserPlus,
     ChevronDown,
     Search,
     Loader2,
@@ -47,22 +50,26 @@ interface OrganizationMember {
     user_id: string;
     role: string;
     joined_at: string;
+    name: string;
+    email: string;
+    avatar_url: string | null;
 }
 
 interface Organization {
     id: string;
     name: string;
     owner_id: string;
+    subscription_tier: SubscriptionTier;
 }
 
 // Hook to fetch org data
 function useOrganization(orgSlug: string) {
     return useQuery({
-        queryKey: ["organization", orgSlug],
+        queryKey: ["organizationTeams", orgSlug],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("organizations")
-                .select("id, name, owner_id")
+                .select("id, name, owner_id, subscription_tier")
                 .eq("slug", orgSlug)
                 .single();
 
@@ -73,26 +80,17 @@ function useOrganization(orgSlug: string) {
     });
 }
 
-// Hook to fetch organization members - simple query without joins
-function useOrganizationMembers(orgId: string | undefined) {
+// Member identity is resolved server-side from profiles and Supabase Auth.
+function useOrganizationMembers(orgSlug: string, enabled: boolean) {
     return useQuery({
-        queryKey: ["organizationMembers", orgId],
+        queryKey: ["organizationMembers", orgSlug],
         queryFn: async () => {
-            if (!orgId) throw new Error("No org ID");
-
-            const { data, error } = await supabase
-                .from("organization_members")
-                .select("user_id, role, joined_at")
-                .eq("organization_id", orgId)
-                .order("joined_at", { ascending: true });
-
-            if (error) {
-                console.error("Error fetching members:", error);
-                throw error;
-            }
-            return data || [];
+            const response = await fetch(`/api/organizations/${orgSlug}/members`);
+            const body = await response.json() as { members?: OrganizationMember[]; error?: string };
+            if (!response.ok) throw new Error(body.error || "Could not load members");
+            return body.members ?? [];
         },
-        enabled: !!orgId,
+        enabled,
         staleTime: 30 * 1000,
     });
 }
@@ -111,6 +109,7 @@ function useCurrentUser() {
 
 export default function TeamsPage({ params }: PageProps) {
     const { orgSlug } = use(params);
+    const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const [inviteOpen, setInviteOpen] = useState(false);
     const [inviteEmail, setInviteEmail] = useState("");
@@ -118,8 +117,10 @@ export default function TeamsPage({ params }: PageProps) {
     const [filterText, setFilterText] = useState("");
     const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
 
-    const { data: org, isLoading: orgLoading } = useOrganization(orgSlug);
-    const { data: members, isLoading: membersLoading } = useOrganizationMembers(org?.id);
+    const checkoutId = searchParams.get("checkout_session_id") || searchParams.get("checkout_id");
+    const { data: org, isLoading: orgLoading, refetch: refetchOrg } = useOrganization(orgSlug);
+    const teamsEnabled = org ? hasFeature(org.subscription_tier, "teams") : false;
+    const { data: members, isLoading: membersLoading } = useOrganizationMembers(orgSlug, Boolean(org?.id));
     const { data: currentUser } = useCurrentUser();
 
     const isLoading = orgLoading || membersLoading;
@@ -130,29 +131,58 @@ export default function TeamsPage({ params }: PageProps) {
     const isAdmin = currentMember?.role === "admin" || isOwner;
     const canManageMembers = isOwner || isAdmin;
 
+    useEffect(() => {
+        if (!checkoutId) return;
+
+        let completed = false;
+
+        const refreshEntitlement = async () => {
+            const result = await refetchOrg();
+            if (result.data?.subscription_tier && result.data.subscription_tier !== "free") {
+                completed = true;
+                window.clearInterval(refreshTimer);
+                sessionStorage.removeItem(`cencori:stripe-checkout:${checkoutId}`);
+                window.history.replaceState({}, "", window.location.pathname);
+                toast.success("Team collaboration unlocked");
+            }
+        };
+
+        const refreshTimer = window.setInterval(() => {
+            if (!completed) void refreshEntitlement();
+        }, 2_000);
+        void refreshEntitlement();
+        const stopTimer = window.setTimeout(() => {
+            window.clearInterval(refreshTimer);
+        }, 30_000);
+
+        return () => {
+            window.clearInterval(refreshTimer);
+            window.clearTimeout(stopTimer);
+        };
+    }, [checkoutId, refetchOrg]);
+
     // Filter members
     const filteredMembers = members?.filter((m: OrganizationMember) => {
         if (!filterText) return true;
-        // For current user, search by email; for others, search by user_id
-        const searchText = currentUser?.id === m.user_id
-            ? currentUser?.email?.toLowerCase()
-            : m.user_id.toLowerCase();
-        return searchText?.includes(filterText.toLowerCase());
+        const query = filterText.trim().toLowerCase();
+        return m.name.toLowerCase().includes(query) ||
+            m.email.toLowerCase().includes(query) ||
+            m.role.toLowerCase().includes(query);
     });
 
     // Mutation to update member role
     const updateRoleMutation = useMutation({
         mutationFn: async ({ userId, newRole }: { userId: string; newRole: string }) => {
-            const { error } = await supabase
-                .from("organization_members")
-                .update({ role: newRole })
-                .eq("organization_id", org!.id)
-                .eq("user_id", userId);
-
-            if (error) throw error;
+            const response = await fetch(`/api/organizations/${orgSlug}/members`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId, role: newRole }),
+            });
+            const body = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(body.error || "Failed to update role");
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["organizationMembers", org?.id] });
+            queryClient.invalidateQueries({ queryKey: ["organizationMembers", orgSlug] });
             toast.success("Role updated successfully");
         },
         onError: () => {
@@ -222,15 +252,6 @@ export default function TeamsPage({ params }: PageProps) {
         });
     };
 
-    // Get display email for a member - use auth email for current user
-    const getMemberEmail = (member: OrganizationMember) => {
-        if (member.user_id === currentUser?.id) {
-            return currentUser?.email || "Unknown";
-        }
-        // For other users, show truncated user_id (ideally we'd store email in public.users)
-        return `User ${member.user_id.slice(0, 8)}...`;
-    };
-
     if (isLoading) {
         return (
             <div className="w-full max-w-5xl mx-auto px-6 py-8">
@@ -259,13 +280,27 @@ export default function TeamsPage({ params }: PageProps) {
             {/* Header */}
             <h1 className="text-lg font-medium mb-6">Team</h1>
 
+            {canManageMembers && !teamsEnabled && (
+                <FeatureUpgradeWall
+                    orgSlug={orgSlug}
+                    orgId={org.id}
+                    orgName={org.name}
+                    currentTier={org.subscription_tier}
+                    feature="Invite members"
+                    message="Team collaboration is available on Pro, Team, and Enterprise."
+                    variant="inline"
+                    className="mb-4"
+                    returnPath={`/${orgSlug}/~/teams`}
+                />
+            )}
+
             {/* Controls Row */}
             <div className="flex items-center justify-between mb-4">
                 {/* Search */}
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Filter members..."
+                        placeholder="Search by name or email..."
                         value={filterText}
                         onChange={(e) => setFilterText(e.target.value)}
                         className="pl-9 h-9 w-64 text-sm bg-secondary/50 border-border/50"
@@ -274,7 +309,7 @@ export default function TeamsPage({ params }: PageProps) {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">
-                    {canManageMembers && (
+                    {canManageMembers && teamsEnabled && (
                         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
                             <DialogTrigger asChild>
                                 <Button size="sm" className="h-8 text-xs gap-1.5">
@@ -328,6 +363,16 @@ export default function TeamsPage({ params }: PageProps) {
                             </DialogContent>
                         </Dialog>
                     )}
+                    {canManageMembers && !teamsEnabled && (
+                        <Button
+                            size="sm"
+                            className="h-8 text-xs"
+                            disabled
+                            title="Available on Pro, Team, and Enterprise"
+                        >
+                            Invite member
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -335,7 +380,7 @@ export default function TeamsPage({ params }: PageProps) {
             <div className="rounded-md border border-border/40 bg-card overflow-hidden">
                 {/* Table Header */}
                 <div className="grid grid-cols-[1fr_140px_100px_100px] gap-4 px-4 py-3 border-b border-border/40 bg-muted/30">
-                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">User</div>
+                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Member</div>
                     <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                         Joined at
                         <ChevronDown className="h-3 w-3" />
@@ -358,13 +403,25 @@ export default function TeamsPage({ params }: PageProps) {
                                     className="grid grid-cols-[1fr_140px_100px_100px] gap-4 px-4 py-3 items-center hover:bg-muted/20 transition-colors"
                                 >
                                     {/* User */}
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-sm truncate">{getMemberEmail(member)}</span>
-                                        {isCurrentUser && (
-                                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">
-                                                You
-                                            </Badge>
-                                        )}
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <UserAvatar
+                                            src={member.avatar_url}
+                                            name={member.name}
+                                            email={member.email}
+                                            size={32}
+                                            className="border border-border/35 bg-muted/40"
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate text-[13px] font-medium">{member.name}</span>
+                                                {isCurrentUser && (
+                                                    <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px]">
+                                                        You
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            <p className="mt-0.5 truncate text-xs text-muted-foreground">{member.email}</p>
+                                        </div>
                                     </div>
 
                                     {/* Joined At */}
@@ -374,7 +431,7 @@ export default function TeamsPage({ params }: PageProps) {
 
                                     {/* Role */}
                                     <div>
-                                        {canManageMembers && !isMemberOwner && !isCurrentUser ? (
+                                        {canManageMembers && teamsEnabled && !isMemberOwner && !isCurrentUser ? (
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2">
@@ -467,4 +524,3 @@ export default function TeamsPage({ params }: PageProps) {
         </div>
     );
 }
-

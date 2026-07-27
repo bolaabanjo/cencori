@@ -1,0 +1,109 @@
+---
+title: "Cencori for Developers"
+slug: "cencori-for-developers"
+date: "2026-07-27"
+excerpt: "Everything you can build on Cencori — every model, memory, agents, voice, security, billing, and the platform to run it all in production. One SDK, and here is what you can actually do with it."
+coverImage: "/blog/images/covers/devs.png"
+tags: ["Developers", "Product", "Build Different"]
+category: "product"
+published: true
+---
+
+Cencori is where you build AI products.
+
+Not a model you call and then go stitch together ten other services around. One platform, one SDK — and everything a real AI product needs, waiting for you as a method call instead of another vendor account.
+
+Here is what that actually means. Not a feature list — a list of things you can go build today.
+
+```ts
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const res = await cencori.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: 'Ship something today.' }],
+});
+```
+
+That is the whole setup. Everything below is one import away from that line.
+
+## Call any model — and never rewrite
+
+- **Chat with any provider, switch with a string.** OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek, Meta, Groq, Cerebras, Perplexity, Cohere — one API shape. Change `'gpt-4o'` to `'claude-sonnet-4-6'` and you are on a different model. Nothing else changes.
+- **You already have the code.** If your app talks to OpenAI or Anthropic today, you are one import away — keep your model, gain routing, logging, security, and spend controls without touching business logic. Most migrations are a single line.
+- **Stream tokens** for responsive UIs, **call your own functions** with tool use, and get **type-safe, validated JSON** back with structured output — no more parsing model prose.
+- **Moderate content** through a dedicated safety endpoint before it reaches a user.
+- **Use Cencori from any language.** Point an OpenAI-compatible client in C#, PHP, Ruby, Java — anything — at Cencori by changing one base URL. No SDK required.
+
+## Build with every kind of AI, not just text
+
+- **See images.** Analyze, describe, OCR, and classify — ship a receipt-to-JSON extractor, an ID reader, or a "take a photo and ask about it" feature in a single call.
+- **Read documents.** Extract, summarize, and answer questions over PDFs. Native text extraction is **free** — you only pay tokens on the actual questions, so a contract Q&A tool costs almost nothing to run.
+- **Give any product a voice.** Text-to-speech and speech-to-text — take a voice note, including **Yoruba, Hausa, and Igbo**, and get back a clean transcript with speaker labels.
+- **Generate images** across models, and **create embeddings** for search and retrieval — all through the same key, the same SDK.
+
+## Give it memory
+
+- **Let your app remember.** Give any conversation persistent, per-user memory — so your assistant knows who it is talking to before it replies, and remembers what mattered after.
+- It is not a raw vector store you babysit. Cencori **extracts** what is worth keeping, **ranks** what to recall, **resolves entities into a graph you can query**, tracks **what is still true over time**, lets stale facts **decay**, and **redacts PII** on the way in — automatically, isolated per organization, scoped by namespace.
+- **Upload a file straight into memory**, or run full **RAG** that pulls the right context into a prompt and hands you back the **sources** it used.
+
+## Let it act
+
+- **Build agents that survive production.** Durable sessions that keep running across turns, **survive crashes**, and **resume exactly where they stopped** — with no idle compute cost while they wait.
+- **Put a human in the loop.** An agent can pause for approval before it does something consequential, then continue the moment someone signs off.
+- **Give agents real tools.** One Responses API endpoint gives you web search, file search, a code interpreter, and function calling — the building blocks of an agent that actually does things.
+- **Scope keys to an agent**, so what an agent can reach is bounded by design.
+- **Bring your own framework.** Power CrewAI, AutoGen, LangChain, and LangGraph with Cencori underneath — same routing, security, and observability.
+
+## Keep it safe — without writing the safety yourself
+
+- **Redact PII in the request path**, before it ever reaches a provider — emails, phone numbers, card data, account numbers, even obfuscated formats.
+- **Block jailbreaks and prompt injection** as they arrive, and **filter harmful output** on the way back out with thresholds you set.
+- **Write your own data rules** — keyword, regex, JSON-path, or model-based — that block, redact, mask, or tokenize whatever you decide can't leave your boundary.
+- **Enforce policy and keep an audit trail.** For teams that need it, every AI decision can run against policy in the request path and land in an immutable, verifiable ledger — the difference between "we think it's safe" and "here's the proof."
+
+## Make it fast, and make it cheap
+
+- **Stop paying for the same answer twice.** Exact and semantic caching reuse responses for repeated and similar prompts, cutting cost and latency automatically.
+- **Never let a provider outage become your outage.** Automatic failover and circuit breaking route around a down provider before you notice.
+- **Bring your own keys**, or plug in **your own self-hosted models** as a custom provider — routed, secured, and observed exactly like the built-in ones.
+
+## Run it like production
+
+- **See everything.** Every request logged — cost, tokens, latency percentiles, provider and model breakdowns, geography, failovers — with search and export. Pull it into your own dashboards through the **Metrics API**, and browse every available model through the **Models API**.
+- **Manage keys and environments** — secret, publishable, and test keys, with domain restrictions — so client-side and server-side, staging and production, stay cleanly separated.
+- **Version your prompts** in a registry, deploy them, and track how each one performs over time.
+- **React to events.** Subscribe to signed webhooks and fire your own workflows when things happen.
+- **Set rate limits and spend caps** so a runaway loop never becomes a runaway bill.
+
+## Ship the interface too
+
+- **Put an AI surface in front of a user tonight.** First-party React components — chat, voice, and vision uploaders — that stream, handle errors, compress and validate uploads, and theme to your app.
+- **Keep the tools you love.** First-party providers for the **Vercel AI SDK** and **TanStack AI** work with `streamText`, `useChat`, and the rest, out of the box.
+
+## Charge your own customers
+
+- **Bill for the AI you build.** End-user billing lets you put rate plans and quotas on *your* customers, meter their usage, generate invoices, and collect through Stripe Connect — the metering and payouts are handled, so you can run a business on top of Cencori, not just a project.
+
+## Build it your way
+
+- **SDKs in TypeScript, Python, and Go** — typed responses, streaming, typed errors (`AuthenticationError`, `RateLimitError`, `SafetyError`), built-in retries, and edge-runtime support.
+- **Start in one command** with `create-cencori-app`, and expose the whole thing to agents through the **MCP server**.
+- **Go no-code** with n8n, Zapier, and Make, or wire straight into **Supabase, Neon, and Firebase**.
+- **Check what you shipped.** Cencori Scan reviews your repo for leaked secrets, PII, exposed routes, and vulnerabilities — and writes AI fixes right on your pull requests.
+
+## And it keeps getting deeper
+
+We ship in the open, and the platform grows underneath your feet without breaking your code. Coming next: **Compute** — train, host, and deploy your own models until your fine-tune is just another entry in the same model list — and **Cloud**, region-native inference you can pin a workload to.
+
+## Start where you are
+
+You do not have to adopt all of it. Change one import and you have multi-provider routing, logging, and spend caps. Add memory when you need state. Add agents when you need action. Add billing when you have customers to charge. The surface widens; your code keeps working.
+
+Grab a key, paste it into the code you already have, and you'll have a first response in about ninety seconds.
+
+Build different.
+
+[Start building →](/signup) · [Read the docs →](/docs)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 function mean(arr: number[]): number {
@@ -79,21 +80,24 @@ export async function GET(
 
         if (apiKeyIds.length === 0) return emptyResponse(true);
 
-        // Fetch all requests across the full window (minimal columns)
-        const { data: requests, error } = await supabaseAdmin
-            .from('ai_requests')
-            .select('created_at, cost_usd, latency_ms, status')
-            .eq('project_id', projectId)
-            .in('api_key_id', apiKeyIds)
-            .gte('created_at', baselineStart.toISOString())
-            .order('created_at', { ascending: true });
-
-        if (error) {
+        // Fetch all requests across the full window (paginated past the 1000-row ceiling)
+        type AnomalyRow = { created_at: string; cost_usd: number | null; latency_ms: number | null; status: string | null };
+        let allRequests: AnomalyRow[];
+        try {
+            allRequests = await fetchAllRows<AnomalyRow>((from, to) =>
+                supabaseAdmin
+                    .from('ai_requests')
+                    .select('created_at, cost_usd, latency_ms, status')
+                    .eq('project_id', projectId)
+                    .in('api_key_id', apiKeyIds)
+                    .gte('created_at', baselineStart.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (error) {
             console.error('[Anomalies API] DB error:', error);
             return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
         }
-
-        const allRequests = requests || [];
         const detectionRequests = allRequests.filter(r => new Date(r.created_at) >= detectionStart);
         const baselineRequests = allRequests.filter(r => new Date(r.created_at) < detectionStart);
 

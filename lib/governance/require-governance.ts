@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { requireGovernancePermission, type GovernancePermission } from '@/lib/governance/rbac';
+import { requireTierFeatureForOrg } from '@/lib/require-tier-feature';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -22,6 +23,7 @@ export type GovernanceAuth =
 export async function requireGovernanceAuth(
     req: NextRequest,
     permission: GovernancePermission,
+    options?: { requirePaidControls?: boolean },
 ): Promise<GovernanceAuth> {
     const supabaseUser = await createServerClient();
     const { data: { user }, error } = await supabaseUser.auth.getUser();
@@ -40,6 +42,11 @@ export async function requireGovernanceAuth(
     const supabase = createAdminClient();
     const check = await requireGovernancePermission(supabase, orgId, user.id, permission);
     if (!check.ok) return { ok: false, response: check.response };
+
+    if (options?.requirePaidControls) {
+        const planGate = await requireTierFeatureForOrg(orgId, 'governanceControls', 'team');
+        if (planGate) return { ok: false, response: planGate };
+    }
 
     const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null;
     return { ok: true, userId: user.id, orgId, supabase, clientIp };

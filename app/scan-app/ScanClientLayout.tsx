@@ -6,7 +6,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
-import { GradientAvatar } from "@outpacelabs/avatars";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import {
     ExternalLink,
     LogOut,
@@ -246,11 +246,13 @@ export default function ScanLayout({ children }: ScanLayoutProps) {
                                     className="w-7 h-7 cursor-pointer inline-flex items-center justify-center rounded-full border border-border/40 bg-transparent hover:bg-secondary transition-colors overflow-hidden"
                                     aria-label="User menu"
                                 >
-                                    {avatar ? (
-                                        <Image src={avatar} alt={name || "User"} width={28} height={28} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <GradientAvatar seed="Bola " size={28} />
-                                    )}
+                                    <UserAvatar
+                                        src={avatar}
+                                        name={name}
+                                        email={user.email}
+                                        size={28}
+                                        className="border-0"
+                                    />
                                 </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-56 p-1" align="end" forceMount>

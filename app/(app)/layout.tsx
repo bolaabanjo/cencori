@@ -8,7 +8,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Logo } from "@/components/logo";
 import { CreditCard, Command, Menu, ChevronsUpDown, PlusCircle, Search, Check } from "lucide-react";
-import { GradientAvatar } from "@outpacelabs/avatars";
 import { formatCurrency } from "@/lib/currency";
 import {
   Breadcrumb,

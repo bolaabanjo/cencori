@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange, hasFeature } from '@/lib/entitlements';
 
@@ -85,15 +86,21 @@ export async function GET(
 
         const apiKeyIds = apiKeys?.map(k => k.id) || [];
 
-        const { data: requests, error } = await supabaseAdmin
-            .from('ai_requests')
-            .select('created_at, status, cost_usd, latency_ms, total_tokens')
-            .eq('project_id', projectId)
-            .in('api_key_id', apiKeyIds)
-            .gte('created_at', startTime.toISOString())
-            .order('created_at', { ascending: true });
-
-        if (error) {
+        type TrendRow = { created_at: string; status: string | null; cost_usd: number | null; latency_ms: number | null; total_tokens: number | null };
+        let requests: TrendRow[];
+        try {
+            // Paginate past the 1000-row ceiling so every bucket is complete.
+            requests = await fetchAllRows<TrendRow>((from, to) =>
+                supabaseAdmin
+                    .from('ai_requests')
+                    .select('created_at, status, cost_usd, latency_ms, total_tokens')
+                    .eq('project_id', projectId)
+                    .in('api_key_id', apiKeyIds)
+                    .gte('created_at', startTime.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (error) {
             console.error('[Trends API] Error:', error);
             return NextResponse.json({ error: 'Failed to fetch trends' }, { status: 500 });
         }

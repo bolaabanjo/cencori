@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
-import { GradientAvatar } from "@outpacelabs/avatars";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import { CircleUserRound, Settings, LogOut } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -97,13 +97,12 @@ export function UserMenu({ organization }: UserMenuProps) {
                         className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-hidden"
                         aria-label="User menu"
                     >
-                        <span className="size-6 shrink-0 rounded-full overflow-hidden">
-                            {displayAvatar ? (
-                                <img src={displayAvatar} alt="User avatar" className="w-full h-full object-cover" />
-                            ) : (
-                                <GradientAvatar seed="Bola " size={24} />
-                            )}
-                        </span>
+                        <UserAvatar
+                            src={displayAvatar}
+                            name={fullName}
+                            email={email}
+                            size={24}
+                        />
                         <span className="flex-1 truncate text-xs">{displayName}</span>
                         <span className="inline-flex items-center justify-center size-6 rounded-full border border-border/60 text-sm text-muted-foreground font-bold leading-none">⋯</span>
                     </button>

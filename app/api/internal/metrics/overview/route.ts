@@ -10,7 +10,8 @@ import {
     getUsersMetrics,
     getBillingMetrics,
     getScanMetrics,
-    getPlatformEventsMetrics
+    getPlatformEventsMetrics,
+    getCaptureMetrics
 } from '@/internal/analytics/lib/queries';
 import type { TimePeriod } from '@/internal/analytics/lib/types';
 import { isFounderEmail } from '@/lib/internal-admin-auth';
@@ -48,8 +49,9 @@ export async function GET(req: NextRequest) {
     const period = (searchParams.get('period') || '7d') as TimePeriod;
 
     try {
-        const [aiGateway, security, organizations, projects, apiKeys, users, billing, scan, platformEvents] = await Promise.all([
+        const [aiGateway, capture, security, organizations, projects, apiKeys, users, billing, scan, platformEvents] = await Promise.all([
             getAIGatewayMetrics(period),
+            getCaptureMetrics(period),
             getSecurityMetrics(period),
             getOrganizationsMetrics(period),
             getProjectsMetrics(period),
@@ -62,6 +64,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             aiGateway,
+            capture,
             security,
             organizations,
             projects,

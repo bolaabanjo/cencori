@@ -49,6 +49,7 @@ interface UpgradeDialogProps {
   recommendedTier?: PaidPlanTier;
   checkoutMode?: "review" | "direct";
   preload?: boolean;
+  returnPath?: string;
 }
 
 type CheckoutResponse = {
@@ -79,9 +80,12 @@ function getInitialTier(
     : availablePlans[0] ?? "pro";
 }
 
-function getReturnUrl(orgSlug: string, sessionId: string): string {
+function getReturnUrl(orgSlug: string, sessionId: string, returnPath?: string): string {
+  const safeReturnPath = returnPath?.startsWith("/") && !returnPath.startsWith("//")
+    ? returnPath
+    : `/${encodeURIComponent(orgSlug)}/~/billing`;
   const returnUrl = new URL(
-    `/${encodeURIComponent(orgSlug)}/~/billing`,
+    safeReturnPath,
     window.location.origin,
   );
   returnUrl.searchParams.set("checkout_session_id", sessionId);
@@ -93,6 +97,7 @@ function PaymentForm({
   error,
   orgSlug,
   paymentFirst,
+  returnPath,
   sessionId,
   onError,
   onSubmittingChange,
@@ -101,6 +106,7 @@ function PaymentForm({
   error: string | null;
   orgSlug: string;
   paymentFirst: boolean;
+  returnPath?: string;
   sessionId: string;
   onError: (message: string | null) => void;
   onSubmittingChange: (submitting: boolean) => void;
@@ -125,7 +131,7 @@ function PaymentForm({
 
     const result = await checkoutState.checkout.confirm({
       redirect: "if_required",
-      returnUrl: getReturnUrl(orgSlug, sessionId),
+      returnUrl: getReturnUrl(orgSlug, sessionId, returnPath),
     });
 
     if (result.type === "error") {
@@ -135,7 +141,7 @@ function PaymentForm({
       return;
     }
 
-    window.location.assign(getReturnUrl(orgSlug, result.session.id || sessionId));
+    window.location.assign(getReturnUrl(orgSlug, result.session.id || sessionId, returnPath));
   };
 
   const canConfirm =
@@ -336,6 +342,7 @@ export function UpgradeDialog({
   recommendedTier = "pro",
   checkoutMode = "review",
   preload = false,
+  returnPath,
 }: UpgradeDialogProps) {
   const { resolvedTheme } = useTheme();
   const availablePlans = useMemo(
@@ -545,6 +552,7 @@ export function UpgradeDialog({
               error={error}
               orgSlug={orgSlug}
               paymentFirst={checkoutMode === "direct"}
+              returnPath={returnPath}
               sessionId={sessionId}
               onError={setError}
               onSubmittingChange={setPaymentSubmitting}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabaseServer";
-import { createSSOProvider, deleteSSOProvider } from "@/lib/supabase-sso";
-import { writeAuditLog } from "@/lib/audit-log";
+import { createSSOProvider, deleteSSOProvider, updateSSOProvider } from "@/lib/supabase-sso";
+import { writeAuditLogAsync } from "@/lib/audit-log";
 
 async function getOrgAsOwnerOrAdmin(orgSlug: string) {
     const supabase = await createServerClient();
@@ -10,7 +10,7 @@ async function getOrgAsOwnerOrAdmin(orgSlug: string) {
 
     const { data: org } = await supabase
         .from("organizations")
-        .select("id, name, slug, sso_enabled, sso_provider_id, sso_domain, sso_enforce, sso_configured_at, subscription_tier")
+        .select("id, name, slug, owner_id, sso_enabled, sso_provider_id, sso_domain, sso_enforce, sso_configured_at, subscription_tier")
         .eq("slug", orgSlug)
         .single();
 
@@ -21,9 +21,10 @@ async function getOrgAsOwnerOrAdmin(orgSlug: string) {
         .select("role")
         .eq("organization_id", org.id)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-    if (!membership || !["owner", "admin"].includes(membership.role)) {
+    const isOwner = org.owner_id === user.id;
+    if (!isOwner && (!membership || !["owner", "admin"].includes(membership.role))) {
         return { error: "Insufficient permissions", status: 403 };
     }
 
@@ -73,10 +74,13 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { metadata_url, metadata_xml, domain } = body;
+    const metadata_url = typeof body.metadata_url === "string" ? body.metadata_url.trim() : "";
+    const metadata_xml = typeof body.metadata_xml === "string" ? body.metadata_xml.trim() : "";
+    const domain = typeof body.domain === "string" ? body.domain.trim().toLowerCase().replace(/^@/, "") : "";
 
-    if (!domain) {
-        return NextResponse.json({ error: "Domain is required" }, { status: 400 });
+    const domainPattern = /^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+    if (!domainPattern.test(domain)) {
+        return NextResponse.json({ error: "A valid SSO email domain is required" }, { status: 400 });
     }
     if (!metadata_url && !metadata_xml) {
         return NextResponse.json(
@@ -85,21 +89,30 @@ export async function POST(
         );
     }
 
-    try {
-        // Remove existing provider if any
-        if (org.sso_provider_id) {
-            try { await deleteSSOProvider(org.sso_provider_id); } catch {}
+    if (metadata_url) {
+        try {
+            const parsedMetadataUrl = new URL(metadata_url);
+            if (parsedMetadataUrl.protocol !== "https:") throw new Error("invalid protocol");
+        } catch {
+            return NextResponse.json({ error: "Metadata URL must be a valid HTTPS URL" }, { status: 400 });
         }
+    }
 
+    if (metadata_xml && metadata_xml.length > 250_000) {
+        return NextResponse.json({ error: "Metadata XML must be smaller than 250 KB" }, { status: 400 });
+    }
+
+    try {
         // Create new SAML provider via GoTrue REST API
-        const providerParams: any = {
-            type: "saml" as const,
+        const providerDetails = {
             domains: [domain],
+            ...(metadata_url ? { metadata_url } : { metadata_xml }),
         };
-        if (metadata_url) providerParams.metadata_url = metadata_url;
-        else providerParams.metadata_xml = metadata_xml;
 
-        const provider = await createSSOProvider(providerParams);
+        const isNewProvider = !org.sso_provider_id;
+        const provider = org.sso_provider_id
+            ? await updateSSOProvider(org.sso_provider_id, providerDetails)
+            : await createSSOProvider({ type: "saml", ...providerDetails });
 
         // Save to organization
         const supabase = await createServerClient();
@@ -115,11 +128,11 @@ export async function POST(
             .eq("id", org.id);
 
         if (updateError) {
-            await deleteSSOProvider(provider.id);
+            if (isNewProvider) await deleteSSOProvider(provider.id);
             return NextResponse.json({ error: "Failed to save SSO configuration" }, { status: 500 });
         }
 
-        writeAuditLog({
+        await writeAuditLogAsync({
             organizationId: org.id,
             category: 'sso',
             action: 'configured',
@@ -130,16 +143,16 @@ export async function POST(
             actorIp: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
             description: `SSO configured for domain ${domain}`,
             metadata: { domain, providerId: provider.id },
-        });
+        }).catch(() => undefined);
 
         return NextResponse.json({
             sso_enabled: true,
             sso_provider_id: provider.id,
             sso_domain: domain,
         });
-    } catch (err: any) {
+    } catch (err: unknown) {
         return NextResponse.json(
-            { error: err.message || "Failed to configure SSO" },
+            { error: err instanceof Error ? err.message : "Failed to configure SSO" },
             { status: 500 }
         );
     }
@@ -165,6 +178,15 @@ export async function PATCH(
     }
 
     const body = await req.json();
+    if (typeof body.sso_enforce !== "boolean") {
+        return NextResponse.json({ error: "sso_enforce must be a boolean" }, { status: 400 });
+    }
+    if (body.sso_enforce && !["enterprise", "team"].includes(org.subscription_tier || "")) {
+        return NextResponse.json(
+            { error: "SSO enforcement is available on Team and Enterprise plans" },
+            { status: 403 }
+        );
+    }
     const supabase = await createServerClient();
     const { error } = await supabase
         .from("organizations")
@@ -175,7 +197,7 @@ export async function PATCH(
         return NextResponse.json({ error: "Failed to update" }, { status: 500 });
     }
 
-    writeAuditLog({
+    await writeAuditLogAsync({
         organizationId: org.id,
         category: 'sso',
         action: body.sso_enforce ? 'enforced' : 'updated',
@@ -186,14 +208,14 @@ export async function PATCH(
         actorIp: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
         description: `SSO enforcement ${body.sso_enforce ? 'enabled' : 'disabled'}`,
         metadata: { ssoEnforce: body.sso_enforce },
-    });
+    }).catch(() => undefined);
 
     return NextResponse.json({ sso_enforce: body.sso_enforce });
 }
 
 // DELETE — remove SSO
 export async function DELETE(
-    _req: NextRequest,
+    req: NextRequest,
     { params }: { params: Promise<{ orgSlug: string }> }
 ) {
     const { orgSlug } = await params;
@@ -202,15 +224,13 @@ export async function DELETE(
         return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const { org } = result;
+    const { org, user } = result;
     if (!org.sso_provider_id) {
         return NextResponse.json({ error: "No SSO configured" }, { status: 400 });
     }
 
-    try { await deleteSSOProvider(org.sso_provider_id); } catch {}
-
     const supabase = await createServerClient();
-    await supabase
+    const { error: updateError } = await supabase
         .from("organizations")
         .update({
             sso_enabled: false,
@@ -221,6 +241,27 @@ export async function DELETE(
             sso_configured_by: null,
         })
         .eq("id", org.id);
+
+    if (updateError) {
+        return NextResponse.json({ error: "Failed to remove SSO configuration" }, { status: 500 });
+    }
+
+    // Disable the organization first. If provider cleanup fails, members can
+    // still sign in normally and the orphan can be removed administratively.
+    try { await deleteSSOProvider(org.sso_provider_id); } catch {}
+
+    await writeAuditLogAsync({
+        organizationId: org.id,
+        category: "sso",
+        action: "removed",
+        resourceType: "sso_provider",
+        resourceId: org.sso_provider_id,
+        actorId: user.id,
+        actorEmail: user.email ?? null,
+        actorIp: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
+        description: `SSO configuration removed for domain ${org.sso_domain || "unknown"}`,
+        metadata: { domain: org.sso_domain },
+    }).catch(() => undefined);
 
     return NextResponse.json({ sso_enabled: false });
 }

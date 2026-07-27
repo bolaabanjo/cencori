@@ -12,7 +12,7 @@ import { assignGovernanceRole } from '@/lib/governance/rbac';
 const ASSIGNABLE_ROLES = ['governance_admin', 'risk_officer', 'developer', 'auditor'] as const;
 
 export async function POST(req: NextRequest) {
-    const auth = await requireGovernanceAuth(req, 'role.assign');
+    const auth = await requireGovernanceAuth(req, 'role.assign', { requirePaidControls: true });
     if (!auth.ok) return auth.response;
 
     let body: { userId?: unknown; role?: unknown };

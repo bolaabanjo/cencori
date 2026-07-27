@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 const COUNTRY_NAMES: Record<string, string> = {
@@ -87,14 +88,21 @@ export async function GET(
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const { data, error } = await supabase
-            .from('ai_requests')
-            .select('country_code, total_tokens, cost_usd, latency_ms, model, created_at')
-            .eq('project_id', projectId)
-            .eq('environment', environment)
-            .gte('created_at', startDate.toISOString());
-
-        if (error) {
+        type GeoRow = { country_code: string | null; total_tokens: number | null; cost_usd: string; latency_ms: number | null; model: string | null; created_at: string };
+        let data: GeoRow[];
+        try {
+            // Paginate past the 1000-row ceiling so per-country totals are complete.
+            data = await fetchAllRows<GeoRow>((from, to) =>
+                supabase
+                    .from('ai_requests')
+                    .select('country_code, total_tokens, cost_usd, latency_ms, model, created_at')
+                    .eq('project_id', projectId)
+                    .eq('environment', environment)
+                    .gte('created_at', startDate.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (error) {
             console.error('Error fetching geo data:', error);
             return NextResponse.json({ error: 'Failed to fetch geo data' }, { status: 500 });
         }

@@ -34,6 +34,7 @@ import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import CreditCardAcceptIcon from "@hugeicons/core-free-icons/CreditCardAcceptIcon";
 import AirdropIcon from "@hugeicons/core-free-icons/AirdropIcon";
 import Settings02Icon from "@hugeicons/core-free-icons/Settings02Icon";
+import Configuration02Icon from "@hugeicons/core-free-icons/Configuration02Icon";
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
 import AiCloudIcon from "@hugeicons/core-free-icons/AiCloudIcon";
 import AiChipIcon from "@hugeicons/core-free-icons/AiChipIcon";
@@ -134,9 +135,14 @@ export default function OrganizationLayoutClient({
     const projectSlug = isInsideProject ? orgSubSegment : (projects?.[0]?.slug || null);
     const isProjectCreation = pathname.includes("/projects/new") || pathname.includes("/projects/import");
     const isPlayground = pathname.includes("/ai-gateway/playground");
-    const [activeView, setActiveView] = useState<"main" | "observability" | "ai-gateway">(() => {
+    const scopedArea = segments[2];
+    const isProjectSettingsView = isInsideProject && scopedArea === "settings";
+    const isOrganizationSettingsView = !isInsideProject && scopedArea === "settings";
+    const [activeView, setActiveView] = useState<"main" | "observability" | "ai-gateway" | "project-settings" | "settings">(() => {
         if (isInsideProject && pathname.includes("/observability")) return "observability";
         if (pathname.includes("/ai-gateway")) return "ai-gateway";
+        if (isProjectSettingsView) return "project-settings";
+        if (isOrganizationSettingsView) return "settings";
         return "main";
     });
 
@@ -147,6 +153,11 @@ export default function OrganizationLayoutClient({
     const observabilitySection = rawObservabilitySection === "http" || rawObservabilitySection === "api" || rawObservabilitySection === "web"
         ? "overview"
         : rawObservabilitySection || "overview";
+    const organizationSettingsSection = searchParams.get("section") === "advanced" ? "advanced" : "general";
+    const requestedProjectSettingsTab = searchParams.get("tab");
+    const projectSettingsTab = ["general", "budget", "providers", "infrastructure", "integrations", "api"].includes(requestedProjectSettingsTab || "")
+        ? requestedProjectSettingsTab
+        : "general";
 
     const isActive = (path: string) => {
         const exactMatchOnly =
@@ -174,10 +185,14 @@ export default function OrganizationLayoutClient({
             setActiveView("observability");
         } else if (pathname.includes("/ai-gateway")) {
             setActiveView("ai-gateway");
+        } else if (isProjectSettingsView) {
+            setActiveView("project-settings");
+        } else if (isOrganizationSettingsView) {
+            setActiveView("settings");
         } else {
             setActiveView("main");
         }
-    }, [isInsideProject, pathname]);
+    }, [isInsideProject, isOrganizationSettingsView, isProjectSettingsView, pathname]);
 
     // Only a confirmed-missing org renders 404. Transient/network errors keep
     // the last-good dashboard on screen; the global ConnectivityWatcher tells
@@ -245,11 +260,26 @@ export default function OrganizationLayoutClient({
         { href: `${orgBase}/~/integrations`, icon: <HugeiconsIcon icon={Plug01Icon} className="!h-5 !w-5" />, label: "Integrations" },
         { href: `${orgBase}/~/teams`, icon: <HugeiconsIcon icon={UserMultipleIcon} className="!h-5 !w-5" />, label: "Teams" },
         { href: `${orgBase}/~/audit-log`, icon: <HugeiconsIcon icon={DocumentValidationIcon} className="!h-5 !w-5" />, label: "Audit Log" },
+        { href: `${orgBase}/~/governance`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Governance" },
     ];
 
     const bottomItems = [
         { href: isInsideProject ? `${basePath}/webhooks` : `${orgBase}/~/webhooks`, icon: <HugeiconsIcon icon={AirdropIcon} className="!h-5 !w-5" />, label: "Webhooks" },
         { href: isInsideProject ? `${basePath}/settings` : `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={Settings02Icon} className="!h-5 !w-5" />, label: "Settings" },
+    ];
+
+    const organizationSettingsItems = [
+        { section: "general", href: `${orgBase}/~/settings`, icon: <HugeiconsIcon icon={Settings02Icon} className="!h-5 !w-5" />, label: "General" },
+        { section: "advanced", href: `${orgBase}/~/settings?section=advanced`, icon: <HugeiconsIcon icon={Configuration02Icon} className="!h-5 !w-5" />, label: "Advanced" },
+    ];
+
+    const projectSettingsItems = [
+        { tab: "general", href: `${basePath}/settings`, label: "General" },
+        { tab: "budget", href: `${basePath}/settings?tab=budget`, label: "Budget" },
+        { tab: "providers", href: `${basePath}/settings?tab=providers`, label: "Providers" },
+        { tab: "infrastructure", href: `${basePath}/settings?tab=infrastructure`, label: "Infrastructure" },
+        { tab: "integrations", href: `${basePath}/settings?tab=integrations`, label: "Integrations" },
+        { tab: "api", href: `${basePath}/settings?tab=api`, label: "API" },
     ];
 
     return (
@@ -305,6 +335,60 @@ export default function OrganizationLayoutClient({
                                         {projectSubItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
+                                                        {item.icon}
+                                                        <span className="text-sm">{item.label}</span>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        ))}
+                                    </>
+                                ) : activeView === "project-settings" ? (
+                                    <>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton
+                                                onClick={() => setActiveView("main")}
+                                                size="sm"
+                                                className="text-muted-foreground"
+                                            >
+                                                <span className="text-sm">Back</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                        {projectSettingsItems.map((item) => (
+                                            <SidebarMenuItem key={item.tab}>
+                                                <SidebarMenuButton
+                                                    asChild
+                                                    tooltip={item.label}
+                                                    isActive={projectSettingsTab === item.tab}
+                                                    size="sm"
+                                                >
+                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
+                                                        <span className="text-sm">{item.label}</span>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        ))}
+                                    </>
+                                ) : activeView === "settings" ? (
+                                    <>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton
+                                                onClick={() => setActiveView("main")}
+                                                size="sm"
+                                                className="gap-1 text-muted-foreground"
+                                            >
+                                                <ChevronLeft className="!h-5 !w-5" />
+                                                <span className="text-sm">Back</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                        {organizationSettingsItems.map((item) => (
+                                            <SidebarMenuItem key={item.section}>
+                                                <SidebarMenuButton
+                                                    asChild
+                                                    tooltip={item.label}
+                                                    isActive={organizationSettingsSection === item.section}
+                                                    size="sm"
+                                                >
                                                     <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
                                                         {item.icon}
                                                         <span className="text-sm">{item.label}</span>
@@ -395,16 +479,36 @@ export default function OrganizationLayoutClient({
                                         ))}
                                         <SidebarSeparator className="my-2 mx-0 w-full" />
                                         {/* 7. Webhooks, Settings */}
-                                        {bottomItems.map((item) => (
-                                            <SidebarMenuItem key={item.href}>
-                                                <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
-                                                    <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
-                                                        {item.icon}
-                                                        <span className="text-sm">{item.label}</span>
-                                                    </Link>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        ))}
+                                        {bottomItems.map((item) => {
+                                            const isProjectSettingsItem = isInsideProject && item.label === "Settings";
+                                            const isOrganizationSettingsItem = !isInsideProject && item.label === "Settings";
+                                            const isSettingsItem = isProjectSettingsItem || isOrganizationSettingsItem;
+
+                                            return (
+                                                <SidebarMenuItem key={item.href}>
+                                                    {isSettingsItem ? (
+                                                        <SidebarMenuButton
+                                                            onClick={() => setActiveView(isProjectSettingsItem ? "project-settings" : "settings")}
+                                                            onMouseEnter={() => prefetchRoute(item.href)}
+                                                            isActive={isProjectSettingsItem ? isProjectSettingsView : isOrganizationSettingsView}
+                                                            size="sm"
+                                                            className="gap-1"
+                                                        >
+                                                            {item.icon}
+                                                            <span className="text-sm">{item.label}</span>
+                                                            <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
+                                                        </SidebarMenuButton>
+                                                    ) : (
+                                                        <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">
+                                                            <Link href={item.href} prefetch={true} onMouseEnter={() => prefetchRoute(item.href)}>
+                                                                {item.icon}
+                                                                <span className="text-sm">{item.label}</span>
+                                                            </Link>
+                                                        </SidebarMenuButton>
+                                                    )}
+                                                </SidebarMenuItem>
+                                            );
+                                        })}
                                     </>
                                 )}
                             </SidebarMenu>

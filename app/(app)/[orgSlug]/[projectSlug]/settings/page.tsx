@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, use } from "react";
-import { notFound, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Trash2, Globe, Clock, Webhook, Server, AlertTriangle, Plus, MoreHorizontal, RefreshCw, DollarSign, Bell, Shield, Gauge, Loader2 } from "lucide-react";
+import { Copy, Check, Trash2, Globe, Clock, Webhook, Server, AlertTriangle, Plus, MoreHorizontal, RefreshCw, DollarSign, Bell, Loader2 } from "lucide-react";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { RagMetricsLogo } from "@/components/icons/BrandIcons";
 import { toast } from "@/components/ui/toast";
@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import Link from "next/link";
 import {
@@ -44,22 +44,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { GeoMap } from "@/components/dashboard/GeoMap";
-import { RegionalCharts } from "@/components/dashboard/RegionalCharts";
 import { GeoAnalyticsSection } from "@/components/dashboard/GeoAnalyticsSection";
 import { GenerateKeyDialog } from "@/components/api-keys/GenerateKeyDialog";
 import { SUPPORTED_PROVIDERS, getModelsForProvider } from "@/lib/providers/config";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 
 interface ProjectData {
   id: string;
   name: string;
   slug: string;
-  description?: string;
   organization_id: string;
-  visibility: 'public' | 'private';
-  status: 'active' | 'inactive';
   region?: string;
   request_timeout_seconds?: number;
   max_retries?: number;
@@ -100,6 +94,30 @@ interface RateLimitsData {
 
 interface PageProps {
   params: Promise<{ orgSlug: string; projectSlug: string }>;
+}
+
+const PROJECT_SETTINGS_TABS = [
+  'general',
+  'budget',
+  'providers',
+  'infrastructure',
+  'integrations',
+  'api',
+] as const;
+
+type ProjectSettingsTab = (typeof PROJECT_SETTINGS_TABS)[number];
+
+function isProjectSettingsTab(value: string | null): value is ProjectSettingsTab {
+  return PROJECT_SETTINGS_TABS.some((tab) => tab === value);
+}
+
+function SettingsPageLabel({ title, description }: { title: string; description: string }) {
+  return (
+    <header className="border-b border-border/35 pb-5">
+      <h1 className="text-xl font-medium tracking-tight">{title}</h1>
+      <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{description}</p>
+    </header>
+  );
 }
 
 const WEBHOOK_EVENTS = [
@@ -145,7 +163,7 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
 
       const { data: projectData } = await supabase
         .from("projects")
-        .select("id, name, slug, description, organization_id, visibility, status, region, request_timeout_seconds, max_retries, fallback_provider")
+        .select("id, name, slug, organization_id, region, request_timeout_seconds, max_retries, fallback_provider")
         .eq("slug", projectSlug)
         .eq("organization_id", organization.id)
         .single();
@@ -160,15 +178,15 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
 export default function ProjectSettingsPage({ params }: PageProps) {
   const { orgSlug, projectSlug } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { updateProject: updateProjectContext } = useOrganizationProject();
+  const requestedTab = searchParams.get('tab');
+  const activeSettingsTab: ProjectSettingsTab = isProjectSettingsTab(requestedTab) ? requestedTab : 'general';
 
   // Local form state
   const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [projectVisibility, setProjectVisibility] = useState<'public' | 'private'>('private');
-  const [projectStatus, setProjectStatus] = useState<'active' | 'inactive'>('active');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [copiedSlug, setCopiedSlug] = useState(false);
@@ -182,13 +200,12 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   // API Keys state
   const [showCreateKeyDialog, setShowCreateKeyDialog] = useState(false);
   const [createKeyType, setCreateKeyType] = useState<'secret' | 'publishable'>('secret');
-  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string; prefix: string } | null>(null);
   const [revoking, setRevoking] = useState(false);
 
   // Provider Settings state
-  const [defaultProvider, setDefaultProvider] = useState('openai');
-  const [defaultModel, setDefaultModel] = useState('gpt-4o');
+  const [defaultProvider, setDefaultProvider] = useState('groq');
+  const [defaultModel, setDefaultModel] = useState('llama-3.1-8b-instant');
   const [requestsPerMinute, setRequestsPerMinute] = useState('60');
   const [tokensPerDay, setTokensPerDay] = useState('1000000');
   const [concurrentRequests, setConcurrentRequests] = useState('10');
@@ -213,7 +230,6 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   const [ragmetricsEnabled, setRagmetricsEnabled] = useState(false);
   const [ragmetricsApiKey, setRagmetricsApiKey] = useState('');
   const [isSavingIntegrations, setIsSavingIntegrations] = useState(false);
-  const [integrationsDirty, setIntegrationsDirty] = useState(false);
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestion, setSuggestion] = useState('');
   const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
@@ -235,9 +251,6 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   React.useEffect(() => {
     if (project) {
       setProjectName(project.name);
-      setProjectDescription(project.description || "");
-      setProjectVisibility(project.visibility || 'private');
-      setProjectStatus(project.status || 'active');
     }
   }, [project]);
 
@@ -313,8 +326,8 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   React.useEffect(() => {
     if (providerSettings?.settings) {
       const s = providerSettings.settings;
-      setDefaultProvider(s.default_provider || 'openai');
-      setDefaultModel(s.default_model || 'gpt-4o');
+      setDefaultProvider(s.default_provider || 'groq');
+      setDefaultModel(s.default_model || 'llama-3.1-8b-instant');
       setRequestsPerMinute(String(s.requests_per_minute || 60));
       setTokensPerDay(String(s.tokens_per_day || 1000000));
       setConcurrentRequests(String(s.concurrent_requests || 10));
@@ -328,7 +341,6 @@ export default function ProjectSettingsPage({ params }: PageProps) {
       setRagmetricsEnabled(s.ragmetrics_enabled ?? false);
       setRagmetricsApiKey(s.ragmetrics_api_key || '');
       setProviderSettingsDirty(false);
-      setIntegrationsDirty(false);
     }
   }, [providerSettings]);
 
@@ -487,27 +499,26 @@ export default function ProjectSettingsPage({ params }: PageProps) {
 
   const handleSave = async () => {
     if (!project) return;
+    const nextName = projectName.trim();
+    if (!nextName) return;
+
     setIsSaving(true);
     try {
       const { error: updateError } = await supabase
         .from("projects")
-        .update({
-          name: projectName,
-          description: projectDescription,
-          visibility: projectVisibility,
-          status: projectStatus
-        })
+        .update({ name: nextName })
         .eq("id", project.id);
 
       if (updateError) {
-        toast.error("Failed to save.");
+        toast.error("Could not update project name.");
       } else {
-        queryClient.invalidateQueries({ queryKey: ["projectDetails", orgSlug, projectSlug] });
-        toast.success("Saved!");
-        updateProjectContext(project.id, { name: projectName, description: projectDescription });
+        setProjectName(nextName);
+        await queryClient.invalidateQueries({ queryKey: ["projectDetails", orgSlug, projectSlug] });
+        toast.success("Project name updated.");
+        updateProjectContext(project.id, { name: nextName });
       }
     } catch {
-      toast.error("An error occurred.");
+      toast.error("Could not update project name.");
     } finally {
       setIsSaving(false);
     }
@@ -539,25 +550,19 @@ export default function ProjectSettingsPage({ params }: PageProps) {
     }
   };
 
-  const hasChanges = project && (
-    projectName !== project.name ||
-    projectDescription !== (project.description || "") ||
-    projectVisibility !== project.visibility ||
-    projectStatus !== project.status
+  const hasNameChanges = Boolean(project && projectName.trim() && projectName.trim() !== project.name);
+
+  const settingsTabClass = cn(
+    "mt-0 space-y-0",
+    "[&>section]:grid [&>section]:gap-4 [&>section]:border-t [&>section]:border-border/35 [&>section]:py-7",
+    "lg:[&>section]:grid-cols-[200px_minmax(0,1fr)] lg:[&>section]:gap-9 lg:[&>section]:items-start",
+    "[&>section:first-of-type]:border-t-0"
   );
 
   if (projectLoading) {
     return (
-      <div className="w-full max-w-5xl mx-auto px-6 py-8">
-        <div className="space-y-0.5">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-3 w-48" />
-        </div>
-        <div className="flex gap-4 border-b border-border/40 pb-2 mt-4">
-          <Skeleton className="h-6 w-16" />
-          <Skeleton className="h-6 w-24" />
-        </div>
-        <div className="space-y-3 mt-4">
+      <div className="w-full max-w-[1180px] mx-auto px-6 lg:px-10 py-10">
+        <div className="space-y-3">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="h-[200px]" />
         </div>
@@ -574,31 +579,24 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-6">
-      {/* Header */}
-      <div className="space-y-0.5">
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="text-xs text-muted-foreground">Configure general options and project lifecycle.</p>
-      </div>
-
-      <Tabs defaultValue="general" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="budget">Budget</TabsTrigger>
-          <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="infrastructure">Infrastructure</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="api">API</TabsTrigger>
-        </TabsList>
-
+    <main className="w-full max-w-[1180px] mx-auto px-6 lg:px-10 py-12">
+      <Tabs value={activeSettingsTab} className="space-y-0">
         {/* GENERAL TAB */}
-        <TabsContent value="general" className="space-y-6">
+        <TabsContent value="general" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="General"
+            description="Manage this project's name and stable identifier."
+          />
+
           {/* General Settings */}
-          <section className="space-y-3">
-            <h2 className="text-sm font-medium">General settings</h2>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+          <section>
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium">Project identity</h2>
+              <p className="text-xs text-muted-foreground md:text-[10px]">The name and stable identifier used across Cencori.</p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
               {/* Project Name */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Project name</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Displayed throughout the dashboard.</p>
@@ -607,10 +605,18 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   className="w-full md:w-64 h-10 md:h-8 text-sm"
+                  maxLength={48}
+                  disabled={isSaving}
                 />
               </div>
+              <div className="flex flex-col gap-3 border-b border-border/30 bg-background/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[11px] text-muted-foreground">Maximum 48 characters.</p>
+                <Button size="sm" className="h-7 px-3 text-xs" onClick={handleSave} disabled={isSaving || !hasNameChanges}>
+                  {isSaving ? "Saving…" : "Save"}
+                </Button>
+              </div>
               {/* Project ID */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Project ID</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Reference used in APIs and URLs.</p>
@@ -625,76 +631,16 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   </Button>
                 </div>
               </div>
-              {/* Save Button Row */}
-              <div className="flex justify-end px-4 py-2.5 md:py-2 bg-muted/20">
-                <Button size="sm" className="h-9 md:h-7 px-4 md:px-3 text-sm md:text-xs" onClick={handleSave} disabled={isSaving || !hasChanges}>
-                  {isSaving ? "Saving..." : "Save changes"}
-                </Button>
-              </div>
-            </div>
-          </section>
-
-          {/* Project Status */}
-          <section className="space-y-3">
-            <div className="space-y-0.5">
-              <h2 className="text-sm font-medium">Project status</h2>
-              <p className="text-xs md:text-[10px] text-muted-foreground">Pause or activate your project.</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              {/* Status Toggle */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
-                <div className="space-y-0.5">
-                  <p className="text-sm md:text-xs font-medium">Status</p>
-                  <p className="text-xs md:text-[10px] text-muted-foreground">
-                    {projectStatus === 'active' ? 'Your project is currently active.' : 'Your project is paused.'}
-                  </p>
-                </div>
-                <Select value={projectStatus} onValueChange={(v: 'active' | 'inactive') => setProjectStatus(v)}>
-                  <SelectTrigger className="w-full md:w-28 h-10 md:h-8 text-sm md:text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Active
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="inactive">
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                        Paused
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {/* Visibility */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 gap-2 md:gap-0">
-                <div className="space-y-0.5">
-                  <p className="text-sm md:text-xs font-medium">Visibility</p>
-                  <p className="text-xs md:text-[10px] text-muted-foreground">Control who can view this project.</p>
-                </div>
-                <Select value={projectVisibility} onValueChange={(v: 'public' | 'private') => setProjectVisibility(v)}>
-                  <SelectTrigger className="w-full md:w-28 h-10 md:h-8 text-sm md:text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="private">Private</SelectItem>
-                    <SelectItem value="public">Public</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </section>
 
           {/* Project Observability */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Project observability</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">View usage and request statistics.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Observability</p>
@@ -710,9 +656,9 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Delete Project */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
-              <h2 className="text-sm font-medium">Delete Project</h2>
+              <h2 className="text-sm font-medium">Delete project</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Permanently remove your project and its data.</p>
             </div>
             <div className="rounded-lg border border-red-500/30 bg-red-500/5 overflow-hidden">
@@ -735,7 +681,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                       </DialogTrigger>
                       <DialogContent className="max-w-sm">
                         <DialogHeader>
-                          <DialogTitle>Delete Project</DialogTitle>
+                          <DialogTitle>Delete project</DialogTitle>
                           <DialogDescription className="text-xs">
                             Type <span className="font-mono font-medium text-foreground">{project.name}</span> to confirm.
                           </DialogDescription>
@@ -769,14 +715,19 @@ export default function ProjectSettingsPage({ params }: PageProps) {
         </TabsContent>
 
         {/* BUDGET TAB */}
-        <TabsContent value="budget" className="space-y-6">
+        <TabsContent value="budget" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="Budget"
+            description="Set spending limits and monitor project costs."
+          />
+
           {/* Current Spend */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Current month spend</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Your AI usage cost this billing period.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
               <div className="px-4 py-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -823,14 +774,14 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Budget Configuration */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Budget configuration</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Set spending limits and alerts.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
               {/* Monthly Budget */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Monthly budget</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Get alerts when you approach this amount.</p>
@@ -850,7 +801,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
               </div>
 
               {/* Spend Cap */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Spend cap (hard limit)</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Block requests when this limit is reached.</p>
@@ -870,7 +821,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
               </div>
 
               {/* Enforce Spend Cap */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Enforce spend cap</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">When enabled, requests will be blocked at the cap.</p>
@@ -882,7 +833,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
               </div>
 
               {/* Budget Alerts */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
                 <div className="flex items-center gap-3">
                   <Bell className="h-4 w-4 text-muted-foreground" />
                   <div className="space-y-0.5">
@@ -933,13 +884,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Alert History */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Alert thresholds</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Alerts are sent when budget reaches these levels.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="divide-y divide-border/40">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="divide-y divide-border/30">
                 {[50, 80, 100].map((threshold) => (
                   <div key={threshold} className="flex items-center justify-between px-4 py-2.5">
                     <div className="flex items-center gap-3">
@@ -961,15 +912,20 @@ export default function ProjectSettingsPage({ params }: PageProps) {
         </TabsContent>
 
         {/* PROVIDERS TAB */}
-        <TabsContent value="providers" className="space-y-6">
+        <TabsContent value="providers" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="Providers"
+            description="Configure model access, routing defaults, and failover behavior."
+          />
+
           {/* Default Provider & Model */}
-          <section className="space-y-3">
+          <section>
             <div>
-              <h2 className="text-sm font-medium">Default Provider</h2>
+              <h2 className="text-sm font-medium">Default provider</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Select the default provider and model for requests without explicit model specification.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Default provider</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Used when no provider is specified in API requests.</p>
@@ -1009,13 +965,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Rate Limiting */}
-          <section className="space-y-3">
+          <section>
             <div>
-              <h2 className="text-sm font-medium">Rate Limiting</h2>
+              <h2 className="text-sm font-medium">Rate limiting</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Configure request limits enforced via your Cencori API key.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Requests per minute</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Maximum API requests allowed per minute.</p>
@@ -1026,7 +982,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   className="w-full md:w-24 h-10 md:h-8 text-sm md:text-xs text-right"
                 />
               </div>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Tokens per day</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Daily token usage limit across all requests.</p>
@@ -1052,13 +1008,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Fallback Configuration */}
-          <section className="space-y-3">
+          <section>
             <div>
-              <h2 className="text-sm font-medium">Fallback Configuration</h2>
+              <h2 className="text-sm font-medium">Fallback configuration</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Configure automatic failover when primary provider is unavailable.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Enable automatic fallback</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Route to backup provider on failure.</p>
@@ -1069,7 +1025,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   className="h-5 w-5 md:h-4 md:w-4"
                 />
               </div>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Fallback provider</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Used when primary fails.</p>
@@ -1087,7 +1043,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Fallback model</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Leave empty to auto-map from the primary model.</p>
@@ -1122,13 +1078,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Circuit Breaker Configuration */}
-          <section className="space-y-3">
+          <section>
             <div>
-              <h2 className="text-sm font-medium">Circuit Breaker</h2>
+              <h2 className="text-sm font-medium">Circuit breaker</h2>
               <p className="text-xs md:text-[10px] text-muted-foreground">Configure automatic provider isolation when failures are detected.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Enable circuit breaker</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Automatically isolate failing providers to prevent cascading failures.</p>
@@ -1139,7 +1095,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   className="h-5 w-5 md:h-4 md:w-4"
                 />
               </div>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/40 gap-2 md:gap-0">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-border/30 gap-2 md:gap-0">
                 <div className="space-y-0.5">
                   <p className="text-sm md:text-xs font-medium">Failure threshold</p>
                   <p className="text-xs md:text-[10px] text-muted-foreground">Consecutive failures before circuit opens.</p>
@@ -1208,7 +1164,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   // Refresh rate limits in Infrastructure tab to reflect new settings
                   queryClient.invalidateQueries({ queryKey: ["rateLimits", project.id] });
                   queryClient.invalidateQueries({ queryKey: ["providerSettings", project.id] });
-                } catch (error) {
+                } catch {
                   toast.error('Failed to save settings');
                 } finally {
                   setIsSavingProviders(false);
@@ -1227,7 +1183,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </div>
 
           {/* Geographic Usage */}
-          <section className="space-y-3">
+          <section>
             <div>
               <h2 className="text-sm font-medium">Requests by Geography</h2>
               <p className="text-xs text-muted-foreground">Monitor API request distribution by country.</p>
@@ -1237,14 +1193,19 @@ export default function ProjectSettingsPage({ params }: PageProps) {
         </TabsContent>
 
         {/* INFRASTRUCTURE TAB */}
-        <TabsContent value="infrastructure" className="space-y-6">
+        <TabsContent value="infrastructure" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="Infrastructure"
+            description="Inspect the proxy runtime, service health, and request limits."
+          />
+
           {/* Proxy Instance */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Proxy instance</h2>
               <p className="text-[10px] text-muted-foreground">Your primary proxy endpoint and region.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -1263,15 +1224,15 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Default AI Configuration */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Default AI configuration</h2>
               <p className="text-[10px] text-muted-foreground">Configure in Providers tab.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="divide-y divide-border/40">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="divide-y divide-border/30">
                 <div className="flex items-center justify-between px-4 py-2.5">
-                  <span className="text-[10px] text-muted-foreground">Default Provider</span>
+                  <span className="text-[10px] text-muted-foreground">Default provider</span>
                   <span className="text-[10px] font-medium">
                     {SUPPORTED_PROVIDERS.find(p => p.id === providerSettings?.settings?.default_provider)?.name || 'OpenAI'}
                   </span>
@@ -1279,53 +1240,57 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <span className="text-[10px] text-muted-foreground">Default Model</span>
                   <span className="text-[10px] font-mono">
-                    {providerSettings?.settings?.default_model || 'gpt-4o'}
+                    {providerSettings?.settings?.default_model || 'llama-3.1-8b-instant'}
                   </span>
                 </div>
               </div>
             </div>
           </section>
 
-          {/* Service Versions + Provider Connections Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Service Versions */}
-            <section className="space-y-3">
+          {/* Service Versions */}
+          <section>
+            <div>
               <h2 className="text-sm font-medium">Service versions</h2>
-              <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-                <div className="divide-y divide-border/40">
-                  <div className="flex justify-between px-4 py-2">
-                    <span className="text-[10px] text-muted-foreground">SDK Version</span>
-                    <span className="text-[10px] font-mono">{versions?.sdk || '—'}</span>
-                  </div>
-                  <div className="flex justify-between px-4 py-2">
-                    <span className="text-[10px] text-muted-foreground">API Version</span>
-                    <span className="text-[10px] font-mono">{versions?.api || '—'}</span>
-                  </div>
-                  <div className="flex justify-between px-4 py-2">
-                    <span className="text-[10px] text-muted-foreground">Proxy Version</span>
-                    <span className="text-[10px] font-mono">{versions?.proxy || '—'}</span>
-                  </div>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Runtime versions currently serving this project.</p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="divide-y divide-border/30">
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-[10px] text-muted-foreground">SDK version</span>
+                  <span className="font-mono text-[10px]">{versions?.sdk || '—'}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-[10px] text-muted-foreground">API version</span>
+                  <span className="font-mono text-[10px]">{versions?.api || '—'}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-[10px] text-muted-foreground">Proxy version</span>
+                  <span className="font-mono text-[10px]">{versions?.proxy || '—'}</span>
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
 
-            {/* Provider Connections */}
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium">Provider connections</h2>
+          {/* Provider Connections */}
+          <section>
+            <div>
+              <h2 className="text-sm font-medium">Provider connections</h2>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Live availability and latency across configured providers.</p>
+            </div>
+            <div className="min-w-0 space-y-3">
+              <div className="flex justify-end">
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
+                  size="sm"
+                  className="h-7 text-xs"
                   onClick={() => refetchProviders()}
                   disabled={providersLoading}
                 >
-                  <RefreshCw className={`h-3 w-3 ${providersLoading ? 'animate-spin' : ''}`} />
+                  {providersLoading ? 'Refreshing...' : 'Refresh'}
                 </Button>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
+              <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
                 <MinimalScrollArea className="max-h-[104px]">
-                  <div className="divide-y divide-border/40">
+                  <div className="divide-y divide-border/30">
                     {providersLoading && providers.length === 0 ? (
                       <>
                         <div className="flex items-center justify-between px-4 py-2">
@@ -1376,11 +1341,11 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   </div>
                 </MinimalScrollArea>
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
 
           {/* Rate Limits */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Rate limits</h2>
               <p className="text-[10px] text-muted-foreground">
@@ -1388,8 +1353,8 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                 {!rateLimits?.customLimits && ' Configure in Providers tab.'}
               </p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="divide-y divide-border/40">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="divide-y divide-border/30">
                 <div className="px-4 py-3">
                   <div className="flex justify-between text-[10px] mb-1.5">
                     <span className="text-muted-foreground">Requests / min</span>
@@ -1431,13 +1396,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Request Configuration */}
-          <section className="space-y-3">
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">Request configuration</h2>
               <p className="text-[10px] text-muted-foreground">Default settings for request handling. Configure in Providers tab.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="divide-y divide-border/40">
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="divide-y divide-border/30">
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <Clock className="h-3 w-3 text-muted-foreground" />
@@ -1477,27 +1442,26 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </section>
 
           {/* Webhooks */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <h2 className="text-sm font-medium">Webhooks</h2>
-                <p className="text-[10px] text-muted-foreground">HTTP callbacks for request events.</p>
-              </div>
-              <Dialog open={showWebhookDialog} onOpenChange={setShowWebhookDialog}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-                    <Plus className="h-3 w-3" />
-                    Add webhook
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Create Webhook</DialogTitle>
-                    <DialogDescription className="text-xs">
-                      Add a webhook to receive real-time event notifications.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
+          <section>
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium">Webhooks</h2>
+              <p className="text-[10px] text-muted-foreground">HTTP callbacks for request events.</p>
+            </div>
+            <div className="min-w-0 space-y-3">
+              <div className="flex justify-end">
+                <Dialog open={showWebhookDialog} onOpenChange={setShowWebhookDialog}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="h-7 text-xs">
+                      Add webhook
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Create Webhook</DialogTitle>
+                      <DialogDescription className="text-xs">
+                        Add a webhook to receive real-time event notifications.
+                      </DialogDescription>
+                    </DialogHeader>
                     <div className="space-y-4 py-2">
                       <div className="space-y-2">
                         <Label htmlFor="webhook-name" className="text-xs">Name</Label>
@@ -1534,87 +1498,92 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                               </label>
                             </div>
                           ))}
-                        </div>
+                          </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="ghost" size="sm" onClick={() => setShowWebhookDialog(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => createWebhookMutation.mutate({ name: webhookName, url: webhookUrl, events: webhookEvents })}
+                        disabled={createWebhookMutation.isPending || !webhookName || !webhookUrl}
+                      >
+                        {createWebhookMutation.isPending ? 'Creating...' : 'Create'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+                {webhooks.length === 0 ? (
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Webhook className="h-4 w-4 text-muted-foreground" />
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-medium">No webhooks configured</p>
+                        <p className="text-[10px] text-muted-foreground">Add webhooks to receive real-time events.</p>
                       </div>
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="ghost" size="sm" onClick={() => setShowWebhookDialog(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => createWebhookMutation.mutate({ name: webhookName, url: webhookUrl, events: webhookEvents })}
-                      disabled={createWebhookMutation.isPending || !webhookName || !webhookUrl}
-                    >
-                      {createWebhookMutation.isPending ? 'Creating...' : 'Create'}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              {webhooks.length === 0 ? (
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Webhook className="h-4 w-4 text-muted-foreground" />
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-medium">No webhooks configured</p>
-                      <p className="text-[10px] text-muted-foreground">Add webhooks to receive real-time events.</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/40">
-                  {webhooks.map((webhook) => (
-                    <div key={webhook.id} className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${webhook.is_active ? 'bg-emerald-500' : 'bg-muted-foreground'
-                          }`} />
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium truncate">{webhook.name}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{webhook.url}</p>
+                ) : (
+                  <div className="divide-y divide-border/30">
+                    {webhooks.map((webhook) => (
+                      <div key={webhook.id} className="flex items-center justify-between px-4 py-2.5">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${webhook.is_active ? 'bg-emerald-500' : 'bg-muted-foreground'
+                            }`} />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{webhook.name}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{webhook.url}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground">
+                            {webhook.events.length} event{webhook.events.length !== 1 ? 's' : ''}
+                          </span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-6 w-6">
+                                <MoreHorizontal className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-red-500 text-xs"
+                                onClick={() => deleteWebhookMutation.mutate(webhook.id)}
+                              >
+                                <Trash2 className="h-3 w-3 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground">
-                          {webhook.events.length} event{webhook.events.length !== 1 ? 's' : ''}
-                        </span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-6 w-6">
-                              <MoreHorizontal className="h-3 w-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-red-500 text-xs"
-                              onClick={() => deleteWebhookMutation.mutate(webhook.id)}
-                            >
-                              <Trash2 className="h-3 w-3 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </TabsContent>
 
         {/* INTEGRATIONS TAB */}
-        <TabsContent value="integrations" className="space-y-6">
-          <section className="space-y-4">
+        <TabsContent value="integrations" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="Integrations"
+            description="Connect external services to this project's workflows."
+          />
+
+          <section>
             <div className="space-y-0.5">
               <h2 className="text-sm font-medium">External Integrations</h2>
               <p className="text-[10px] text-muted-foreground">Connect Cencori to third-party tools for evaluation, monitoring, and deployments.</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border/50 bg-card p-5 flex flex-col">
+              <div className="rounded-lg border border-border/35 bg-muted/30 p-5 flex flex-col">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center">
@@ -1675,7 +1644,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                   </li>
                 </ul>
 
-                <div className="pt-4 border-t border-border/40">
+                <div className="pt-4 border-t border-border/30">
                   {ragmetricsApiKey ? (
                     <div className="flex items-center gap-2">
                       <Button
@@ -1709,7 +1678,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                                 placeholder="rm_live_..."
                                 defaultValue={ragmetricsApiKey}
                                 onChange={(e) => setRagmetricsApiKey(e.target.value)}
-                                className="h-8 text-[11px] font-mono bg-secondary/30 border-border/40"
+                                className="h-8 text-[11px] font-mono bg-secondary/30 border-border/30"
                               />
                             </div>
                           </div>
@@ -1795,7 +1764,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                               placeholder="rm_live_..."
                               value={ragmetricsApiKey}
                               onChange={(e) => setRagmetricsApiKey(e.target.value)}
-                              className="h-8 text-[11px] font-mono bg-secondary/30 border-border/40"
+                              className="h-8 text-[11px] font-mono bg-secondary/30 border-border/30"
                             />
                             <p className="text-[10px] text-muted-foreground/60">
                               Find your key at{' '}
@@ -1842,7 +1811,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
               {/* Placeholder for future integrations */}
               <button
                 onClick={() => setShowSuggestModal(true)}
-                className="rounded-xl border border-dashed border-border/40 bg-card/20 p-5 flex flex-col items-center justify-center text-center space-y-2 min-h-[240px] hover:bg-card/40 hover:border-border/60 transition-all cursor-pointer group"
+                className="rounded-lg border border-dashed border-border/35 bg-muted/20 p-5 flex flex-col items-center justify-center text-center space-y-2 min-h-[240px] hover:bg-muted/40 hover:border-border/45 transition-all cursor-pointer group"
               >
                 <div className="w-10 h-10 rounded-lg bg-secondary/50 flex items-center justify-center group-hover:bg-secondary transition-colors">
                   <Plus className="w-5 h-5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
@@ -1857,145 +1826,154 @@ export default function ProjectSettingsPage({ params }: PageProps) {
         </TabsContent>
 
         {/* API TAB */}
-        <TabsContent value="api" className="space-y-8">
+        <TabsContent value="api" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="API"
+            description="Create and manage credentials used to access this project."
+          />
+
           {/* Publishable Keys Section */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-medium">Publishable keys</h2>
-                <p className="text-xs text-muted-foreground">Safe for browser use. Requires domain whitelisting for security.</p>
-              </div>
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => {
-                  setCreateKeyType('publishable');
-                  setShowCreateKeyDialog(true);
-                }}
-              >
-                New publishable key
-              </Button>
+          <section>
+            <div>
+              <h2 className="text-sm font-medium">Publishable keys</h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Safe for browser use. Requires domain whitelisting for security.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="grid grid-cols-[1fr_2fr_auto] gap-4 px-4 py-2 border-b border-border/40 bg-muted/30">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Name</span>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">API Key</span>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase sr-only">Actions</span>
+            <div className="min-w-0 space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => {
+                    setCreateKeyType('publishable');
+                    setShowCreateKeyDialog(true);
+                  }}
+                >
+                  New publishable key
+                </Button>
               </div>
-              {publishableKeys.length === 0 ? (
-                <div className="px-4 py-8 text-center text-muted-foreground text-xs">
-                  No publishable keys created yet.
+              <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_auto] gap-4 border-b border-border/30 bg-muted/30 px-4 py-2">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">Name</span>
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">API key</span>
+                  <span className="sr-only text-[10px] font-medium uppercase text-muted-foreground">Actions</span>
                 </div>
-              ) : (
-                <div className="divide-y divide-border/40">
-                  {publishableKeys.map((k: ApiKeyData) => (
-                    <div key={k.id} className="grid grid-cols-[1fr_2fr_auto] gap-4 px-4 py-3 items-center group">
-                      <span className="text-xs font-medium truncate">{k.name}</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-[11px] font-mono bg-muted/50 px-1.5 py-0.5 rounded text-muted-foreground">
-                          {k.key_prefix}••••••••
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleCopyKey(k.key_prefix)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuItem
-                            className="text-red-500 focus:text-red-500 focus:bg-red-50 cursor-pointer"
-                            onSelect={() => setRevokeTarget({ id: k.id, name: k.name, prefix: k.key_prefix })}
+                {publishableKeys.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                    No publishable keys created yet.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/30">
+                    {publishableKeys.map((k: ApiKeyData) => (
+                      <div key={k.id} className="group grid grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_auto] items-center gap-4 px-4 py-3">
+                        <span className="truncate text-xs font-medium">{k.name}</span>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <code className="truncate rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                            {k.key_prefix}••••••••
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => handleCopyKey(k.key_prefix)}
                           >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Revoke key
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
-                </div>
-              )}
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32">
+                            <DropdownMenuItem
+                              className="cursor-pointer text-red-500 focus:bg-red-50 focus:text-red-500"
+                              onSelect={() => setRevokeTarget({ id: k.id, name: k.name, prefix: k.key_prefix })}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Revoke key
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
           {/* Secret Keys Section */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-medium">Secret keys</h2>
-                <p className="text-xs text-muted-foreground">Server-side keys. Keep them private and never share with models.</p>
-              </div>
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => {
-                  setCreateKeyType('secret');
-                  setShowCreateKeyDialog(true);
-                }}
-              >
-                New secret key
-              </Button>
+          <section>
+            <div>
+              <h2 className="text-sm font-medium">Secret keys</h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Server-side keys. Keep them private and never share with models.</p>
             </div>
-            <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-              <div className="grid grid-cols-[1fr_2fr_auto] gap-4 px-4 py-2 border-b border-border/40 bg-muted/30">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Name</span>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">API Key</span>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase sr-only">Actions</span>
+            <div className="min-w-0 space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => {
+                    setCreateKeyType('secret');
+                    setShowCreateKeyDialog(true);
+                  }}
+                >
+                  New secret key
+                </Button>
               </div>
-              {secretKeys.length === 0 ? (
-                <div className="px-4 py-8 text-center text-muted-foreground text-xs">
-                  No secret keys created yet.
+              <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_auto] gap-4 border-b border-border/30 bg-muted/30 px-4 py-2">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">Name</span>
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">API key</span>
+                  <span className="sr-only text-[10px] font-medium uppercase text-muted-foreground">Actions</span>
                 </div>
-              ) : (
-                <div className="divide-y divide-border/40">
-                  {secretKeys.map((k: ApiKeyData) => (
-                    <div key={k.id} className="grid grid-cols-[1fr_2fr_auto] gap-4 px-4 py-3 items-center group">
-                      <div className="flex flex-col gap-0.5 min-w-0">
-                        <span className="text-xs font-medium truncate">{k.name}</span>
-                        <span className="text-[10px] text-muted-foreground">Created {formatRelativeDate(k.created_at)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-[11px] font-mono bg-muted/50 px-1.5 py-0.5 rounded text-muted-foreground">
-                          {k.key_prefix}••••••••
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleCopyKey(k.key_prefix)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuItem
-                            className="text-red-500 focus:text-red-500 focus:bg-red-50 cursor-pointer"
-                            onSelect={() => setRevokeTarget({ id: k.id, name: k.name, prefix: k.key_prefix })}
+                {secretKeys.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                    No secret keys created yet.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/30">
+                    {secretKeys.map((k: ApiKeyData) => (
+                      <div key={k.id} className="group grid grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_auto] items-center gap-4 px-4 py-3">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="truncate text-xs font-medium">{k.name}</span>
+                          <span className="text-[10px] text-muted-foreground">Created {formatRelativeDate(k.created_at)}</span>
+                        </div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <code className="truncate rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                            {k.key_prefix}••••••••
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => handleCopyKey(k.key_prefix)}
                           >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Revoke key
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
-                </div>
-              )}
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32">
+                            <DropdownMenuItem
+                              className="cursor-pointer text-red-500 focus:bg-red-50 focus:text-red-500"
+                              onSelect={() => setRevokeTarget({ id: k.id, name: k.name, prefix: k.key_prefix })}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Revoke key
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </TabsContent>
@@ -2005,7 +1983,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
       <AlertDialog open={!!revokeTarget} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent className="max-w-sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke API Key</AlertDialogTitle>
+            <AlertDialogTitle>Revoke API key</AlertDialogTitle>
             <AlertDialogDescription className="text-xs">
               Are you sure you want to revoke <span className="font-medium text-foreground">{revokeTarget?.name}</span>?
               Applications using this key will immediately fail.
@@ -2039,12 +2017,12 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           <DialogHeader>
             <DialogTitle className="text-sm">Suggest an integration</DialogTitle>
             <DialogDescription className="text-xs">
-              Tell us which tool you'd like to see integrated with Cencori.
+              Tell us which tool you&apos;d like to see integrated with Cencori.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-3">
             <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Tool Name</Label>
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Tool name</Label>
               <Input
                 placeholder="e.g. LangSmith, Weights & Biases"
                 value={suggestion}
@@ -2086,6 +2064,6 @@ export default function ProjectSettingsPage({ params }: PageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   );
 }

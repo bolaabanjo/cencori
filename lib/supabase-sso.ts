@@ -52,6 +52,21 @@ export async function createSSOProvider(params: {
     });
 }
 
+export async function updateSSOProvider(
+    providerId: string,
+    params: {
+        metadata_url?: string;
+        metadata_xml?: string;
+        domains?: string[];
+        attribute_mapping?: Record<string, string>;
+    }
+): Promise<SSOProvider> {
+    return gotrueAdmin(`/admin/sso/providers/${providerId}`, {
+        method: "PUT",
+        body: JSON.stringify(params),
+    });
+}
+
 export async function getSSOProvider(providerId: string): Promise<SSOProvider> {
     return gotrueAdmin(`/admin/sso/providers/${providerId}`);
 }

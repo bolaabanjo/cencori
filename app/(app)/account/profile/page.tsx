@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -172,9 +172,6 @@ export default function ProfilePage() {
         );
     }
 
-    const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() ||
-        profile?.email?.[0]?.toUpperCase() || "?";
-
     return (
         <div className="max-w-2xl space-y-8">
             <div>
@@ -188,10 +185,13 @@ export default function ProfilePage() {
                 <h2 className="text-sm font-medium">Avatar</h2>
                 <div className="flex items-center gap-4">
                     <div className="relative group">
-                        <Avatar className="h-20 w-20">
-                            <AvatarImage src={profile?.avatar_url || undefined} alt="Profile" />
-                            <AvatarFallback className="text-lg">{initials}</AvatarFallback>
-                        </Avatar>
+                        <UserAvatar
+                            src={profile?.avatar_url}
+                            name={[firstName, lastName].filter(Boolean).join(" ")}
+                            email={profile?.email}
+                            alt="Profile avatar"
+                            size={80}
+                        />
                         <input
                             ref={fileInputRef}
                             type="file"

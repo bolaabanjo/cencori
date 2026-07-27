@@ -108,7 +108,7 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
         queryFn: async () => {
             const { data: orgData } = await supabase
                 .from('organizations')
-                .select('id')
+                .select('id, name, subscription_tier')
                 .eq('slug', orgSlug)
                 .single();
 
@@ -122,7 +122,7 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
                 .single();
 
             if (!projectData) throw new Error('Project not found');
-            return projectData;
+            return { ...projectData, organization: orgData };
         },
         staleTime: 5 * 60 * 1000,
     });
@@ -215,8 +215,12 @@ export default function ObservabilityPage({ params }: PageProps) {
             <div className="w-full max-w-6xl mx-auto px-6 py-8">
                 <FeatureUpgradeWall
                     orgSlug={orgSlug}
+                    orgId={project.organization.id}
+                    orgName={project.organization.name}
+                    currentTier={project.organization.subscription_tier}
                     feature="Analytics dashboard"
                     message={overviewError.message}
+                    returnPath={pathname}
                 />
             </div>
         );

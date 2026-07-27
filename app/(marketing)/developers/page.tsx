@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 
 export const metadata: Metadata = {
-    title: 'Cencori for Developers | The AI cloud infrastructure to run, secure, and scale AI products',
+    title: 'Cencori for Developers | Build AI products on Cencori',
     description:
         'One SDK to every frontier model. A compute layer to train, host, and deploy your own. Regional cloud you can pin workloads to. For developers, AI engineers, and research teams shipping real products.',
 };
@@ -145,9 +145,8 @@ export default async function DevelopersPage() {
                         </div>
 
                         <h1 className="font-heading text-[1.875rem] font-semibold leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[2.125rem] lg:text-[2.375rem]">
-                            <span className="block sm:whitespace-nowrap">The AI cloud infrastructure</span>
-                            <span className="block sm:whitespace-nowrap">to run, secure, and</span>
-                            <span className="block sm:whitespace-nowrap">scale AI products.</span>
+                            <span className="block sm:whitespace-nowrap">Build AI products</span>
+                            <span className="block sm:whitespace-nowrap">on Cencori.</span>
                         </h1>
 
                         <p className="mt-8 max-w-xl text-sm leading-relaxed text-muted-foreground">

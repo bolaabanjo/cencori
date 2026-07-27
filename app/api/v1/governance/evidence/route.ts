@@ -8,10 +8,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireGovernanceAuth } from '@/lib/governance/require-governance';
 import { generateEvidencePack } from '@/lib/governance/evidence';
+import { requireTierFeatureForOrg } from '@/lib/require-tier-feature';
 
 export async function GET(req: NextRequest) {
     const auth = await requireGovernanceAuth(req, 'audit.read');
     if (!auth.ok) return auth.response;
+
+    const planGate = await requireTierFeatureForOrg(
+        auth.orgId,
+        'governanceAdvancedEvidence',
+        'enterprise',
+    );
+    if (planGate) return planGate;
 
     const framework = req.nextUrl.searchParams.get('framework');
     if (!framework) {

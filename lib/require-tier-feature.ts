@@ -9,6 +9,18 @@ const FEATURE_NAMES: Record<keyof TierFeatures, string> = {
   outputScanning: 'Output scanning',
   securityIncidents: 'Security incidents',
   auditTrails: 'Audit trails',
+  auditLogs: 'Organization audit log',
+  auditLogIdentityEvents: 'Identity audit events',
+  auditLogExtendedHistory: 'Extended audit-log history',
+  auditLogAllTimeHistory: 'All-time audit-log history',
+  auditLogExports: 'Audit-log exports',
+  auditLogApiAccess: 'Audit API access',
+  auditLogSiemStreaming: 'SIEM streaming',
+  auditLogComplianceArchives: 'Compliance-grade audit archives',
+  governanceControls: 'Governance control access',
+  governanceCustomFrameworks: 'Custom governance frameworks',
+  governanceAdvancedEvidence: 'Advanced governance evidence',
+  governanceBespokeControls: 'Bespoke governance controls',
   failover: 'Failover',
   customProviders: 'Custom providers',
   semanticCache: 'Semantic cache',
@@ -21,14 +33,29 @@ const FEATURE_NAMES: Record<keyof TierFeatures, string> = {
   promptRegistry: 'Prompt registry',
   webhooks: 'Webhooks',
   sso: 'SSO',
+  teams: 'Team collaboration',
 };
 
 /** The standard 403 body returned when a plan doesn't include a feature. */
-export function featureGateResponse(feature: keyof TierFeatures): NextResponse {
+export function featureGateResponse(
+  feature: keyof TierFeatures,
+  requiredTier: 'paid' | 'team' | 'enterprise' = 'paid',
+): NextResponse {
+  const requirement = requiredTier === 'enterprise'
+    ? 'the Enterprise plan'
+    : requiredTier === 'team'
+      ? 'the Team or Enterprise plan'
+      : 'a paid plan';
+
   return NextResponse.json(
     {
-      error: `${FEATURE_NAMES[feature]} requires a paid plan`,
+      error: `${FEATURE_NAMES[feature]} requires ${requirement}`,
       code: 'FEATURE_NOT_INCLUDED',
+      required_tier: requiredTier === 'enterprise'
+        ? 'enterprise'
+        : requiredTier === 'team'
+          ? 'team'
+          : 'pro',
       upgrade_url: '/billing',
     },
     { status: 403 }
@@ -84,7 +111,8 @@ export async function requireTierFeatureForProject(
 
 export async function requireTierFeatureForOrg(
   orgId: string,
-  feature: keyof TierFeatures
+  feature: keyof TierFeatures,
+  requiredTier: 'paid' | 'team' | 'enterprise' = 'paid',
 ): Promise<NextResponse | null> {
   const supabase = createAdminClient();
 
@@ -100,14 +128,7 @@ export async function requireTierFeatureForOrg(
 
   const tier = (org.subscription_tier || 'free') as SubscriptionTier;
   if (!hasFeature(tier, feature)) {
-    return NextResponse.json(
-      {
-        error: `${FEATURE_NAMES[feature]} requires a paid plan`,
-        code: 'FEATURE_NOT_INCLUDED',
-        upgrade_url: '/billing',
-      },
-      { status: 403 }
-    );
+    return featureGateResponse(feature, requiredTier);
   }
 
   return null;

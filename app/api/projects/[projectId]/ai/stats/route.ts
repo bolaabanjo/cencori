@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 
 interface DateAggregation {
     date: string;
@@ -79,24 +80,35 @@ export async function GET(
 
         const environment = searchParams.get('environment') || 'production';
 
-        const { data: requests, error: requestsError } = await supabaseAdmin
-            .from('ai_requests')
-            .select(`
-                status,
-                cost_usd,
-                total_tokens,
-                prompt_tokens,
-                completion_tokens,
-                latency_ms,
-                created_at,
-                model,
-                api_keys!inner(environment)
-            `)
-            .eq('project_id', projectId)
-            .eq('api_keys.environment', environment)
-            .gte('created_at', startDate.toISOString());
-
-        if (requestsError) {
+        type StatRow = {
+            status: string | null; cost_usd: string;
+            total_tokens: number | null; prompt_tokens: number | null; completion_tokens: number | null;
+            latency_ms: number | null; created_at: string; model: string | null;
+        };
+        let requests: StatRow[];
+        try {
+            // Paginate past the 1000-row ceiling so totals + charts cover ALL requests.
+            requests = await fetchAllRows<StatRow>((from, to) =>
+                supabaseAdmin
+                    .from('ai_requests')
+                    .select(`
+                        status,
+                        cost_usd,
+                        total_tokens,
+                        prompt_tokens,
+                        completion_tokens,
+                        latency_ms,
+                        created_at,
+                        model,
+                        api_keys!inner(environment)
+                    `)
+                    .eq('project_id', projectId)
+                    .eq('api_keys.environment', environment)
+                    .gte('created_at', startDate.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (requestsError) {
             console.error('[AI Stats] Error fetching requests:', requestsError);
             return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
         }

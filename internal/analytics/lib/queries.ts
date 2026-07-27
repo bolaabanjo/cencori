@@ -1,7 +1,22 @@
 // Platform Analytics Database Queries
 import { createAdminClient } from '@/lib/supabaseAdmin';
-import type { TimePeriod, AIGatewayMetrics, SecurityMetrics, OrganizationsMetrics, ProjectsMetrics, ApiKeysMetrics, UsersMetrics, ScanMetrics, PlatformEventsMetrics } from './types';
+import { fetchAllRows } from '@/lib/supabase-paginate';
+import type { TimePeriod, AIGatewayMetrics, SecurityMetrics, OrganizationsMetrics, ProjectsMetrics, ApiKeysMetrics, UsersMetrics, ScanMetrics, PlatformEventsMetrics, CaptureMetrics } from './types';
 import type { User } from '@supabase/supabase-js';
+
+/** Exact row count for a table+window, bypassing the 1000-row read ceiling. */
+async function exactCount(
+    table: string,
+    tsColumn: string,
+    startISO: string,
+): Promise<number> {
+    const supabase = createAdminClient();
+    const { count } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .gte(tsColumn, startISO);
+    return count || 0;
+}
 
 function getStartDate(period: TimePeriod): Date {
     const now = new Date();
@@ -21,12 +36,24 @@ export async function getAIGatewayMetrics(period: TimePeriod): Promise<AIGateway
     const supabase = createAdminClient();
     const startDate = getStartDate(period);
 
-    const { data: requests, error } = await supabase
-        .from('ai_requests')
-        .select('*')
-        .gte('created_at', startDate.toISOString());
-
-    if (error || !requests) {
+    type GatewayRow = {
+        status: string | null; total_tokens: number | null; cost_usd: string;
+        latency_ms: number | null; provider: string | null; model: string | null; stream: boolean | null;
+    };
+    let requests: GatewayRow[];
+    try {
+        // Paginate past the 1000-row ceiling so platform totals are real.
+        // select('*') (not an explicit column list) so a drifted schema missing an
+        // optional column like `stream` can't 400 the whole query.
+        requests = await fetchAllRows<GatewayRow>((from, to) =>
+            supabase
+                .from('ai_requests')
+                .select('*')
+                .gte('created_at', startDate.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+        );
+    } catch (error) {
         console.error('[Analytics] Error fetching AI requests:', error);
         return {
             totalRequests: 0,
@@ -138,10 +165,15 @@ export async function getOrganizationsMetrics(period: TimePeriod): Promise<Organ
 
     const { data: orgs } = await supabase.from('organizations').select('id, owner_id, subscription_tier, created_at');
     const { data: members } = await supabase.from('organization_members').select('user_id');
-    const { data: activeOrgs } = await supabase
-        .from('ai_requests')
-        .select('project_id, projects!inner(organization_id)')
-        .gte('created_at', startDate.toISOString());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const activeOrgs = await fetchAllRows<any>((from, to) =>
+        supabase
+            .from('ai_requests')
+            .select('project_id, projects!inner(organization_id)')
+            .gte('created_at', startDate.toISOString())
+            .order('created_at', { ascending: true })
+            .range(from, to)
+    ).catch(() => []);
 
     const total = orgs?.length || 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,10 +214,14 @@ export async function getProjectsMetrics(period: TimePeriod): Promise<ProjectsMe
     const startDate = getStartDate(period);
 
     const { data: projects } = await supabase.from('projects').select('id, status, visibility, created_at');
-    const { data: activeProjects } = await supabase
-        .from('ai_requests')
-        .select('project_id')
-        .gte('created_at', startDate.toISOString());
+    const activeProjects = await fetchAllRows<{ project_id: string | null }>((from, to) =>
+        supabase
+            .from('ai_requests')
+            .select('project_id')
+            .gte('created_at', startDate.toISOString())
+            .order('created_at', { ascending: true })
+            .range(from, to)
+    ).catch(() => []);
 
     const total = projects?.length || 0;
     const activeProjectIds = new Set(activeProjects?.map(r => r.project_id));
@@ -211,10 +247,14 @@ export async function getApiKeysMetrics(period: TimePeriod): Promise<ApiKeysMetr
     const startDate = getStartDate(period);
 
     const { data: keys } = await supabase.from('api_keys').select('id, environment, created_at, last_used_at');
-    const { data: keyUsage } = await supabase
-        .from('ai_requests')
-        .select('api_key_id')
-        .gte('created_at', startDate.toISOString());
+    const keyUsage = await fetchAllRows<{ api_key_id: string | null }>((from, to) =>
+        supabase
+            .from('ai_requests')
+            .select('api_key_id')
+            .gte('created_at', startDate.toISOString())
+            .order('created_at', { ascending: true })
+            .range(from, to)
+    ).catch(() => []);
 
     const total = keys?.length || 0;
     const activeKeyIds = new Set(
@@ -347,12 +387,20 @@ export async function getScanMetrics(period: TimePeriod): Promise<ScanMetrics> {
     const supabase = createAdminClient();
     const startDate = getStartDate(period);
 
-    const { data: telemetry, error } = await supabase
-        .from('scan_telemetry')
-        .select('*')
-        .gte('created_at', startDate.toISOString());
-
-    if (error || !telemetry) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let telemetry: any[];
+    try {
+        // Paginate past the 1000-row ceiling so scan totals are real.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        telemetry = await fetchAllRows<any>((from, to) =>
+            supabase
+                .from('scan_telemetry')
+                .select('*')
+                .gte('created_at', startDate.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+        );
+    } catch (error) {
         console.error('[Analytics] Error fetching scan telemetry:', error);
         return {
             totalScans: 0,
@@ -421,13 +469,20 @@ export async function getPlatformEventsMetrics(period: TimePeriod): Promise<Plat
     const supabase = createAdminClient();
     const startDate = getStartDate(period);
 
-    const { data: events, error } = await supabase
-        .from('platform_events')
-        .select('id, event_type, product, user_id, organization_id, project_id, metadata, created_at')
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false });
-
-    if (error || !events) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let eventsAsc: any[];
+    try {
+        // Paginate past the 1000-row ceiling; order ascending so pages are stable.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        eventsAsc = await fetchAllRows<any>((from, to) =>
+            supabase
+                .from('platform_events')
+                .select('id, event_type, product, user_id, organization_id, project_id, metadata, created_at')
+                .gte('created_at', startDate.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+        );
+    } catch (error) {
         console.error('[Analytics] Error fetching platform events:', error);
         return {
             totalEvents: 0,
@@ -438,6 +493,8 @@ export async function getPlatformEventsMetrics(period: TimePeriod): Promise<Plat
         };
     }
 
+    // Preserve the original newest-first semantics for the recent feed.
+    const events = eventsAsc;
     const totalEvents = events.length;
 
     const eventsByProduct: Record<string, number> = {};
@@ -454,7 +511,7 @@ export async function getPlatformEventsMetrics(period: TimePeriod): Promise<Plat
     today.setHours(0, 0, 0, 0);
     const eventsToday = events.filter(e => new Date(e.created_at) >= today).length;
 
-    const recentEvents = events.slice(0, 50);
+    const recentEvents = events.slice(-50).reverse();
 
     return {
         totalEvents,
@@ -463,4 +520,21 @@ export async function getPlatformEventsMetrics(period: TimePeriod): Promise<Plat
         recentEvents,
         eventsToday,
     };
+}
+
+/**
+ * Workload capture per product — the numerator behind "% of global AI on
+ * Cencori". Uses exact COUNT (head:true) so it never hits the 1000-row ceiling.
+ */
+export async function getCaptureMetrics(period: TimePeriod): Promise<CaptureMetrics> {
+    const startISO = getStartDate(period).toISOString();
+
+    const [gatewayRequests, governanceDecisions, memories, agentSessions] = await Promise.all([
+        exactCount('ai_requests', 'created_at', startISO),            // model traffic
+        exactCount('governance_audit_ledger', 'ts', startISO),        // governed enterprise usage
+        exactCount('gateway_memories', 'created_at', startISO),       // state
+        exactCount('sessions', 'created_at', startISO),               // agent workloads
+    ]);
+
+    return { gatewayRequests, governanceDecisions, memories, agentSessions };
 }

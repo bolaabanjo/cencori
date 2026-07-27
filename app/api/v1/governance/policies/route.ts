@@ -10,7 +10,7 @@ import { requireGovernanceAuth } from '@/lib/governance/require-governance';
 import { createPolicyDraft, type PolicySpec } from '@/lib/governance/policy-store';
 
 export async function POST(req: NextRequest) {
-    const auth = await requireGovernanceAuth(req, 'policy.propose');
+    const auth = await requireGovernanceAuth(req, 'policy.propose', { requirePaidControls: true });
     if (!auth.ok) return auth.response;
 
     let body: { name?: unknown; spec?: unknown };

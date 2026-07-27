@@ -1,15 +1,12 @@
 'use client';
 
 /**
- * Org-level General settings.
- *
- * Vercel-style layout: cards for Organization Name, Organization URL,
- * Organization ID, and a Danger Zone with Delete Organization. Each card
- * owns its own form + save button so partial edits don't stomp each other.
+ * Organization-scoped settings for identity and low-level controls.
  */
 
 import { use, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
@@ -26,7 +23,10 @@ import {
 } from '@/components/ui/dialog';
 import { Copy, Check } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
-import { updateOrgName, updateOrgSlug, deleteOrganization } from './actions';
+import { deleteOrganization, updateOrgName, updateOrgSlug } from './actions';
+import { SsoSettings } from './SsoSettings';
+import { AuditInfrastructureSettings } from './AuditInfrastructureSettings';
+import type { SubscriptionTier } from '@/lib/entitlements';
 
 interface PageProps {
     params: Promise<{ orgSlug: string }>;
@@ -36,11 +36,13 @@ interface OrgRow {
     id: string;
     name: string;
     slug: string;
-    subscription_tier: string | null;
+    subscription_tier: SubscriptionTier | null;
 }
 
 export default function OrgSettingsPage({ params }: PageProps) {
     const { orgSlug } = use(params);
+    const searchParams = useSearchParams();
+    const activeSection = searchParams.get('section') === 'advanced' ? 'advanced' : 'general';
 
     const { data: org, isLoading, refetch } = useQuery({
         queryKey: ['orgSettings', orgSlug],
@@ -58,12 +60,18 @@ export default function OrgSettingsPage({ params }: PageProps) {
 
     if (isLoading) {
         return (
-            <div className="w-full max-w-3xl mx-auto px-6 py-10 space-y-4">
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-3 w-72" />
-                <div className="mt-6 space-y-4">
-                    {[1, 2, 3, 4].map((i) => (
-                        <Skeleton key={i} className="h-40 w-full" />
+            <div className="w-full max-w-[1120px] mx-auto px-6 lg:px-10 py-12 space-y-8">
+                <div className="space-y-3">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-7 w-56" />
+                    <Skeleton className="h-3 w-96 max-w-full" />
+                </div>
+                <div className="space-y-8 pt-6">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
+                            <Skeleton className="h-12 w-40" />
+                            <Skeleton className="h-44 w-full rounded-lg" />
+                        </div>
                     ))}
                 </div>
             </div>
@@ -72,28 +80,95 @@ export default function OrgSettingsPage({ params }: PageProps) {
 
     if (!org) {
         return (
-            <div className="w-full max-w-3xl mx-auto px-6 py-10">
+            <div className="w-full max-w-[1120px] mx-auto px-6 lg:px-10 py-12">
                 <p className="text-sm font-medium">Organization not found</p>
             </div>
         );
     }
 
-    return (
-        <div className="w-full max-w-3xl mx-auto px-6 py-10">
-            <div className="mb-8">
-                <h1 className="text-base font-medium">Settings</h1>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                    General settings for the {org.name} organization.
-                </p>
-            </div>
+    const previewTierValue = searchParams.get('preview_plan');
+    const previewTier = process.env.NODE_ENV === 'development'
+        && (previewTierValue === 'pro' || previewTierValue === 'team' || previewTierValue === 'enterprise')
+        ? previewTierValue
+        : null;
+    const effectiveTier = (previewTier || org.subscription_tier || 'free') as SubscriptionTier;
 
-            <div className="space-y-4">
-                <OrgNameCard org={org} onSaved={refetch} />
-                <OrgSlugCard org={org} />
-                <OrgIdCard org={org} />
-                <DangerZoneCard org={org} />
-            </div>
-        </div>
+    return (
+        <main className="w-full max-w-[1120px] mx-auto px-6 lg:px-10 py-12">
+            <header className="pb-8">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-[-0.03em]">
+                        {activeSection === 'advanced' ? 'Advanced settings' : 'General settings'}
+                    </h1>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                        {activeSection === 'advanced'
+                            ? `Low-level organization controls for ${org.name}. Changes here can affect every project and workload.`
+                            : `Identity settings for every project and workload operated by ${org.name}.`}
+                    </p>
+                </div>
+            </header>
+
+            <nav className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-border/35 bg-muted/20 p-1 lg:hidden" aria-label="Organization settings">
+                <Link
+                    href={`/${orgSlug}/~/settings`}
+                    className={`rounded-md px-3 py-2 text-center text-xs font-medium transition-colors ${activeSection === 'general' ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                    General
+                </Link>
+                <Link
+                    href={`/${orgSlug}/~/settings?section=advanced`}
+                    className={`rounded-md px-3 py-2 text-center text-xs font-medium transition-colors ${activeSection === 'advanced' ? 'bg-muted/80 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                    Advanced
+                </Link>
+            </nav>
+
+            {activeSection === 'general' ? (
+                <div className="border-t border-border/35">
+                    <SettingsSection
+                        title="Organization identity"
+                        description="The name and URL used across your Cencori control plane."
+                    >
+                        <SettingsPanel>
+                            <OrgNameCard org={org} onSaved={refetch} />
+                            <OrgSlugCard org={org} />
+                        </SettingsPanel>
+                    </SettingsSection>
+
+                    <SettingsSection
+                        title="System identifier"
+                        description="Stable reference for API operations, audit events, and support."
+                    >
+                        <SettingsPanel>
+                            <OrgIdCard org={org} />
+                        </SettingsPanel>
+                    </SettingsSection>
+                </div>
+            ) : (
+                <div className="border-t border-border/35">
+                    <SettingsSection
+                        title="Identity & access"
+                        description="Organization-wide SAML authentication, enforcement, and identity-provider controls."
+                    >
+                        <SsoSettings orgSlug={orgSlug} orgName={org.name} />
+                    </SettingsSection>
+
+                    <SettingsSection
+                        title="Audit infrastructure"
+                        description="Enterprise controls for evidence retention, machine access, and external security operations."
+                    >
+                        <AuditInfrastructureSettings orgSlug={orgSlug} tier={effectiveTier} />
+                    </SettingsSection>
+
+                    <SettingsSection
+                        title="Destructive actions"
+                        description="Permanent operations that affect every project in this organization."
+                    >
+                        <DangerZoneCard org={org} />
+                    </SettingsSection>
+                </div>
+            )}
+        </main>
     );
 }
 
@@ -120,8 +195,8 @@ function OrgNameCard({ org, onSaved }: { org: OrgRow; onSaved: () => void }) {
     return (
         <SettingsCard>
             <SettingsCardHeader
-                title="Organization Name"
-                description="This is your organization's visible name within Cencori. For example, the name of your company or team."
+                title="Organization name"
+                description="The name operators and collaborators see throughout Cencori."
             />
             <SettingsCardBody>
                 <Input
@@ -132,7 +207,7 @@ function OrgNameCard({ org, onSaved }: { org: OrgRow; onSaved: () => void }) {
                     disabled={isPending}
                 />
             </SettingsCardBody>
-            <SettingsCardFooter caption="Please use 48 characters at maximum.">
+            <SettingsCardFooter caption="Maximum 48 characters.">
                 <Button
                     onClick={handleSave}
                     disabled={!dirty || isPending}
@@ -170,7 +245,7 @@ function OrgSlugCard({ org }: { org: OrgRow }) {
         <SettingsCard>
             <SettingsCardHeader
                 title="Organization URL"
-                description="Your organization's URL slug on Cencori. Changing this will break existing links to your organization and its projects."
+                description="Changing this address invalidates existing organization and project links."
             />
             <SettingsCardBody>
                 <div className="flex items-center max-w-md">
@@ -214,7 +289,7 @@ function OrgIdCard({ org }: { org: OrgRow }) {
         <SettingsCard>
             <SettingsCardHeader
                 title="Organization ID"
-                description="Used when interacting with the Cencori API."
+                description="Immutable identifier used by the API and audit system."
             />
             <SettingsCardBody>
                 <div className="flex items-center gap-2 max-w-md">
@@ -260,7 +335,7 @@ function DangerZoneCard({ org }: { org: OrgRow }) {
     };
 
     return (
-        <div className="rounded-md border border-destructive/40 bg-card">
+        <div className="overflow-hidden rounded-lg border border-destructive/25 bg-muted/25">
             <div className="p-5">
                 <h2 className="text-sm font-medium">Delete Organization</h2>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
@@ -268,7 +343,7 @@ function DangerZoneCard({ org }: { org: OrgRow }) {
                     its projects, API keys, logs, and settings. This cannot be undone.
                 </p>
             </div>
-            <div className="border-t border-destructive/30 px-5 py-3 flex items-center justify-between bg-destructive/5">
+            <div className="border-t border-destructive/20 px-5 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-destructive/[0.035]">
                 <p className="text-[11px] text-muted-foreground">
                     Only the organization owner can delete.
                 </p>
@@ -332,7 +407,7 @@ function DangerZoneCard({ org }: { org: OrgRow }) {
 
 function SettingsCard({ children }: { children: React.ReactNode }) {
     return (
-        <div className="rounded-md border border-border/40 bg-card">
+        <div className="border-b border-border/35 last:border-b-0">
             {children}
         </div>
     );
@@ -361,9 +436,39 @@ function SettingsCardFooter({
     children?: React.ReactNode;
 }) {
     return (
-        <div className="border-t border-border/40 px-5 py-3 flex items-center justify-between bg-muted/20">
+        <div className="border-t border-border/30 px-5 py-3 flex flex-col gap-3 bg-background/25 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] text-muted-foreground">{caption}</p>
             {children}
         </div>
+    );
+}
+
+function SettingsPanel({ children }: { children: React.ReactNode }) {
+    return (
+        <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+            {children}
+        </div>
+    );
+}
+
+function SettingsSection({
+    title,
+    description,
+    children,
+}: {
+    title: string;
+    description: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="grid gap-5 border-b border-border/35 py-8 last:border-b-0 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10">
+            <div className="lg:pt-1">
+                <h2 className="text-sm font-medium">{title}</h2>
+                <p className="mt-1.5 max-w-[220px] text-xs leading-5 text-muted-foreground">
+                    {description}
+                </p>
+            </div>
+            <div className="min-w-0">{children}</div>
+        </section>
     );
 }

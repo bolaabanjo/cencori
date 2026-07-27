@@ -10,7 +10,7 @@ import { requireGovernanceAuth } from '@/lib/governance/require-governance';
 import { requestPolicyActivation } from '@/lib/governance/policy-store';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ policyId: string }> }) {
-    const auth = await requireGovernanceAuth(req, 'policy.propose');
+    const auth = await requireGovernanceAuth(req, 'policy.propose', { requirePaidControls: true });
     if (!auth.ok) return auth.response;
 
     const { policyId } = await params;

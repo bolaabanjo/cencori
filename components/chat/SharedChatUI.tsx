@@ -25,7 +25,7 @@ interface SharedChatUIProps {
 
 export function SharedChatUI({ messages, title, createdAt }: SharedChatUIProps) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
+    const [userProfile, setUserProfile] = useState<{ name: string | null; avatar: string | null; email: string | null }>({ name: null, avatar: null, email: null });
     const [input, setInput] = useState("");
 
 
@@ -39,11 +39,11 @@ export function SharedChatUI({ messages, title, createdAt }: SharedChatUIProps) 
                     const meta = user.user_metadata ?? {};
                     const avatar = meta.avatar_url ?? meta.picture ?? null;
                     const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
+                    setUserProfile({ name: name as string | null, avatar: avatar as string | null, email: user.email ?? null });
                 }
             } else {
                 setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
+                setUserProfile({ name: null, avatar: null, email: null });
             }
         };
         checkUser();
@@ -56,11 +56,11 @@ export function SharedChatUI({ messages, title, createdAt }: SharedChatUIProps) 
                     const meta = user.user_metadata ?? {};
                     const avatar = meta.avatar_url ?? meta.picture ?? null;
                     const name = meta.name ?? user.email?.split("@")[0] ?? null;
-                    setUserProfile({ name: name as string | null, avatar: avatar as string | null });
+                    setUserProfile({ name: name as string | null, avatar: avatar as string | null, email: user.email ?? null });
                 }
             } else {
                 setIsAuthenticated(false);
-                setUserProfile({ name: null, avatar: null });
+                setUserProfile({ name: null, avatar: null, email: null });
             }
         });
 

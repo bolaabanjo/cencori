@@ -3,6 +3,7 @@ import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange, hasFeature } from '@/lib/entitlements';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 
 export async function GET(
     req: NextRequest,
@@ -78,14 +79,24 @@ export async function GET(
 
         const apiKeyIds = apiKeys?.map(k => k.id) || [];
 
-        const { data: requests, error: reqError } = await supabaseAdmin
-            .from('ai_requests')
-            .select('*')
-            .eq('project_id', projectId)
-            .in('api_key_id', apiKeyIds)
-            .gte('created_at', startTime.toISOString());
-
-        if (reqError) {
+        let requests: Array<{
+            status: string | null; cost_usd: number | null; total_tokens: number | null;
+            latency_ms: number | null; model: string; provider: string | null;
+            country?: string | null; geolocation?: { country?: string | null } | null;
+        }>;
+        try {
+            // Paginate past the 1000-row ceiling so every aggregate below covers ALL requests.
+            requests = await fetchAllRows((from, to) =>
+                supabaseAdmin
+                    .from('ai_requests')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .in('api_key_id', apiKeyIds)
+                    .gte('created_at', startTime.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (reqError) {
             console.error('[Analytics API] Error fetching requests:', reqError);
             return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 });
         }
