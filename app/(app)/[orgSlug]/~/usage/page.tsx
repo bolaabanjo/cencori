@@ -1,9 +1,9 @@
 "use client";
 
 import React, { use } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import { cn as clsx } from "@/lib/utils";
 import { supabase } from '@/lib/supabaseClient';
@@ -14,7 +14,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
 interface Organization {
@@ -25,15 +25,174 @@ interface Organization {
     monthly_request_limit: number;
 }
 
+const REQUEST_LIMIT_FALLBACKS: Record<Organization['subscription_tier'], number> = {
+    free: 1_000,
+    pro: 50_000,
+    team: 250_000,
+    enterprise: Number.POSITIVE_INFINITY,
+};
+
 interface UsageStats {
     total_requests: number;
     total_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
     total_cost: number;
     avg_latency: number;
     success_rate: number;
     model_usage: Record<string, number>;
     provider_usage: Record<string, number>;
-    daily_requests: Array<{ date: string; count: number }>;
+    daily_requests: Array<{
+        date: string;
+        count: number;
+        input_tokens: number;
+        output_tokens: number;
+    }>;
+}
+
+type UsageRequest = {
+    created_at: string;
+    prompt_tokens?: number | null;
+    completion_tokens?: number | null;
+};
+
+function buildRequestActivity(requests: UsageRequest[], timeRange: string) {
+    const isHourly = timeRange === '24h';
+    const bucketCount = isHourly ? 24 : timeRange === '30d' ? 30 : 7;
+    const stepMs = isHourly ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const end = new Date();
+
+    if (isHourly) {
+        end.setMinutes(0, 0, 0);
+    } else {
+        end.setHours(0, 0, 0, 0);
+    }
+
+    const startMs = end.getTime() - ((bucketCount - 1) * stepMs);
+    const buckets = new Map<number, { count: number; inputTokens: number; outputTokens: number }>();
+
+    for (const request of requests) {
+        const bucket = new Date(request.created_at);
+        if (Number.isNaN(bucket.getTime())) continue;
+
+        if (isHourly) {
+            bucket.setMinutes(0, 0, 0);
+        } else {
+            bucket.setHours(0, 0, 0, 0);
+        }
+
+        const bucketTime = bucket.getTime();
+        if (bucketTime < startMs || bucketTime > end.getTime()) continue;
+        const current = buckets.get(bucketTime) || { count: 0, inputTokens: 0, outputTokens: 0 };
+        const inputTokens = Number(request.prompt_tokens || 0);
+        const outputTokens = Number(request.completion_tokens || 0);
+
+        buckets.set(bucketTime, {
+            count: current.count + 1,
+            inputTokens: current.inputTokens + (Number.isFinite(inputTokens) ? inputTokens : 0),
+            outputTokens: current.outputTokens + (Number.isFinite(outputTokens) ? outputTokens : 0),
+        });
+    }
+
+    return Array.from({ length: bucketCount }, (_, index) => {
+        const bucket = new Date(startMs + (index * stepMs));
+        const values = buckets.get(bucket.getTime());
+        return {
+            date: isHourly
+                ? bucket.toLocaleTimeString('en-US', { hour: 'numeric' })
+                : bucket.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            count: values?.count || 0,
+            input_tokens: values?.inputTokens || 0,
+            output_tokens: values?.outputTokens || 0,
+        };
+    });
+}
+
+function emptyUsageStats(timeRange: string): UsageStats {
+    return {
+        total_requests: 0,
+        total_tokens: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_cost: 0,
+        avg_latency: 0,
+        success_rate: 0,
+        model_usage: {},
+        provider_usage: {},
+        daily_requests: buildRequestActivity([], timeRange),
+    };
+}
+
+function formatCompactNumber(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+        notation: value >= 1_000 ? 'compact' : 'standard',
+        maximumFractionDigits: 1,
+    }).format(value);
+}
+
+function PeriodMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+    return (
+        <div className="min-w-0 px-5 py-5 sm:px-6">
+            <p className="text-[10px] font-medium tracking-[0.08em] text-muted-foreground">{label}</p>
+            <p className="mt-3 truncate font-mono text-[1.35rem] font-medium leading-none tracking-[-0.05em] tabular-nums sm:text-2xl">{value}</p>
+            <p className="mt-2 truncate text-[10px] leading-4 text-muted-foreground">{detail}</p>
+        </div>
+    );
+}
+
+function TrafficLedger({
+    title,
+    description,
+    items,
+    total,
+    capitalize = false,
+}: {
+    title: string;
+    description: string;
+    items: Array<[string, number]>;
+    total: number;
+    capitalize?: boolean;
+}) {
+    return (
+        <section className="min-w-0">
+            <header className="flex items-end justify-between gap-4 px-5 pb-4 pt-5 sm:px-6 sm:pt-6">
+                <div>
+                    <h3 className="text-sm font-medium tracking-[-0.02em]">{title}</h3>
+                    <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{description}</p>
+                </div>
+                <span className="font-mono text-[9px] tracking-[0.12em] text-muted-foreground">SHARE OF TOTAL</span>
+            </header>
+            {items.length === 0 ? (
+                <div className="flex min-h-48 items-center px-5 pb-6 sm:px-6">
+                    <div>
+                        <p className="text-xs font-medium">No routed traffic</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">Requests will appear after the first model call.</p>
+                    </div>
+                </div>
+            ) : (
+                <ol className="pb-3">
+                    {items.map(([name, count], index) => {
+                        const share = total > 0 ? (count / total) * 100 : 0;
+                        return (
+                            <li key={name} className="group relative grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-border/25 px-5 py-3.5 transition-colors duration-200 hover:bg-foreground/[0.025] sm:px-6">
+                                <span className="font-mono text-[9px] text-muted-foreground/60">{String(index + 1).padStart(2, '0')}</span>
+                                <div className="min-w-0">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className={clsx("truncate text-xs font-medium", capitalize && "capitalize")}>{name}</span>
+                                        <span className="font-mono text-[9px] tabular-nums text-muted-foreground">{share.toFixed(1)}%</span>
+                                    </div>
+                                    <div className="mt-2 h-px overflow-hidden bg-foreground/[0.07]">
+                                        <div className="h-full bg-foreground/65 transition-[width] duration-500" style={{ width: `${share}%` }} />
+                                    </div>
+                                </div>
+                                <span className="w-12 text-right font-mono text-[10px] tabular-nums">{count.toLocaleString()}</span>
+                            </li>
+                        );
+                    })}
+                </ol>
+            )}
+        </section>
+    );
 }
 
 interface PageProps {
@@ -43,7 +202,7 @@ interface PageProps {
 // Hook to fetch org data
 function useOrganization(orgSlug: string) {
     return useQuery({
-        queryKey: ["organization", orgSlug],
+        queryKey: ["organizationUsage", orgSlug],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('organizations')
@@ -52,7 +211,28 @@ function useOrganization(orgSlug: string) {
                 .single();
 
             if (error || !data) throw new Error("Organization not found");
-            return data as Organization;
+
+            const subscriptionTier: Organization['subscription_tier'] = (
+                data.subscription_tier === 'pro'
+                || data.subscription_tier === 'team'
+                || data.subscription_tier === 'enterprise'
+            ) ? data.subscription_tier : 'free';
+            const requestsUsed = Number(data.monthly_requests_used ?? 0);
+            const requestLimit = Number(data.monthly_request_limit);
+
+            const organization: Organization = {
+                id: data.id,
+                name: data.name,
+                subscription_tier: subscriptionTier,
+                monthly_requests_used: Number.isFinite(requestsUsed) && requestsUsed >= 0
+                    ? requestsUsed
+                    : 0,
+                monthly_request_limit: !Number.isNaN(requestLimit) && requestLimit > 0
+                    ? requestLimit
+                    : REQUEST_LIMIT_FALLBACKS[subscriptionTier],
+            };
+
+            return organization;
         },
         staleTime: 30 * 1000,
     });
@@ -73,16 +253,7 @@ function useUsageStats(orgId: string | undefined, timeRange: string) {
 
             const projectIds = projects?.map((p: { id: string }) => p.id) || [];
             if (projectIds.length === 0) {
-                return {
-                    total_requests: 0,
-                    total_tokens: 0,
-                    total_cost: 0,
-                    avg_latency: 0,
-                    success_rate: 0,
-                    model_usage: {},
-                    provider_usage: {},
-                    daily_requests: [],
-                };
+                return emptyUsageStats(timeRange);
             }
 
             // Calculate time filter
@@ -110,22 +281,15 @@ function useUsageStats(orgId: string | undefined, timeRange: string) {
                 .gte('created_at', startTime.toISOString());
 
             if (!requests || requests.length === 0) {
-                return {
-                    total_requests: 0,
-                    total_tokens: 0,
-                    total_cost: 0,
-                    avg_latency: 0,
-                    success_rate: 0,
-                    model_usage: {},
-                    provider_usage: {},
-                    daily_requests: [],
-                };
+                return emptyUsageStats(timeRange);
             }
 
             // Calculate stats
             const totalRequests = requests.length;
             const successfulRequests = requests.filter((r: { status: string }) => r.status === 'success').length;
             const totalTokens = requests.reduce((sum: number, r: { total_tokens?: number }) => sum + (r.total_tokens || 0), 0);
+            const inputTokens = requests.reduce((sum: number, r: { prompt_tokens?: number }) => sum + (r.prompt_tokens || 0), 0);
+            const outputTokens = requests.reduce((sum: number, r: { completion_tokens?: number }) => sum + (r.completion_tokens || 0), 0);
             const totalCost = requests.reduce((sum: number, r: { cost_usd?: number }) => sum + (r.cost_usd || 0), 0);
             const latencies = requests.map((r: { latency_ms?: number }) => r.latency_ms).filter((l: number | null | undefined): l is number => l != null);
             const avgLatency = latencies.length > 0
@@ -147,19 +311,13 @@ function useUsageStats(orgId: string | undefined, timeRange: string) {
                 providerUsage[provider] = (providerUsage[provider] || 0) + 1;
             });
 
-            // Daily requests breakdown
-            const dailyMap: Record<string, number> = {};
-            requests.forEach((r: { created_at: string }) => {
-                const date = new Date(r.created_at).toISOString().split('T')[0];
-                dailyMap[date] = (dailyMap[date] || 0) + 1;
-            });
-            const dailyRequests = Object.entries(dailyMap)
-                .map(([date, count]) => ({ date, count }))
-                .sort((a, b) => a.date.localeCompare(b.date));
+            const dailyRequests = buildRequestActivity(requests as UsageRequest[], timeRange);
 
             return {
                 total_requests: totalRequests,
                 total_tokens: totalTokens,
+                input_tokens: inputTokens,
+                output_tokens: outputTokens,
                 total_cost: totalCost,
                 avg_latency: Math.round(avgLatency),
                 success_rate: totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 0,
@@ -173,25 +331,14 @@ function useUsageStats(orgId: string | undefined, timeRange: string) {
     });
 }
 
-const PROVIDER_COLORS: Record<string, string> = {
-    openai: 'bg-emerald-500',
-    anthropic: 'bg-orange-500',
-    google: 'bg-blue-500',
-    mistral: 'bg-pink-500',
-    groq: 'bg-yellow-500',
-    cohere: 'bg-purple-500',
-    deepseek: 'bg-cyan-500',
-};
-
 export default function UsagePage({ params }: PageProps) {
     const { orgSlug } = use(params);
     const [timeRange, setTimeRange] = React.useState('7d');
     const [isExporting, setIsExporting] = React.useState(false);
-    const [exportFormat, setExportFormat] = React.useState<'csv' | 'json'>('csv');
+    const [hoveredActivityIndex, setHoveredActivityIndex] = React.useState<number | null>(null);
 
     const handleExport = async (format: 'csv' | 'json') => {
         setIsExporting(true);
-        setExportFormat(format);
         try {
             const now = new Date();
             let from: string | undefined;
@@ -248,72 +395,56 @@ export default function UsagePage({ params }: PageProps) {
 
     if (isLoading) {
         return (
-            <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-8">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <Skeleton className="h-5 w-16" />
-                    <div className="flex items-center gap-2">
-                        <Skeleton className="h-7 w-16 rounded-md" />
-                        <Skeleton className="h-7 w-28 rounded-lg" />
+            <main className="mx-auto w-full max-w-[980px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+                <div className="flex items-end justify-between gap-6">
+                    <div className="space-y-3">
+                        <Skeleton className="h-3 w-20" />
+                        <Skeleton className="h-8 w-28" />
+                        <Skeleton className="h-3 w-80 max-w-full" />
                     </div>
+                    <Skeleton className="hidden h-8 w-48 sm:block" />
                 </div>
 
-                {/* Monthly Quota skeleton */}
-                <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                    <div className="px-6 py-4 border-b border-border/40 flex items-center justify-between">
-                        <div>
-                            <Skeleton className="h-4 w-28 mb-2" />
-                            <Skeleton className="h-3 w-44" />
+                <div className="mt-10 overflow-hidden rounded-lg bg-muted/35 dark:bg-[#111111]">
+                    <div className="grid lg:grid-cols-[1.55fr_1fr]">
+                        <div className="p-6 sm:p-8 lg:p-10">
+                            <Skeleton className="h-3 w-28" />
+                            <Skeleton className="mt-8 h-12 w-64" />
+                            <Skeleton className="mt-8 h-9 w-full" />
+                            <div className="mt-8 grid grid-cols-3 gap-5 border-t border-border/25 pt-5">
+                                {[1, 2, 3].map((item) => <Skeleton key={item} className="h-8 w-24 max-w-full" />)}
+                            </div>
                         </div>
-                        <Skeleton className="h-5 w-20 rounded-full" />
-                    </div>
-                    <div className="p-6">
-                        <div className="flex items-center gap-[2px] w-full h-6 mb-3">
-                            {Array.from({ length: 60 }).map((_, i) => (
-                                <div key={i} className="flex-1 h-full rounded-[1px] bg-muted-foreground/10" />
+                        <div className="grid grid-cols-2 gap-px bg-border/25 lg:border-l lg:border-border/25">
+                            {[1, 2, 3, 4].map((item) => (
+                                <div key={item} className="bg-muted/35 p-6 dark:bg-[#111111]">
+                                    <Skeleton className="h-3 w-16" />
+                                    <Skeleton className="mt-4 h-7 w-24" />
+                                </div>
                             ))}
                         </div>
-                        <div className="flex items-center justify-between">
-                            <Skeleton className="h-3 w-52" />
-                            <Skeleton className="h-3 w-24" />
-                        </div>
                     </div>
                 </div>
 
-                {/* Stats + breakdowns skeleton */}
-                <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                    <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-border/30">
-                        {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="px-5 py-4">
-                                <Skeleton className="h-3 w-16 mb-2.5" />
-                                <Skeleton className="h-6 w-20 mb-2" />
-                                <Skeleton className="h-3 w-24" />
-                            </div>
-                        ))}
+                <div className="mt-12 border-y border-border/25 py-7">
+                    <div className="flex items-end justify-between">
+                        <Skeleton className="h-5 w-28" />
+                        <Skeleton className="h-8 w-24" />
                     </div>
-                    <div className="grid md:grid-cols-2 divide-x divide-border/30 border-t border-border/30">
-                        {[1, 2].map((section) => (
-                            <div key={section}>
-                                <div className="px-5 py-3 border-b border-border/20">
-                                    <Skeleton className="h-3 w-16" />
-                                </div>
-                                <div className="divide-y divide-border/10">
-                                    {[1, 2, 3].map((row) => (
-                                        <div key={row} className="flex items-center justify-between px-5 py-2.5">
-                                            <Skeleton className="h-3.5 w-32" />
-                                            <div className="flex items-center gap-3">
-                                                <Skeleton className="w-16 h-1 rounded-full" />
-                                                <Skeleton className="h-3 w-8" />
-                                                <Skeleton className="h-3 w-8" />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <Skeleton className="mt-8 h-64 w-full" />
                 </div>
-            </div>
+
+                <div className="mt-12 grid overflow-hidden rounded-lg bg-muted/30 dark:bg-[#0d0d0d] lg:grid-cols-2 lg:divide-x lg:divide-border/25">
+                    {[1, 2].map((section) => (
+                        <div key={section} className="space-y-px">
+                            <div className="p-6"><Skeleton className="h-5 w-32" /></div>
+                            {[1, 2, 3, 4].map((row) => (
+                                <div key={row} className="px-6"><Skeleton className="h-10 w-full" /></div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            </main>
         );
     }
 
@@ -329,7 +460,15 @@ export default function UsagePage({ params }: PageProps) {
         );
     }
 
-    const percentage = Math.min((org.monthly_requests_used / org.monthly_request_limit) * 100, 100);
+    const monthlyRequestsUsed = Number.isFinite(org.monthly_requests_used) && org.monthly_requests_used >= 0
+        ? org.monthly_requests_used
+        : 0;
+    const monthlyRequestLimit = !Number.isNaN(org.monthly_request_limit) && org.monthly_request_limit > 0
+        ? org.monthly_request_limit
+        : REQUEST_LIMIT_FALLBACKS[org.subscription_tier];
+    const percentage = Number.isFinite(monthlyRequestLimit)
+        ? Math.min((monthlyRequestsUsed / monthlyRequestLimit) * 100, 100)
+        : 0;
     const isNearLimit = percentage >= 80;
     const isAtLimit = percentage >= 100;
 
@@ -341,198 +480,318 @@ export default function UsagePage({ params }: PageProps) {
         .sort(([, a], [, b]) => b - a)
         .slice(0, 5);
 
+    const totalRequests = stats?.total_requests || 0;
+    const totalInputTokens = stats?.input_tokens || 0;
+    const totalOutputTokens = stats?.output_tokens || 0;
+    const totalTokens = stats?.total_tokens || totalInputTokens + totalOutputTokens;
+    const totalCost = stats?.total_cost || 0;
+    const successRate = stats?.success_rate || 0;
+    const averageLatency = stats?.avg_latency || 0;
+    const successfulRequests = Math.round(totalRequests * (successRate / 100));
+    const activity = stats?.daily_requests || buildRequestActivity([], timeRange);
+    const activityMaximum = Math.max(...activity.map((point) => point.input_tokens + point.output_tokens), 1);
+    const activityLabelInterval = activity.length > 24 ? 5 : activity.length > 12 ? 4 : 1;
+    const remainingRequests = Number.isFinite(monthlyRequestLimit)
+        ? Math.max(monthlyRequestLimit - monthlyRequestsUsed, 0)
+        : Number.POSITIVE_INFINITY;
+    const nextReset = new Date();
+    nextReset.setMonth(nextReset.getMonth() + 1, 1);
+    nextReset.setHours(0, 0, 0, 0);
+    const periodLabel = timeRange === '24h' ? 'Last 24 hours' : timeRange === '30d' ? 'Last 30 days' : 'Last 7 days';
+    const planLabel = `${org.subscription_tier.charAt(0).toUpperCase()}${org.subscription_tier.slice(1)}`;
+    const peakTokenInterval = Math.max(...activity.map((point) => point.input_tokens + point.output_tokens), 0);
+    const averageTokenInterval = activity.length > 0 ? totalTokens / activity.length : 0;
+    const hoveredActivityPoint = hoveredActivityIndex === null ? null : activity[hoveredActivityIndex] || null;
+
     return (
-        <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <main className="mx-auto w-full max-w-[980px] px-4 py-8 pb-24 sm:px-6 sm:py-10 lg:px-8">
+            <header className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h1 className="text-base font-medium">Usage</h1>
+                    <p className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground">ORGANIZATION TELEMETRY</p>
+                    <h1 className="mt-3 text-[2rem] font-medium leading-none tracking-[-0.055em]">Usage</h1>
+                    <p className="mt-3 max-w-[60ch] text-xs leading-5 text-muted-foreground">
+                        Model traffic, token consumption, and capacity across {org.name}.
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-[10px] px-2.5"
-                            disabled={isExporting}
-                        >
-                            {isExporting && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-                            Export
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleExport('csv')}>
-                            CSV
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExport('json')}>
-                            JSON
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-                <div className="flex bg-muted/50 p-0.5 rounded-lg border border-border/40">
-                    {['24h', '7d', '30d'].map((range) => (
-                        <button
-                            key={range}
-                            onClick={() => setTimeRange(range)}
-                            className={`px-3 py-1 text-[10px] font-medium rounded-md transition-all ${timeRange === range
-                                ? 'bg-background text-foreground shadow-sm'
-                                : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                        >
-                            {range}
-                        </button>
-                    ))}
-                </div>
-                </div>
-            </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 rounded-md border-border/30 bg-transparent px-3 text-[10px] shadow-none transition-colors hover:bg-muted/50 active:scale-[0.98]" disabled={isExporting}>
+                                {isExporting && <Loader2 className="mr-1 size-3 animate-spin" />}
+                                Export data
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleExport('csv')}>Export CSV</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleExport('json')}>Export JSON</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <div className="flex h-8 items-center rounded-md border border-border/30 p-0.5" aria-label="Usage period">
+                        {['24h', '7d', '30d'].map((range) => {
+                            const isGated = range === '30d' && org.subscription_tier === 'free';
 
-            {/* Monthly Quota */}
-            <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                <div className="px-6 py-4 border-b border-border/40 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-sm font-medium tracking-tight">Monthly Quota</h3>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                            {org.monthly_requests_used.toLocaleString()} / {org.monthly_request_limit.toLocaleString()} requests used
-                        </p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] h-5 gap-1.5 px-2.5 font-normal uppercase tracking-wider">
-                        <span className={`size-1.5 rounded-full ${isAtLimit ? 'bg-red-500' : 'bg-emerald-500'}`} />
-                        {org.subscription_tier} Plan
-                    </Badge>
-                </div>
-                <div className="p-6">
-                    <div className="flex items-center gap-[2px] w-full h-6 mb-3">
-                        {Array.from({ length: 60 }).map((_, i) => {
-                            const filled = i < Math.round((percentage / 100) * 60);
-                            const barColor = isAtLimit ? "bg-red-500" : isNearLimit ? "bg-amber-500" : "bg-emerald-500";
+                            if (isGated) {
+                                return (
+                                    <div key={range} className="group relative">
+                                        <span
+                                            tabIndex={0}
+                                            aria-label="30-day history requires an upgrade"
+                                            className="block rounded-[4px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                            <button
+                                                type="button"
+                                                disabled
+                                                className="h-6 cursor-not-allowed rounded-[4px] px-3 font-mono text-[9px] font-medium text-muted-foreground/45"
+                                            >
+                                                30D
+                                            </button>
+                                        </span>
+                                        <div
+                                            className="pointer-events-none invisible absolute -right-4 top-full z-50 w-60 pt-2 group-hover:pointer-events-auto group-hover:visible group-focus-within:pointer-events-auto group-focus-within:visible"
+                                        >
+                                            <div
+                                                role="dialog"
+                                                aria-label="Upgrade to unlock 30-day history"
+                                                className="rounded-md border border-border/30 bg-[#f0f0ee] p-3.5 shadow-2xl dark:bg-[#191919]"
+                                            >
+                                                <p className="text-[11px] font-medium text-popover-foreground">Unlock 30-day history</p>
+                                                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Available on Pro, Team, and Enterprise plans.</p>
+                                                <Link
+                                                    href={`/${orgSlug}/~/billing`}
+                                                    className="mt-3 inline-flex text-[10px] font-medium text-popover-foreground underline underline-offset-4 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                >
+                                                    Upgrade plan
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
                             return (
-                                <motion.div
-                                    key={i}
-                                    initial={{ opacity: 0, scaleY: 0 }}
-                                    animate={{ opacity: filled ? 1 : 0.15, scaleY: 1 }}
-                                    transition={{ duration: 0.3, delay: i * 0.008, ease: "easeOut" }}
+                                <button
+                                key={range}
+                                type="button"
+                                onClick={() => {
+                                    setHoveredActivityIndex(null);
+                                    setTimeRange(range);
+                                }}
+                                    aria-pressed={timeRange === range}
                                     className={clsx(
-                                        "flex-1 h-full rounded-[1px]",
-                                        filled ? barColor : "bg-muted-foreground/50"
+                                        "h-6 rounded-[4px] px-3 font-mono text-[9px] font-medium transition-[background-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-[0.97]",
+                                        timeRange === range ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                                     )}
-                                />
+                                >
+                                    {range.toUpperCase()}
+                                </button>
                             );
                         })}
                     </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted-foreground">Reset happens on the 1st of every month</span>
-                        {isAtLimit ? (
-                            <span className="flex items-center gap-1.5 text-red-500 font-medium">
-                                <AlertTriangle className="h-3 w-3" />
-                                Limit reached
-                            </span>
-                        ) : (
-                            <span className={isNearLimit ? "text-amber-500 font-medium" : "text-muted-foreground"}>
-                                {Math.round(100 - percentage)}% remaining
-                            </span>
-                        )}
-                    </div>
                 </div>
-            </div>
+            </header>
 
-            {/* Stats + Breakdowns — single dense card */}
-            <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                {/* Top row: key metrics */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-border/30">
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Requests</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1">{(stats?.total_requests || 0).toLocaleString()}</p>
-                        <span className="text-[10px] text-muted-foreground">{stats?.success_rate ? `${stats.success_rate.toFixed(1)}% success` : '—'}</span>
-                    </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Tokens</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1">
-                            {stats?.total_tokens && stats.total_tokens >= 1000000
-                                ? `${(stats.total_tokens / 1000000).toFixed(1)}M`
-                                : stats?.total_tokens && stats.total_tokens >= 1000
-                                    ? `${(stats.total_tokens / 1000).toFixed(1)}K`
-                                    : (stats?.total_tokens || 0).toLocaleString()}
-                        </p>
-                        <span className="text-[10px] text-muted-foreground">
-                            {stats?.total_requests ? `~${Math.round((stats?.total_tokens || 0) / stats.total_requests)} per req` : '—'}
-                        </span>
-                    </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Cost</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1">${(stats?.total_cost || 0).toFixed(2)}</p>
-                        <span className="text-[10px] text-muted-foreground">
-                            {stats?.total_requests ? `$${((stats?.total_cost || 0) / stats.total_requests).toFixed(4)}/req` : '—'}
-                        </span>
-                    </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Avg Latency</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1">{stats?.avg_latency || 0}ms</p>
-                        <span className="text-[10px] text-muted-foreground">
-                            {(stats?.avg_latency || 0) > 1000 ? `${((stats?.avg_latency || 0) / 1000).toFixed(1)}s` : 'p50 response'}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Bottom row: models + providers side by side */}
-                <div className="grid md:grid-cols-2 divide-x divide-border/30 border-t border-border/30">
-                    {/* Models */}
-                    <div>
-                        <div className="px-5 py-3 border-b border-border/20">
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Models</span>
+            <section className="relative mt-10 overflow-hidden rounded-lg bg-[#f3f3f1] dark:bg-[#111111]" aria-labelledby="capacity-heading">
+                <div className="grid lg:grid-cols-[1.55fr_1fr]">
+                    <div className="relative px-5 py-7 sm:px-8 sm:py-9 lg:px-10 lg:py-10">
+                        <div>
+                            <div>
+                                <p className="text-[9px] font-medium tracking-[0.16em] text-muted-foreground">MONTHLY CAPACITY</p>
+                                <h2 id="capacity-heading" className="mt-2 text-sm font-medium">{planLabel} plan</h2>
+                            </div>
                         </div>
-                        {topModels.length === 0 ? (
-                            <div className="px-5 py-6 text-xs text-muted-foreground">No data</div>
-                        ) : (
-                            <div className="divide-y divide-border/10">
-                                {topModels.map(([model, count]) => {
-                                    const pct = stats?.total_requests ? (count / stats.total_requests) * 100 : 0;
-                                    return (
-                                        <div key={model} className="flex items-center justify-between px-5 py-2.5 hover:bg-muted/10 transition-colors">
-                                            <span className="text-xs font-medium truncate mr-4">{model}</span>
-                                            <div className="flex items-center gap-3 shrink-0">
-                                                <div className="w-16 h-1 rounded-full bg-muted-foreground/10 overflow-hidden">
-                                                    <div className="h-full rounded-full bg-foreground/40" style={{ width: `${pct}%` }} />
-                                                </div>
-                                                <span className="text-[11px] tabular-nums text-muted-foreground w-8 text-right">{pct.toFixed(0)}%</span>
-                                                <span className="text-[11px] tabular-nums text-foreground w-10 text-right font-medium">{count.toLocaleString()}</span>
-                                            </div>
+
+                        <div className="mt-10 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+                            <div className="flex min-w-0 items-baseline gap-3">
+                                <span className="font-mono text-4xl font-medium leading-none tracking-[-0.075em] tabular-nums sm:text-[3.25rem]">{monthlyRequestsUsed.toLocaleString()}</span>
+                                <span className="truncate text-xs text-muted-foreground">/ {Number.isFinite(monthlyRequestLimit) ? monthlyRequestLimit.toLocaleString() : 'unlimited'}</span>
+                            </div>
+                            <p className={clsx("font-mono text-xs tabular-nums", isAtLimit ? "text-red-500" : isNearLimit ? "text-amber-500" : "text-muted-foreground")}>
+                                {Number.isFinite(monthlyRequestLimit) ? `${percentage.toFixed(1)}%` : '∞'}
+                            </p>
+                        </div>
+
+                        <div className="mt-8 flex h-9 w-full items-center gap-[2px]" aria-label={`${percentage.toFixed(1)}% of monthly quota consumed`}>
+                            {Array.from({ length: 60 }).map((_, index) => {
+                                const filled = index < Math.round((percentage / 100) * 60);
+                                const barColor = isAtLimit ? "bg-red-500" : isNearLimit ? "bg-amber-500" : "bg-emerald-500";
+                                return (
+                                    <motion.span
+                                        key={index}
+                                        initial={{ opacity: 0, scaleY: 0.2 }}
+                                        animate={{ opacity: filled ? 0.9 : 0.12, scaleY: 1 }}
+                                        transition={{ duration: 0.28, delay: index * 0.006, ease: [0.22, 1, 0.36, 1] }}
+                                        className={clsx("h-full min-w-px flex-1 origin-bottom rounded-[1px]", filled ? barColor : "bg-foreground")}
+                                    />
+                                );
+                            })}
+                        </div>
+
+                        <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-border/25 pt-5">
+                            <div className="min-w-0">
+                                <dt className="text-[9px] tracking-[0.08em] text-muted-foreground">Remaining</dt>
+                                <dd className="mt-1.5 truncate font-mono text-[11px] tabular-nums">{Number.isFinite(remainingRequests) ? remainingRequests.toLocaleString() : 'Unlimited'}</dd>
+                            </div>
+                            <div className="min-w-0">
+                                <dt className="text-[9px] tracking-[0.08em] text-muted-foreground">Resets</dt>
+                                <dd className="mt-1.5 truncate text-[11px]">{nextReset.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</dd>
+                            </div>
+                            <div className="min-w-0">
+                                <dt className="text-[9px] tracking-[0.08em] text-muted-foreground">Scope</dt>
+                                <dd className="mt-1.5 truncate text-[11px]">All projects</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-px border-t border-border/25 bg-border/25 lg:border-l lg:border-t-0">
+                        <div className="bg-[#f3f3f1] dark:bg-[#111111]"><PeriodMetric label="Requests" value={totalRequests.toLocaleString()} detail={periodLabel} /></div>
+                        <div className="bg-[#f3f3f1] dark:bg-[#111111]"><PeriodMetric label="Success" value={`${successRate.toFixed(1)}%`} detail={`${successfulRequests.toLocaleString()} completed`} /></div>
+                        <div className="bg-[#f3f3f1] dark:bg-[#111111]"><PeriodMetric label="Tokens" value={formatCompactNumber(totalTokens)} detail={totalRequests ? `${formatCompactNumber(Math.round(totalTokens / totalRequests))} / request` : 'No token activity'} /></div>
+                        <div className="bg-[#f3f3f1] dark:bg-[#111111]"><PeriodMetric label="Spend" value={`$${totalCost.toFixed(2)}`} detail={totalRequests ? `$${(totalCost / totalRequests).toFixed(4)} / request` : 'No spend recorded'} /></div>
+                        <div className="col-span-2 flex items-center justify-between gap-4 bg-[#ededeb] px-5 py-4 dark:bg-[#0d0d0d] sm:px-6">
+                            <span className="text-[10px] text-muted-foreground">Mean response latency</span>
+                            <span className="font-mono text-xs tabular-nums">{averageLatency.toLocaleString()} ms</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="mt-14 overflow-hidden rounded-lg bg-muted/30 dark:bg-[#111111]" aria-labelledby="activity-heading">
+                <header className="flex flex-col gap-5 border-b border-border/25 px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-6">
+                    <div>
+                        <p className="text-[9px] font-medium tracking-[0.16em] text-muted-foreground">TOKEN FLOW</p>
+                        <h2 id="activity-heading" className="mt-2 text-lg font-medium tracking-[-0.035em]">Input and output tokens</h2>
+                        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">Token volume processed across every organization project.</p>
+                    </div>
+                    <div className="flex gap-8 sm:text-right">
+                        <div>
+                            <p className="text-[9px] text-muted-foreground">Peak tokens</p>
+                            <p className="mt-1.5 font-mono text-xs tabular-nums">{formatCompactNumber(peakTokenInterval)}</p>
+                        </div>
+                        <div>
+                            <p className="text-[9px] text-muted-foreground">Average tokens</p>
+                            <p className="mt-1.5 font-mono text-xs tabular-nums">{formatCompactNumber(Math.round(averageTokenInterval))}</p>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="relative overflow-hidden px-5 pb-5 pt-6 sm:px-6 sm:pb-6 sm:pt-7">
+                    <div
+                        className="relative h-64 w-full sm:h-72"
+                        role="img"
+                        aria-label={`Input and output token activity for the ${periodLabel.toLowerCase()}`}
+                        onMouseLeave={() => setHoveredActivityIndex(null)}
+                    >
+                        <div className="pointer-events-none absolute inset-0 flex flex-col justify-between" aria-hidden="true">
+                            {[0, 1, 2, 3].map((line) => <span key={line} className="w-full border-t border-foreground/[0.08]" />)}
+                        </div>
+
+                        <div className="absolute inset-0 z-10 flex items-end">
+                            {activity.map((point, index) => {
+                                const intervalTokens = point.input_tokens + point.output_tokens;
+                                const barHeight = intervalTokens > 0 ? Math.max((intervalTokens / activityMaximum) * 100, 1.5) : 0;
+                                const inputShare = intervalTokens > 0 ? (point.input_tokens / intervalTokens) * 100 : 0;
+                                const outputShare = intervalTokens > 0 ? (point.output_tokens / intervalTokens) * 100 : 0;
+                                const isActive = hoveredActivityIndex === index;
+
+                                return (
+                                    <div
+                                        key={`${point.date}-bars-${index}`}
+                                        className={clsx(
+                                            "relative flex h-full min-w-0 flex-1 cursor-crosshair items-end justify-center px-px transition-colors",
+                                            isActive && "bg-foreground/[0.025]",
+                                        )}
+                                        onMouseEnter={() => setHoveredActivityIndex(index)}
+                                    >
+                                        <div
+                                            className="flex w-full min-w-[4px] flex-col overflow-hidden rounded-t-[2px] transition-opacity duration-150"
+                                            style={{ height: `${barHeight}%`, opacity: isActive ? 1 : 0.86 }}
+                                        >
+                                            <span className="w-full bg-orange-400" style={{ height: `${outputShare}%` }} />
+                                            <span className="w-full bg-emerald-500" style={{ height: `${inputShare}%` }} />
                                         </div>
-                                    );
-                                })}
+
+                                        {isActive && hoveredActivityPoint && (
+                                            <div
+                                                role="status"
+                                                className={clsx(
+                                                    "pointer-events-none absolute top-3 z-20 w-44 rounded-md border border-border/30 bg-[#f0f0ee] px-3 py-2.5 text-left shadow-xl dark:bg-[#191919]",
+                                                    index <= 1 ? "left-0" : index >= activity.length - 2 ? "right-0" : "left-1/2 -translate-x-1/2",
+                                                )}
+                                            >
+                                                <p className="font-mono text-[9px] text-muted-foreground">{point.date}</p>
+                                                <div className="mt-2.5 flex items-center justify-between gap-5">
+                                                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="size-1.5 bg-emerald-500" />Input</span>
+                                                    <span className="font-mono text-[10px] font-medium tabular-nums">{point.input_tokens.toLocaleString()}</span>
+                                                </div>
+                                                <div className="mt-1.5 flex items-center justify-between gap-5">
+                                                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="size-1.5 bg-orange-400" />Output</span>
+                                                    <span className="font-mono text-[10px] font-medium tabular-nums">{point.output_tokens.toLocaleString()}</span>
+                                                </div>
+                                                <div className="mt-2 flex items-center justify-between gap-5 border-t border-border/25 pt-2">
+                                                    <span className="text-[10px] text-muted-foreground">Requests</span>
+                                                    <span className="font-mono text-[10px] tabular-nums">{point.count.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {totalTokens === 0 && (
+                            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                                <div className="bg-background/80 px-4 py-3 text-center backdrop-blur-sm">
+                                    <p className="text-xs font-medium">No token activity</p>
+                                    <p className="mt-1 text-[10px] text-muted-foreground">Input and output volume will appear after the first model call.</p>
+                                </div>
                             </div>
                         )}
                     </div>
-
-                    {/* Providers */}
-                    <div>
-                        <div className="px-5 py-3 border-b border-border/20">
-                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Providers</span>
+                    <div className="mt-1 flex justify-between gap-2 font-mono text-[8px] text-muted-foreground">
+                        {activity.map((point, index) => {
+                            const showLabel = index === 0 || index === activity.length - 1 || index % activityLabelInterval === 0;
+                            return (
+                                <span key={`${point.date}-label-${index}`} className="min-w-0 flex-1 truncate text-center">{showLabel ? point.date : ''}</span>
+                            );
+                        })}
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border/25 pt-4 text-[10px]">
+                        <div className="flex items-center gap-2">
+                            <span className="size-2 bg-emerald-500" />
+                            <span className="text-muted-foreground">Input tokens</span>
+                            <span className="font-mono tabular-nums">{formatCompactNumber(totalInputTokens)}</span>
                         </div>
-                        {topProviders.length === 0 ? (
-                            <div className="px-5 py-6 text-xs text-muted-foreground">No data</div>
-                        ) : (
-                            <div className="divide-y divide-border/10">
-                                {topProviders.map(([provider, count]) => {
-                                    const pct = stats?.total_requests ? (count / stats.total_requests) * 100 : 0;
-                                    return (
-                                        <div key={provider} className="flex items-center justify-between px-5 py-2.5 hover:bg-muted/10 transition-colors">
-                                            <span className="text-xs font-medium capitalize truncate mr-4">{provider}</span>
-                                            <div className="flex items-center gap-3 shrink-0">
-                                                <div className="w-16 h-1 rounded-full bg-muted-foreground/10 overflow-hidden">
-                                                    <div className="h-full rounded-full bg-foreground/40" style={{ width: `${pct}%` }} />
-                                                </div>
-                                                <span className="text-[11px] tabular-nums text-muted-foreground w-8 text-right">{pct.toFixed(0)}%</span>
-                                                <span className="text-[11px] tabular-nums text-foreground w-10 text-right font-medium">{count.toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                            <span className="size-2 bg-orange-400" />
+                            <span className="text-muted-foreground">Output tokens</span>
+                            <span className="font-mono tabular-nums">{formatCompactNumber(totalOutputTokens)}</span>
+                        </div>
+                        <span className="ml-auto font-mono text-[9px] text-muted-foreground">{timeRange === '24h' ? 'HOURLY' : 'DAILY'} BUCKETS</span>
                     </div>
                 </div>
-            </div>
-        </div>
+            </section>
+
+            <section className="mt-14" aria-labelledby="routing-heading">
+                <header>
+                    <p className="text-[9px] font-medium tracking-[0.16em] text-muted-foreground">ROUTING DISTRIBUTION</p>
+                    <h2 id="routing-heading" className="mt-2 text-lg font-medium tracking-[-0.035em]">Where traffic ran</h2>
+                    <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+                        Traffic distribution for the selected window. Bars show share of total requests, not usage limits.
+                    </p>
+                </header>
+
+                <div className="mt-6 grid overflow-hidden rounded-lg bg-muted/30 dark:bg-[#0d0d0d] lg:grid-cols-2 lg:divide-x lg:divide-border/25">
+                    <TrafficLedger title="Models" description="Request share by model identifier" items={topModels} total={totalRequests} />
+                    <div className="border-t border-border/25 lg:border-t-0">
+                        <TrafficLedger title="Providers" description="Request share by upstream provider" items={topProviders} total={totalRequests} capitalize />
+                    </div>
+                </div>
+            </section>
+
+            <footer className="mt-12 flex flex-col gap-2 border-t border-border/25 pt-5 text-[10px] leading-4 text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <p>Usage aggregates every project and environment in {org.name}.</p>
+                <p className="font-mono">WINDOW / {timeRange.toUpperCase()}</p>
+            </footer>
+        </main>
     );
 }

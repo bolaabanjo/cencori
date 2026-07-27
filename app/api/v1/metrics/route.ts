@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { addGatewayHeaders } from '@/lib/gateway-middleware';
 import { extractGatewayCallerIdentity, logApiGatewayRequest } from '@/lib/api-gateway-logs';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 
 interface MetricsResponse {
     period: string;
@@ -145,19 +146,30 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const period = searchParams.get('period') || '24h';
     const { start, end } = getPeriodDates(period);
-    const { data: requests, error } = await supabase
-        .from('ai_requests')
-        .select('status, cost_usd, latency_ms, prompt_tokens, completion_tokens, total_tokens, provider, model')
-        .eq('project_id', projectId)
-        .gte('created_at', start.toISOString())
-        .lte('created_at', end.toISOString());
-
-    if (error) {
+    type MetricRow = {
+        status: string | null; cost_usd: number | null; latency_ms: number | null;
+        prompt_tokens: number | null; completion_tokens: number | null; total_tokens: number | null;
+        provider: string | null; model: string | null;
+    };
+    let requests: MetricRow[];
+    try {
+        // Paginate past the 1000-row ceiling so totals reflect ALL requests.
+        requests = await fetchAllRows<MetricRow>((from, to) =>
+            supabase
+                .from('ai_requests')
+                .select('status, cost_usd, latency_ms, prompt_tokens, completion_tokens, total_tokens, provider, model')
+                .eq('project_id', projectId)
+                .gte('created_at', start.toISOString())
+                .lte('created_at', end.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+        );
+    } catch (error) {
         console.error('[Metrics API] Query error:', error);
         return respond(
             NextResponse.json({ error: 'Failed to fetch metrics' }, { status: 500 }),
             'metrics_query_failed',
-            error.message
+            error instanceof Error ? error.message : 'query failed'
         );
     }
 

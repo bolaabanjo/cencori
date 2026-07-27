@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { featureGateResponse, getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange, hasFeature } from '@/lib/entitlements';
 
@@ -64,14 +65,22 @@ export async function GET(request: Request, { params }: RouteParams) {
             .gte('created_at', startDate.toISOString())
             .lte('created_at', now.toISOString());
 
-        const { data: fallbackRequests, count: fallbackCount } = await supabase
-            .from('ai_requests')
-            .select('request_payload, provider, model', { count: 'exact' })
-            .eq('project_id', projectId)
-            .eq('environment', environment)
-            .eq('status', 'success_fallback')
-            .gte('created_at', startDate.toISOString())
-            .lte('created_at', now.toISOString());
+        // Paginate the fallback rows past the 1000-row ceiling; the true count is
+        // then just the full array length (totalRequests already uses exact count).
+        type FallbackRow = { request_payload: Record<string, unknown> | null; provider: string | null; model: string | null };
+        const fallbackRequests = await fetchAllRows<FallbackRow>((from, to) =>
+            supabase
+                .from('ai_requests')
+                .select('request_payload, provider, model')
+                .eq('project_id', projectId)
+                .eq('environment', environment)
+                .eq('status', 'success_fallback')
+                .gte('created_at', startDate.toISOString())
+                .lte('created_at', now.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+        );
+        const fallbackCount = fallbackRequests.length;
 
         const fallbackRate = totalRequests && totalRequests > 0
             ? ((fallbackCount || 0) / totalRequests) * 100

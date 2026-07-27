@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { fetchAllRows } from '@/lib/supabase-paginate';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 function mean(arr: number[]): number {
@@ -70,20 +71,29 @@ export async function GET(
             return NextResponse.json({ models: [], summary: null, insufficient_data: true });
         }
 
-        // Fetch requests with only the columns we need
-        const { data: requests, error } = await supabaseAdmin
-            .from('ai_requests')
-            .select('model, provider, cost_usd, latency_ms, status, prompt_tokens, completion_tokens, total_tokens')
-            .eq('project_id', projectId)
-            .in('api_key_id', apiKeyIds)
-            .gte('created_at', startTime.toISOString());
-
-        if (error) {
+        // Fetch requests with only the columns we need (paginated past the 1000-row ceiling)
+        type MERow = {
+            model: string | null; provider: string | null; cost_usd: number | null; latency_ms: number | null;
+            status: string | null; prompt_tokens: number | null; completion_tokens: number | null; total_tokens: number | null;
+        };
+        let requests: MERow[];
+        try {
+            requests = await fetchAllRows<MERow>((from, to) =>
+                supabaseAdmin
+                    .from('ai_requests')
+                    .select('model, provider, cost_usd, latency_ms, status, prompt_tokens, completion_tokens, total_tokens')
+                    .eq('project_id', projectId)
+                    .in('api_key_id', apiKeyIds)
+                    .gte('created_at', startTime.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(from, to)
+            );
+        } catch (error) {
             console.error('[Model Efficiency API] DB error:', error);
             return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
         }
 
-        if (!requests || requests.length === 0) {
+        if (requests.length === 0) {
             return NextResponse.json({ models: [], summary: null, insufficient_data: true });
         }
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Activity, Shield, Building2, FolderOpen, Key, Users, DollarSign, Zap, Settings, ScanSearch, Radio } from 'lucide-react';
+import { Activity, Shield, Building2, FolderOpen, Key, Users, DollarSign, Zap, Settings, ScanSearch, Radio, Database, Bot } from 'lucide-react';
 import { usePlatformMetrics } from '../hooks/useMetrics';
 import { MetricsCard, MetricsGrid, MetricsSection } from '../components/MetricsCard';
 import { TimeRangeSelector } from '../components/TimeRangeSelector';
@@ -58,6 +58,58 @@ export function AdminDashboard() {
                 <LoadingSkeleton />
             ) : data ? (
                 <>
+                    {/* Throughput — the counter (Panel 1) */}
+                    <MetricsSection
+                        title="Throughput"
+                        description={`What % of global AI runs on Cencori — the numerator we grow (${PERIOD_LABELS[period]})`}
+                    >
+                        <ThroughputHero
+                            tokens={data.aiGateway.totalTokens}
+                            requests={data.aiGateway.totalRequests}
+                            cost={data.aiGateway.totalCost}
+                            governedShare={
+                                data.capture.gatewayRequests > 0
+                                    ? Math.min(100, (data.capture.governanceDecisions / data.capture.gatewayRequests) * 100)
+                                    : 0
+                            }
+                            period={period}
+                        />
+                    </MetricsSection>
+
+                    {/* Capture by product (Panel 2) */}
+                    <MetricsSection
+                        title="Capture by product"
+                        description="Each product captures a type of AI workload"
+                    >
+                        <MetricsGrid columns={4}>
+                            <MetricsCard
+                                title="Gateway"
+                                value={data.capture.gatewayRequests}
+                                subtitle={`${data.aiGateway.totalTokens.toLocaleString()} tokens · model traffic`}
+                                subtitleColor="success"
+                                icon={<Activity className="h-4 w-4" />}
+                            />
+                            <MetricsCard
+                                title="Governance"
+                                value={data.capture.governanceDecisions}
+                                subtitle="governed events · enterprise usage"
+                                icon={<Shield className="h-4 w-4" />}
+                            />
+                            <MetricsCard
+                                title="Memory"
+                                value={data.capture.memories}
+                                subtitle="memories · state captured"
+                                icon={<Database className="h-4 w-4" />}
+                            />
+                            <MetricsCard
+                                title="Agents"
+                                value={data.capture.agentSessions}
+                                subtitle="sessions · agent workloads"
+                                icon={<Bot className="h-4 w-4" />}
+                            />
+                        </MetricsGrid>
+                    </MetricsSection>
+
                     {/* AI Gateway Section */}
                     <MetricsSection
                         title="AI Gateway"
@@ -340,6 +392,43 @@ export function AdminDashboard() {
             {/* Footer */}
             <div className="text-center text-[10px] text-muted-foreground pt-4 border-t border-border/40">
                 {data && `Last updated: ${new Date(data.generatedAt).toLocaleString()}`}
+            </div>
+        </div>
+    );
+}
+
+// Throughput hero — the headline "AI running on Cencori" counter (Panel 1)
+function ThroughputHero({
+    tokens, requests, cost, governedShare, period,
+}: { tokens: number; requests: number; cost: number; governedShare: number; period: TimePeriod }) {
+    const subStat = (label: string, value: string) => (
+        <div>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+            <p className="mt-1 font-mono text-lg tabular-nums">{value}</p>
+        </div>
+    );
+    return (
+        <div className="rounded-xl border border-border/50 bg-card p-5 sm:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        AI Throughput · {PERIOD_LABELS[period]}
+                    </p>
+                    <div className="mt-2 flex items-baseline gap-2">
+                        <span className="font-mono text-4xl sm:text-5xl font-semibold tabular-nums">
+                            {tokens.toLocaleString()}
+                        </span>
+                        <span className="text-sm text-muted-foreground">tokens processed</span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                        The numerator behind &ldquo;% of global AI on Cencori.&rdquo;
+                    </p>
+                </div>
+                <div className="flex gap-6 sm:gap-8">
+                    {subStat('Requests', requests.toLocaleString())}
+                    {subStat('Cost', `$${cost.toFixed(2)}`)}
+                    {subStat('Governed', `${governedShare.toFixed(0)}%`)}
+                </div>
             </div>
         </div>
     );

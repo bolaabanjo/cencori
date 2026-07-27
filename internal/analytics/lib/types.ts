@@ -122,8 +122,20 @@ export interface PlatformEventsMetrics {
     eventsToday: number;
 }
 
+/**
+ * Workload-capture instrument — the operational version of "% of global AI on
+ * Cencori". Each field is a workload a Cencori product captures.
+ */
+export interface CaptureMetrics {
+    gatewayRequests: number;      // model traffic captured
+    governanceDecisions: number;  // enterprise AI usage captured (governed events)
+    memories: number;             // state captured
+    agentSessions: number;        // agent workloads captured
+}
+
 export interface PlatformOverviewMetrics {
     aiGateway: AIGatewayMetrics;
+    capture: CaptureMetrics;
     security: SecurityMetrics;
     organizations: OrganizationsMetrics;
     projects: ProjectsMetrics;
