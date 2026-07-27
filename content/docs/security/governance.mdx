@@ -1,0 +1,167 @@
+---
+title: "AI Governance"
+description: "Enforce policy in the request path, classify with a model, require human approvals, and keep an immutable, independently-verifiable audit ledger of every AI decision."
+section: "Security"
+order: 6
+---
+
+AI Governance turns Cencori into a control plane for every model call. Unlike observe-only tools that watch traffic out-of-band, Cencori enforces policy **inline** — in the request path, before a response reaches your users — and writes every decision to an immutable, hash-chained ledger that an auditor can verify **without trusting Cencori**.
+
+This is the layer built for regulated teams: banks under CBN-AML, organizations under NDPR/NDPA, and anyone who has to answer "what did your AI do, and can you prove it?"
+
+## Architecture at a glance
+
+| Layer | What it does |
+| --- | --- |
+| **Policy-as-code engine** | Bounded, typed, deterministic evaluation of your policies against each request. |
+| **Model-based guardrails** | A managed classifier scores content for jailbreak, injection, PII, PCI, toxicity, exfiltration. |
+| **Inline enforcement** | Block, redact, tokenize, route, rate-limit, or hold for approval — in path, on input and output. |
+| **RBAC + maker-checker** | Least-privilege roles and DB-enforced segregation of duties for every sensitive change. |
+| **Immutable audit ledger** | Per-org hash chain, WORM, provably-complete delivery, Ed25519-signed checkpoints. |
+| **Evidence packs** | Regulator-ready proof generated from the ledger, per framework. |
+
+Two design guarantees run through all of it:
+
+- **Fail-open on the gateway.** If governance itself has an outage, policy loading fails open so it can never take your gateway down. The error is surfaced, never silently swallowed.
+- **Fail-safe in policy.** A rule with an empty condition never fires, and conflicts resolve **most-restrictive-wins** — a permissive rule can never override a block.
+
+## The lifecycle
+
+Governance runs as a maker-checker workflow. Nothing goes live on one person's say-so.
+
+1. **Install a policy** — start from a framework-mapped template. This creates a **draft**. Nothing is enforced yet.
+2. **Review what it enforces** — open the policy to read its rules in plain language.
+3. **Request activation** — opens a change request in the approvals queue.
+4. **A teammate approves** — a *different* person approves. Self-approval is blocked at the database level.
+5. **Enforcing** — the policy applies to every matching request, and each decision is recorded in the ledger.
+
+## Policy-as-code
+
+A policy is a bounded, declarative document — deliberately **not** a Turing-complete language like Rego. Banks want auditable, not clever. Each policy has metadata, an optional match scope, a list of rules, control mappings, and a default.
+
+**Rules** pair a condition with an action and a direction:
+
+```json
+{
+  "name": "block-jailbreak",
+  "direction": "input",
+  "when": { "all": [{ "field": "signals.jailbreak_score", "gte": 0.8 }] },
+  "action": "block",
+  "severity": "critical"
+}
+```
+
+**The condition language** is a small, typed set of predicates over the request context:
+
+| Comparator | Meaning |
+| --- | --- |
+| `equals`, `in` | Exact match / set membership |
+| `gte`, `gt`, `lte`, `lt` | Numeric thresholds |
+| `matches` | Case-insensitive regex on a string field |
+| `present` | Field is present / absent |
+
+Combine them with `when.all` (AND) and `when.any` (OR). Fields read from the request context: `content`, `amount`, `model`, `environment`, `data_classification`, `user.region`, and `signals.*` (from the classifier).
+
+**Direction** restricts a rule to the `input` (prompt) or `output` (completion) phase — so you can redact PII going in *and* block card data coming out.
+
+**Match scope** limits a whole policy to specific `projects`, `models`, `environments`, or `dataClassification` (defaults to all).
+
+**Defaults** support deny-by-default: `{ "onNoMatch": "block" }` blocks anything no rule explicitly allowed.
+
+### Actions
+
+| Action | Effect |
+| --- | --- |
+| `block` | Reject the request (HTTP 403). |
+| `require_approval` | Hold for human sign-off (HTTP 403, `policy_requires_approval`). |
+| `redact` | Replace matches with `[REDACTED]` before the request continues. |
+| `tokenize` | Swap sensitive values for reversible tokens (restored downstream). |
+| `rate_limit` | Throttle matching traffic against a sliding window (HTTP 429). |
+| `route` | Send the request to a different region, provider, or model. |
+
+### Conflict resolution
+
+When multiple rules fire, the engine picks the single **most-restrictive** action, ranked:
+
+`block` > `require_approval` > `tokenize` / `redact` > `route` > `rate_limit` > `allow`
+
+Evaluation is pure and deterministic, and every decision carries a human-readable **rationale** (e.g. *"block by policy 'cbn-aml' v1 rule 'block-jailbreak' (critical) — +1 other rule(s) fired"*) — explainability by construction.
+
+## Model-based guardrails
+
+Regex catches formats; it doesn't catch intent. When a policy references a model-based signal, Cencori runs the content through a **managed classifier** that returns structured signals for the engine to evaluate:
+
+- `jailbreak_score` (0–1) and `toxicity` (0–1)
+- `prompt_injection`, `exfiltration`, `pci` (booleans)
+- `pii.email`, `pii.phone`, `pii.ssn`, `pii.account_number`, `pii.credit_card`
+
+The classifier is **cost-controlled** (it only runs when an active policy actually needs a model signal, and caches by content hash) and **fail-open** (a classifier outage returns no signals rather than blocking traffic). On overlap, the classifier's signal wins over any regex-derived one.
+
+## RBAC and maker-checker
+
+Every sensitive change — activating a policy, editing rules, assigning roles, revealing a key, engaging the killswitch — flows through a change request that a **different person** must approve. Segregation of duties is enforced in the database, not just the UI, so it holds even if the application layer has a bug.
+
+**Roles** are least-privilege. The org owner is implicitly full-access.
+
+| Role | Permissions |
+| --- | --- |
+| `owner` / `governance_admin` | Propose, approve, reveal keys, killswitch, assign roles, read audit |
+| `risk_officer` | Approve, killswitch, read audit |
+| `developer` | Propose, read audit |
+| `auditor` | Read audit |
+
+The maker (a developer) proposes; the checker (a risk officer or admin) approves or rejects. Every request, approval, and rejection is written to the ledger.
+
+## The immutable audit ledger
+
+Every governance event is appended to a **per-organization, write-once, hash-chained** ledger.
+
+- **Tamper-evident** — `entry_hash = sha256(prev_hash ‖ canonical fields)`. Altering, deleting, reordering, or inserting any record breaks the chain.
+- **Content-safe** — the ledger stores SHA-256 *hashes* of prompts and responses, never the raw content.
+- **Race-safe** — appends are serialized per-org in the database, so the chain is always linear.
+- **Idempotent** — a `dedupe_key` means a retried append is a no-op, so at-least-once delivery never double-counts the chain.
+
+### Provably-complete delivery
+
+An entry lands in the ledger **or** in a dead-letter table — it is never silently lost. Delivery retries in-process with backoff; on exhaustion it's dead-lettered and a redrive cron replays it (idempotently). The console surfaces any pending dead-letter items, and evidence packs report completeness.
+
+### Two levels of verification
+
+1. **Authoritative (DB-side)** — recomputes every `entry_hash` and checks linkage, sequence continuity, and checkpoint pinning.
+2. **Independent (zero-trust)** — from only the stored `(seq, prev_hash, entry_hash)` values plus signed checkpoints, an auditor can detect deletion, truncation, reordering, and insertion **without trusting Cencori's database or application layer**.
+
+### Signed checkpoints
+
+The chain tail is periodically pinned in a checkpoint `(up_to_seq, chain_hash, entry_count)` and signed with an **Ed25519** key. Verification needs the **public key alone** — a bank's auditor can confirm the chain hasn't been rewritten without trusting us. Moving the signing key into a managed KMS later changes only where the key is read from; the signature and verification are unchanged.
+
+## Evidence packs
+
+For any framework, export a **regulator-ready evidence pack** generated from the ledger. Each pack contains:
+
+- **Chain health** — completeness and integrity for the period.
+- **Per control** — how many times it was enforced, broken down by decision, which active policies enforce it, and sample proof entries (with sequence and timestamp).
+- **Summary** — total enforcements across the framework.
+
+This is the artifact you hand an auditor instead of a spreadsheet — and the thing no observe-only competitor can produce, because they don't enforce in path.
+
+## Starter templates
+
+Installing a template drops a **draft** you review and activate. Each is mapped to the controls it satisfies.
+
+| Template | Frameworks | What it enforces |
+| --- | --- | --- |
+| **CBN Anti-Money-Laundering** | CBN-AML, SR-11-7 | Human approval for high-value / transfer instructions; blocks jailbreaks and exfiltration. |
+| **NDPR PII Redaction** | NDPR, NDPA-2023, ISO-42001 | Tokenizes NUBAN account numbers and BVN; masks email and phone before they reach the model. |
+| **PCI-DSS Card-Data Protection** | PCI-DSS | Redacts payment-card numbers from prompts; redacts card data flagged in output. |
+| **Prompt-Injection & Jailbreak Defense** | ISO-42001, NIST-AI-RMF | Blocks prompt injection, jailbreaks, and system-prompt extraction inline via the classifier. |
+| **SR 11-7 Automated-Decision Oversight** | SR-11-7, OCC-2011-12 | Requires human approval for automated credit / lending / adverse-action decisions. |
+
+## The console
+
+Everything above is operable from **Governance** in the dashboard sidebar: ledger integrity at a glance, the approvals queue, your policies (expand any one to read its rules in plain language), templates to install, and one-click evidence export.
+
+## Related
+
+- [Prompt Injection](/docs/security/prompt-injection)
+- [PII Detection](/docs/security/pii-detection)
+- [Content Filtering](/docs/security/content-filtering)
