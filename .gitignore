@@ -83,3 +83,5 @@ eve
 
 # internal codebase audit — never ship
 AUDIT.md
+# Claude Code local config and worktrees (never commit)
+.claude/
