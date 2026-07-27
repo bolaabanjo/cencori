@@ -91,9 +91,8 @@ export const Hero = () => {
         </div>
 
         <h1 className="font-heading text-[1.875rem] font-semibold leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[2.125rem] lg:text-[2.375rem]">
-          <span className="block sm:whitespace-nowrap">The AI cloud infrastructure</span>
-          <span className="block sm:whitespace-nowrap">to run, secure, and</span>
-          <span className="block sm:whitespace-nowrap">scale AI products.</span>
+          <span className="block sm:whitespace-nowrap">The infrastructure</span>
+          <span className="block sm:whitespace-nowrap">global AI runs on.</span>
         </h1>
 
         {/* Subheadline slot — copy TBD */}

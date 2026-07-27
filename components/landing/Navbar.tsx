@@ -29,9 +29,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronRight, Menu, Settings, LogOut } from "lucide-react";
 import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import { ReactNode } from "react";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { CircleUserRound } from "lucide-react";
-import { GradientAvatar } from "@outpacelabs/avatars";
 import { useTheme } from "next-themes";
 
 import { siteConfig } from "@/config/site";
@@ -105,7 +104,7 @@ interface NavbarProps {
     actions?: NavbarActionProps[];
     className?: string;
     isAuthenticated?: boolean;
-    userProfile?: { name: string | null; avatar: string | null };
+    userProfile?: { name: string | null; avatar: string | null; email?: string | null };
     searchSlot?: ReactNode;
     containerClassName?: string;
 }
@@ -228,7 +227,7 @@ interface NavbarProps extends React.HTMLAttributes<HTMLElement> {
     actions?: NavbarActionProps[];
     className?: string;
     isAuthenticated?: boolean;
-    userProfile?: { name: string | null; avatar: string | null };
+    userProfile?: { name: string | null; avatar: string | null; email?: string | null };
     searchSlot?: ReactNode;
     containerClassName?: string;
     // Allow motion props
@@ -444,18 +443,13 @@ export default function Navbar({
                                 return (
                                     <DropdownMenu key="authenticated-avatar-menu">
                                         <DropdownMenuTrigger asChild>
-                                            <Avatar className="h-8 w-8 cursor-pointer rounded-full border border-border/40 transition-opacity hover:opacity-80">
-                                                {userProfile?.avatar && userProfile.avatar.length > 0 ? (
-                                                    <AvatarImage
-                                                        src={userProfile.avatar}
-                                                        alt={userProfile.name || "User avatar"}
-                                                    />
-                                                ) : (
-                                                    <AvatarFallback className="bg-muted">
-                                                        <GradientAvatar seed="Bola " size={20} />
-                                                    </AvatarFallback>
-                                                )}
-                                            </Avatar>
+                                            <UserAvatar
+                                                src={userProfile?.avatar}
+                                                name={userProfile?.name}
+                                                email={userProfile?.email}
+                                                size={32}
+                                                className="cursor-pointer border border-border/40 transition-opacity hover:opacity-80"
+                                            />
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent className="w-66 p-1 font-mono bg-black border dark:border-[#1a1a1a] border-[#eee]" align="end" forceMount>
                                             <div className="px-2 py-2 border-b border-border/40 mb-1 space-y-0.5">

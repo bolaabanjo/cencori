@@ -1,9 +1,8 @@
 import { type VariantProps } from "class-variance-authority";
 import { CreditCard, Menu, Settings, UserPlus, Users, Shield, Book, Rocket, Code, Laptop, Share2, Building2, Workflow, DollarSign, LifeBuoy, Rss, Layers, Search, BriefcaseBusiness, UsersRound, Factory, ScrollText, CalendarDays, Handshake, Ship, LockKeyhole, HardHat, FileText, Blocks, FlaskConical, Gauge, Terminal, Globe, User, BookOpen, FileWarning, Package2 } from "lucide-react";
 import { ReactNode } from "react";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { CircleUserRound } from "lucide-react";
-import { GradientAvatar } from "@outpacelabs/avatars";
 
 import { siteConfig } from "@/config/site"; // Import siteConfig
 import { cn } from "@/lib/utils";
@@ -75,7 +74,7 @@ interface NavbarProps {
   actions?: NavbarActionProps[];
   className?: string;
   isAuthenticated?: boolean;
-  userProfile?: { name: string | null; avatar: string | null };
+  userProfile?: { name: string | null; avatar: string | null; email?: string | null };
 }
 
 function isNavDropdown(item: NavItem): item is NavDropdown {
@@ -286,22 +285,13 @@ export default function Navbar({
                 return (
                   <DropdownMenu key="authenticated-avatar-menu">
                     <DropdownMenuTrigger asChild>
-                      <Avatar className="h-7 w-7 cursor-pointer">
-                        {userProfile?.avatar && userProfile.avatar.length > 0 ? (
-                          <AvatarImage
-                            src={userProfile.avatar}
-                            alt={
-                              typeof userProfile?.name === "string"
-                                ? userProfile.name
-                                : "User avatar"
-                            }
-                          />
-                        ) : (
-                          <AvatarFallback>
-                            <GradientAvatar seed="Bola " size={20} />
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
+                      <UserAvatar
+                        src={userProfile?.avatar}
+                        name={userProfile?.name}
+                        email={userProfile?.email}
+                        size={28}
+                        className="cursor-pointer"
+                      />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-66" align="end" forceMount>
                       <DropdownMenuLabel className="font-normal">
