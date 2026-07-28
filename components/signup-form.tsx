@@ -118,14 +118,17 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setError(null);
     setLoading(true);
     try {
-      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
+      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
+      // Route OAuth through the server callback so the session is exchanged and
+      // cookie-set before the destination renders (prevents the login bounce).
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(navigationTarget)}`;
 
       markSignupWelcomeEmailPending();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: oauthRedirectTo },
+        options: { redirectTo },
       });
       if (oauthError) {
         clearSignupWelcomeEmailPending();
