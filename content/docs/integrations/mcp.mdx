@@ -45,7 +45,7 @@ The server is safe by default — anything that costs money or changes state is 
 | **Read** | `CENCORI_API_KEY` | `list_models`, `get_metrics`, `get_health`, `check_quota`; agents, memory, sessions, and governance list/get tools |
 | **Write** | `CENCORI_MCP_WRITE=1` | Inference (`generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, vision, documents); memory (`remember_memory`, `write_memory`, `create_namespace`); agents (`create_agent`, `update_agent`); sessions (`create_session`, `add_session_turn`); governance drafts (`create_policy`, `install_template`) |
 | **Destructive** | `CENCORI_MCP_DESTRUCTIVE=1` | `delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session` (implies write) |
-| **Public** | none | `search_docs`, `get_doc`, `list_docs`, and `how_to_*` guidance |
+| **Public** | none | `search_docs`, `get_doc`, `list_docs`, `get_integration_guide` (the `llm.txt` setup contract), and `how_to_*` guidance |
 
 ## Manual-only actions
 

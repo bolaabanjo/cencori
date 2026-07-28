@@ -68,4 +68,26 @@ export function registerDocsTools(server: McpServer, docs: DocsClient, docsBaseU
             return jsonResult(navigation);
         },
     );
+
+    server.registerTool(
+        'get_integration_guide',
+        {
+            title: 'Get the Cencori integration guide (llm.txt)',
+            description:
+                'Fetch the full Cencori "Integration Contract for Code Agents" (llm.txt) — the authoritative, always-current guide for setting up Cencori in a codebase: package names, import paths, env vars, base URLs, SDK usage, request/response shapes, and step-by-step setup. Call this FIRST when asked to add, integrate, or set up Cencori in a project.',
+            inputSchema: {},
+            annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async () => {
+            const guide = await docs.getIntegrationGuide();
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: `Source: ${docsBaseUrl}/llm.txt\n\n${guide}`,
+                    },
+                ],
+            };
+        },
+    );
 }

@@ -48,4 +48,15 @@ export class DocsClient {
 
         return response.json() as Promise<DocNavigationResponse>;
     }
+
+    /** Fetch the raw `llm.txt` integration contract (public, no auth). */
+    async getIntegrationGuide(): Promise<string> {
+        const url = new URL('/llm.txt', this.baseUrl);
+        const response = await fetch(url, { signal: fetchSignal() });
+        if (!response.ok) {
+            const message = await readHttpErrorMessage(response);
+            throw new Error(`Integration guide fetch failed (${response.status}): ${message}`);
+        }
+        return response.text();
+    }
 }

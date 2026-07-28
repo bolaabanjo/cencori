@@ -75,7 +75,7 @@ test('docs API: list_docs returns sections', async () => {
     assert.ok(data.sections.length > 0);
 });
 
-test('MCP server: docs-only mode exposes 3 tools without API key', async () => {
+test('MCP server: docs-only mode exposes docs tools without API key', async () => {
     await withMcpClient(
         {
             CENCORI_API_KEY: '',
@@ -85,7 +85,7 @@ test('MCP server: docs-only mode exposes 3 tools without API key', async () => {
             const { tools } = await client.listTools();
             const names = tools.map((tool) => tool.name).sort();
 
-            assert.deepEqual(names, ['get_doc', 'list_docs', 'search_docs']);
+            assert.deepEqual(names, ['get_doc', 'get_integration_guide', 'list_docs', 'search_docs']);
         },
     );
 });
@@ -146,7 +146,7 @@ test('MCP server: feature flag docs-only hides platform tools even with API key'
             const { tools } = await client.listTools();
             const names = tools.map((tool) => tool.name).sort();
 
-            assert.deepEqual(names, ['get_doc', 'list_docs', 'search_docs']);
+            assert.deepEqual(names, ['get_doc', 'get_integration_guide', 'list_docs', 'search_docs']);
         },
     );
 });
@@ -167,6 +167,8 @@ test('MCP server: guidance tools are always available without an API key', async
     assert.ok(names.includes('how_to_revoke_api_key'));
     assert.ok(names.includes('how_to_activate_policy'));
     assert.ok(names.includes('how_to_manage_members'));
+    // The integration guide (llm.txt) is public — key-less.
+    assert.ok(names.includes('get_integration_guide'));
     // No platform tools without a key.
     assert.ok(!names.includes('list_models'));
     assert.ok(!names.includes('generate_text'));
