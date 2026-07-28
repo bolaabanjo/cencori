@@ -30,6 +30,9 @@
     ],
     "author": "Cencori",
     "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/cencori/cencori.git",
