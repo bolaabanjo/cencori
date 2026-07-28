@@ -194,7 +194,7 @@ test('MCP server: reads register with a key; inference is gated behind CENCORI_M
 test('MCP server: writes need CENCORI_MCP_WRITE; deletes need CENCORI_MCP_DESTRUCTIVE', async () => {
     const write = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_WRITE: '1' });
     // Additive writes present with WRITE.
-    for (const t of ['remember_memory', 'write_memory', 'create_namespace', 'create_agent', 'update_agent', 'create_session', 'add_session_turn']) {
+    for (const t of ['remember_memory', 'write_memory', 'create_namespace', 'create_agent', 'update_agent', 'create_session', 'add_session_turn', 'create_policy', 'install_template']) {
         assert.ok(write.includes(t), `expected write tool ${t}`);
     }
     // Destructive tools absent until DESTRUCTIVE.

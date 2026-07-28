@@ -63,12 +63,13 @@ Docs + `how_to_*` guidance tools work with **no API key**. Add `CENCORI_API_KEY`
 - **Memory:** `remember_memory`, `write_memory`, `create_namespace`.
 - **Agents:** `create_agent`, `update_agent`.
 - **Sessions:** `create_session`, `add_session_turn`.
+- **Governance (draft only):** `create_policy`, `install_template`. Policies are created as **drafts** — activation stays a manual human step (`how_to_activate_policy`).
 
 ### Destructive — requires `CENCORI_MCP_DESTRUCTIVE=1` (implies write)
 
 `delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session`. All carry `destructiveHint` so clients can confirm.
 
-> Roadmap: Phase 3 adds governance policy *drafting* (`create_policy`, `install_template`). Audio (TTS/STT) is planned once binary/multipart transport lands.
+> Roadmap: audio (TTS/STT) once binary/multipart transport lands.
 
 ---
 
