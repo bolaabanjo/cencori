@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveAuthRedirectTargets } from "@/lib/auth-redirect";
 
+// Mirrors @supabase/auth-js EmailOtpType (not re-exported by supabase-js).
+type EmailOtpType = "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email";
+
 /**
  * OAuth / PKCE callback.
  *
@@ -22,7 +25,11 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
 
 export async function GET(request: NextRequest) {
     const { searchParams, origin, hostname } = request.nextUrl;
+    // OAuth / PKCE (email confirmation on the PKCE flow) uses `code`; email
+    // templates using {{ .TokenHash }} use `token_hash` + `type`. Support both.
     const code = searchParams.get("code");
+    const tokenHash = searchParams.get("token_hash");
+    const otpType = searchParams.get("type") as EmailOtpType | null;
     const oauthError = searchParams.get("error_description") || searchParams.get("error");
 
     // Re-validate the post-login destination server-side (open-redirect defense).
@@ -37,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (oauthError) {
         return loginWithError(oauthError);
     }
-    if (!code) {
+    if (!code && !(tokenHash && otpType)) {
         return NextResponse.redirect(new URL("/login", origin));
     }
 
@@ -66,7 +73,9 @@ export async function GET(request: NextRequest) {
         },
     });
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = code
+        ? await supabase.auth.exchangeCodeForSession(code)
+        : await supabase.auth.verifyOtp({ type: otpType!, token_hash: tokenHash! });
     if (error) {
         return loginWithError(error.message);
     }

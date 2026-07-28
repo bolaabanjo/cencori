@@ -80,14 +80,17 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      const { oauthRedirectTo, navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
+      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
+      // Confirmation link goes through the server callback so the session is
+      // exchanged before the destination renders (prevents the login bounce).
+      const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(navigationTarget)}`;
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: oauthRedirectTo },
+        options: { emailRedirectTo },
       });
 
       if (signUpError) {
