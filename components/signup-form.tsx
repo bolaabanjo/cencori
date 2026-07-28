@@ -80,14 +80,17 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         return;
       }
 
-      const { oauthRedirectTo, navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
+      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
+      // Confirmation link goes through the server callback so the session is
+      // exchanged before the destination renders (prevents the login bounce).
+      const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(navigationTarget)}`;
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: oauthRedirectTo },
+        options: { emailRedirectTo },
       });
 
       if (signUpError) {
@@ -118,14 +121,17 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     setError(null);
     setLoading(true);
     try {
-      const { oauthRedirectTo } = resolveAuthRedirectTargets(redirectParam, {
+      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
         defaultPath: "/dashboard",
       });
+      // Route OAuth through the server callback so the session is exchanged and
+      // cookie-set before the destination renders (prevents the login bounce).
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(navigationTarget)}`;
 
       markSignupWelcomeEmailPending();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: oauthRedirectTo },
+        options: { redirectTo },
       });
       if (oauthError) {
         clearSignupWelcomeEmailPending();
