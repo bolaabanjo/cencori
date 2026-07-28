@@ -57,11 +57,18 @@ Docs + `how_to_*` guidance tools work with **no API key**. Add `CENCORI_API_KEY`
 | Sessions | `list_sessions`, `get_session`, `get_session_events` |
 | Governance | `list_policies`, `list_roles`, `list_change_requests`, `get_governance_ledger`, `get_governance_evidence`, `list_governance_templates` |
 
-### Inference (Write-tier) — requires `CENCORI_MCP_WRITE=1`
+### Write — requires `CENCORI_MCP_WRITE=1`
 
-`generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, `describe_image`, `ocr_image`, `classify_image`, `extract_document`, `summarize_document`, `query_document`.
+- **Inference:** `generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, `describe_image`, `ocr_image`, `classify_image`, `extract_document`, `summarize_document`, `query_document`.
+- **Memory:** `remember_memory`, `write_memory`, `create_namespace`.
+- **Agents:** `create_agent`, `update_agent`.
+- **Sessions:** `create_session`, `add_session_turn`.
 
-> Roadmap: Phase 2 adds memory/agent/session write + destructive tools; Phase 3 adds governance policy *drafting*. Audio (TTS/STT) is planned once binary/multipart transport lands.
+### Destructive — requires `CENCORI_MCP_DESTRUCTIVE=1` (implies write)
+
+`delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session`. All carry `destructiveHint` so clients can confirm.
+
+> Roadmap: Phase 3 adds governance policy *drafting* (`create_policy`, `install_template`). Audio (TTS/STT) is planned once binary/multipart transport lands.
 
 ---
 
@@ -122,11 +129,12 @@ See [`mcp.example.json`](./mcp.example.json) for a copy-paste template.
 
 ### Behavior
 
-| `CENCORI_API_KEY` | `CENCORI_MCP_WRITE` | Registered |
-|-------------------|---------------------|-----------|
+| `CENCORI_API_KEY` | Flag | Registered |
+|-------------------|------|-----------|
 | unset | — | docs + `how_to_*` guidance only |
-| set | unset | guidance + all **reads** |
-| set | `1` | guidance + reads + **inference** |
+| set | — | guidance + all **reads** |
+| set | `CENCORI_MCP_WRITE=1` | + **writes** (inference, memory, agents, sessions) |
+| set | `CENCORI_MCP_DESTRUCTIVE=1` | + **destructive** (delete/approve/reject); implies write |
 
 Restart the MCP server after changing env vars.
 

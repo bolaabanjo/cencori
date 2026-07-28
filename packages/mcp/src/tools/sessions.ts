@@ -1,13 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { PlatformClient } from '../client.js';
-import { jsonResult, READ_ONLY_ANNOTATIONS } from './shared.js';
+import type { McpCapabilities } from '../config.js';
+import { jsonResult, READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS, DESTRUCTIVE_ANNOTATIONS } from './shared.js';
 
 /**
- * Agent session read tools. Write tools (create/turn) and destructive tools
- * (delete/approve/reject) are added in Phase 2 behind the capability flags.
+ * Agent session tools. Reads always register; create/turn need
+ * CENCORI_MCP_WRITE; delete/approve/reject need CENCORI_MCP_DESTRUCTIVE.
  */
-export function registerSessionsTools(server: McpServer, client: PlatformClient): void {
+export function registerSessionsTools(server: McpServer, client: PlatformClient, caps: McpCapabilities): void {
     server.registerTool(
         'list_sessions',
         {
@@ -53,4 +54,88 @@ export function registerSessionsTools(server: McpServer, client: PlatformClient)
         },
         async ({ session_id }) => jsonResult(await client.get(`/v1/sessions/${session_id}/events`)),
     );
+
+    if (caps.write) {
+        server.registerTool(
+            'create_session',
+            {
+                title: 'Create an agent session',
+                description: 'Start a new session for an agent.',
+                inputSchema: {
+                    agent_id: z.string().min(1).describe('The agent id to start a session for.'),
+                    metadata: z.record(z.string(), z.unknown()).optional().describe('Optional session metadata.'),
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ agent_id, metadata }) => jsonResult(await client.post('/v1/sessions', { agent_id, metadata })),
+        );
+
+        server.registerTool(
+            'add_session_turn',
+            {
+                title: 'Add a turn to a session',
+                description: 'Run a turn in an agent session. Incurs usage/cost.',
+                inputSchema: {
+                    session_id: z.string().min(1).describe('The session id.'),
+                    model: z.string().min(1).describe('Model id for the turn.'),
+                    input: z.string().min(1).describe('The user input for this turn.'),
+                    instructions: z.string().optional().describe('Optional system instructions.'),
+                    temperature: z.number().min(0).max(2).optional(),
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ session_id, model, input, instructions, temperature }) =>
+                jsonResult(
+                    await client.post(`/v1/sessions/${session_id}/turns`, {
+                        model,
+                        input,
+                        instructions,
+                        temperature,
+                    }),
+                ),
+        );
+    }
+
+    if (caps.destructive) {
+        server.registerTool(
+            'delete_session',
+            {
+                title: 'Delete an agent session',
+                description: 'Permanently delete an agent session by id. This cannot be undone.',
+                inputSchema: { session_id: z.string().min(1).describe('The session id to delete.') },
+                annotations: DESTRUCTIVE_ANNOTATIONS,
+            },
+            async ({ session_id }) => jsonResult(await client.del(`/v1/sessions/${session_id}`)),
+        );
+
+        server.registerTool(
+            'approve_session',
+            {
+                title: 'Approve a pending session action',
+                description: 'Approve a pending action in an agent session (human-in-the-loop).',
+                inputSchema: {
+                    session_id: z.string().min(1).describe('The session id.'),
+                    action_id: z.string().optional().describe('Specific pending action id, if any.'),
+                },
+                annotations: DESTRUCTIVE_ANNOTATIONS,
+            },
+            async ({ session_id, action_id }) =>
+                jsonResult(await client.post(`/v1/sessions/${session_id}/approve`, { action_id })),
+        );
+
+        server.registerTool(
+            'reject_session',
+            {
+                title: 'Reject a pending session action',
+                description: 'Reject a pending action in an agent session (human-in-the-loop).',
+                inputSchema: {
+                    session_id: z.string().min(1).describe('The session id.'),
+                    action_id: z.string().optional().describe('Specific pending action id, if any.'),
+                },
+                annotations: DESTRUCTIVE_ANNOTATIONS,
+            },
+            async ({ session_id, action_id }) =>
+                jsonResult(await client.post(`/v1/sessions/${session_id}/reject`, { action_id })),
+        );
+    }
 }
