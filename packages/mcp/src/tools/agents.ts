@@ -1,9 +1,20 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { PlatformClient } from '../client.js';
-import { jsonResult, READ_ONLY_ANNOTATIONS } from './shared.js';
+import type { McpCapabilities } from '../config.js';
+import { jsonResult, READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS, DESTRUCTIVE_ANNOTATIONS } from './shared.js';
 
-export function registerAgentsTools(server: McpServer, client: PlatformClient): void {
+const agentConfigShape = z
+    .object({
+        model: z.string().optional(),
+        system_prompt: z.string().optional(),
+        tools: z.array(z.string()).optional(),
+        temperature: z.number().min(0).max(2).optional(),
+    })
+    .optional()
+    .describe('Agent runtime config: model, system_prompt, tools, temperature.');
+
+export function registerAgentsTools(server: McpServer, client: PlatformClient, caps: McpCapabilities): void {
     server.registerTool(
         'list_agents',
         {
@@ -44,4 +55,63 @@ export function registerAgentsTools(server: McpServer, client: PlatformClient): 
         },
         async () => jsonResult(await client.get('/v1/agent/actions/poll')),
     );
+
+    if (caps.write) {
+        server.registerTool(
+            'create_agent',
+            {
+                title: 'Create an agent',
+                description: 'Create a new agent in a project.',
+                inputSchema: {
+                    project_id: z.string().min(1).describe('The project id to create the agent in.'),
+                    name: z.string().min(1).describe('Agent name.'),
+                    description: z.string().optional(),
+                    config: agentConfigShape,
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ project_id, name, description, config }) =>
+                jsonResult(await client.post('/v1/agents', { project_id, name, description, config })),
+        );
+
+        server.registerTool(
+            'update_agent',
+            {
+                title: 'Update an agent',
+                description: 'Update an agent’s name, description, status, shadow mode, or config.',
+                inputSchema: {
+                    agent_id: z.string().min(1).describe('The agent id to update.'),
+                    name: z.string().optional(),
+                    description: z.string().optional(),
+                    is_active: z.boolean().optional(),
+                    shadow_mode: z.boolean().optional(),
+                    config: agentConfigShape,
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ agent_id, name, description, is_active, shadow_mode, config }) =>
+                jsonResult(
+                    await client.patch(`/v1/agents/${agent_id}`, {
+                        name,
+                        description,
+                        is_active,
+                        shadow_mode,
+                        config,
+                    }),
+                ),
+        );
+    }
+
+    if (caps.destructive) {
+        server.registerTool(
+            'delete_agent',
+            {
+                title: 'Delete an agent',
+                description: 'Permanently delete an agent by id. This cannot be undone.',
+                inputSchema: { agent_id: z.string().min(1).describe('The agent id to delete.') },
+                annotations: DESTRUCTIVE_ANNOTATIONS,
+            },
+            async ({ agent_id }) => jsonResult(await client.del(`/v1/agents/${agent_id}`)),
+        );
+    }
 }

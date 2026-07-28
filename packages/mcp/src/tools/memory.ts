@@ -1,11 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { PlatformClient } from '../client.js';
-import { jsonResult, READ_ONLY_ANNOTATIONS } from './shared.js';
+import type { McpCapabilities } from '../config.js';
+import { jsonResult, READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS, DESTRUCTIVE_ANNOTATIONS } from './shared.js';
 
 /**
- * Memory read tools. Write tools (remember/write/delete/namespace) are added in
- * Phase 2 behind the write/destructive capability flags.
+ * Memory tools. Reads are always registered; writes need CENCORI_MCP_WRITE and
+ * deletes need CENCORI_MCP_DESTRUCTIVE.
  */
 
 const scopeShape = {
@@ -15,7 +16,7 @@ const scopeShape = {
     session_id: z.string().optional().describe('Scope to a specific session id.'),
 };
 
-export function registerMemoryTools(server: McpServer, client: PlatformClient): void {
+export function registerMemoryTools(server: McpServer, client: PlatformClient, caps: McpCapabilities): void {
     server.registerTool(
         'list_memories',
         {
@@ -141,4 +142,93 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient): 
                 }),
             ),
     );
+
+    if (caps.write) {
+        server.registerTool(
+            'remember_memory',
+            {
+                title: 'Remember a conversation turn',
+                description: 'Store a user/assistant exchange as memory for later retrieval.',
+                inputSchema: {
+                    user: z.string().min(1).describe('The user message.'),
+                    assistant: z.string().min(1).describe('The assistant response.'),
+                    ...scopeShape,
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ user, assistant, namespace, scope, user_id, session_id }) =>
+                jsonResult(
+                    await client.post('/v1/memory/remember', {
+                        user,
+                        assistant,
+                        namespace,
+                        scope,
+                        userId: user_id,
+                        sessionId: session_id,
+                    }),
+                ),
+        );
+
+        server.registerTool(
+            'write_memory',
+            {
+                title: 'Write a memory',
+                description: 'Store a single memory (a fact/note) directly.',
+                inputSchema: {
+                    content: z.string().min(1).describe('The memory content to store.'),
+                    importance: z.number().min(0).max(1).optional().describe('Importance weight 0–1.'),
+                    ...scopeShape,
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ content, importance, namespace, scope, user_id, session_id }) =>
+                jsonResult(
+                    await client.post('/v1/memory/write', {
+                        content,
+                        importance,
+                        namespace,
+                        scope,
+                        userId: user_id,
+                        sessionId: session_id,
+                    }),
+                ),
+        );
+
+        server.registerTool(
+            'create_namespace',
+            {
+                title: 'Create a memory namespace',
+                description: 'Create a new memory namespace.',
+                inputSchema: {
+                    name: z.string().min(1).describe('Namespace name.'),
+                    description: z.string().optional(),
+                    embedding_model: z.string().optional().describe('Embedding model for this namespace.'),
+                    dimensions: z.number().int().positive().optional(),
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ name, description, embedding_model, dimensions }) =>
+                jsonResult(
+                    await client.post('/memory/namespaces', {
+                        name,
+                        description,
+                        embeddingModel: embedding_model,
+                        dimensions,
+                    }),
+                ),
+        );
+    }
+
+    if (caps.destructive) {
+        server.registerTool(
+            'delete_memory',
+            {
+                title: 'Delete a memory',
+                description: 'Permanently delete a memory by id. This cannot be undone.',
+                inputSchema: { memory_id: z.string().min(1).describe('The memory id to delete.') },
+                annotations: DESTRUCTIVE_ANNOTATIONS,
+            },
+            async ({ memory_id }) => jsonResult(await client.del(`/v1/memory/${memory_id}`)),
+        );
+    }
 }

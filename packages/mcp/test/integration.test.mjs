@@ -191,6 +191,25 @@ test('MCP server: reads register with a key; inference is gated behind CENCORI_M
     }
 });
 
+test('MCP server: writes need CENCORI_MCP_WRITE; deletes need CENCORI_MCP_DESTRUCTIVE', async () => {
+    const write = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_WRITE: '1' });
+    // Additive writes present with WRITE.
+    for (const t of ['remember_memory', 'write_memory', 'create_namespace', 'create_agent', 'update_agent', 'create_session', 'add_session_turn']) {
+        assert.ok(write.includes(t), `expected write tool ${t}`);
+    }
+    // Destructive tools absent until DESTRUCTIVE.
+    for (const t of ['delete_memory', 'delete_agent', 'delete_session', 'approve_session', 'reject_session']) {
+        assert.ok(!write.includes(t), `destructive tool ${t} must be gated`);
+    }
+
+    const destructive = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_DESTRUCTIVE: '1' });
+    for (const t of ['delete_memory', 'delete_agent', 'delete_session', 'approve_session', 'reject_session']) {
+        assert.ok(destructive.includes(t), `expected destructive tool ${t}`);
+    }
+    // Destructive implies write.
+    assert.ok(destructive.includes('create_agent'), 'destructive should imply write');
+});
+
 test('MCP server: list_models returns model list', async (t) => {
     if (!API_KEY) {
         skipWithoutApiKey(t);
