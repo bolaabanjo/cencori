@@ -147,6 +147,39 @@ export class PlatformClient {
         return this.request<T>('DELETE', path);
     }
 
+    /** POST JSON and read a BINARY response (e.g. TTS audio). Returns base64 + mime. */
+    async postBinary(path: string, body: unknown): Promise<{ base64: string; mimeType: string }> {
+        const url = new URL(`/api${path}`, this.baseUrl);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: fetchSignal(),
+        });
+        if (!response.ok) {
+            throw new Error(`Cencori API error: ${await readHttpErrorMessage(response)}`);
+        }
+        const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream';
+        const buf = Buffer.from(await response.arrayBuffer());
+        return { base64: buf.toString('base64'), mimeType };
+    }
+
+    /** POST multipart/form-data (e.g. STT audio upload). Let fetch set the boundary. */
+    async postForm<T = unknown>(path: string, form: FormData): Promise<T> {
+        const url = new URL(`/api${path}`, this.baseUrl);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${this.apiKey}` },
+            body: form,
+            signal: fetchSignal(),
+        });
+        if (!response.ok) {
+            throw new Error(`Cencori API error: ${await readHttpErrorMessage(response)}`);
+        }
+        const text = await response.text();
+        return (text ? JSON.parse(text) : undefined) as T;
+    }
+
     listModels(): Promise<ModelListResponse> {
         return this.get<ModelListResponse>('/v1/models');
     }
