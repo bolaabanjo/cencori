@@ -42,6 +42,7 @@ Docs + `how_to_*` guidance tools work with **no API key**. Add `CENCORI_API_KEY`
 | Tool | Description |
 |------|-------------|
 | `search_docs` / `get_doc` / `list_docs` | Search / fetch / list Cencori documentation |
+| `get_integration_guide` | Fetch the full `llm.txt` integration contract — the authoritative "how to set up Cencori in a codebase" guide |
 | `how_to_create_api_key`, `how_to_edit_api_key`, `how_to_revoke_api_key` | Guidance: API-key lifecycle (manual) |
 | `how_to_activate_policy`, `how_to_respond_to_change_request` | Guidance: governance checker steps (manual) |
 | `how_to_change_plan`, `how_to_manage_billing` | Guidance: billing / plan / credits (manual) |

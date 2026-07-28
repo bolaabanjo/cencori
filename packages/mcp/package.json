@@ -1,6 +1,6 @@
 {
     "name": "@cencori/mcp",
-    "version": "0.4.1",
+    "version": "0.5.0",
     "description": "MCP server for Cencori — docs, gateway, memory, agents, sessions, governance, and multimodal inference for AI agents.",
     "main": "dist/index.js",
     "module": "dist/index.mjs",

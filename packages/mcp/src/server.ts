@@ -14,7 +14,7 @@ import {
 } from './tools.js';
 
 const SERVER_NAME = 'cencori';
-const SERVER_VERSION = '0.4.1';
+const SERVER_VERSION = '0.5.0';
 
 export function createServer(config: McpConfig): McpServer {
     const server = new McpServer(

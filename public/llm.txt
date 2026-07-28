@@ -930,7 +930,7 @@ Minimal client config:
 ```
 
 Tool tiers:
-- Public (no key): `search_docs`, `get_doc`, `list_docs`, and `how_to_*` guidance tools.
+- Public (no key): `search_docs`, `get_doc`, `list_docs`, `get_integration_guide` (returns this llm.txt setup contract), and `how_to_*` guidance tools.
 - Read (key): gateway (`list_models`, `get_metrics`, `get_health`, `check_quota`), agents, memory, sessions, and governance list/get tools.
 - Write (`CENCORI_MCP_WRITE=1`): inference (`generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, vision, documents) plus `remember_memory`, `write_memory`, `create_namespace`, `create_agent`, `update_agent`, `create_session`, `add_session_turn`, and governance drafts (`create_policy`, `install_template`). Policy activation stays manual.
 - Destructive (`CENCORI_MCP_DESTRUCTIVE=1`): `delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session`.
