@@ -37,4 +37,26 @@ export function registerGatewayTools(server: McpServer, client: PlatformClient):
             return jsonResult(metrics);
         },
     );
+
+    server.registerTool(
+        'get_health',
+        {
+            title: 'Get Cencori gateway health',
+            description: 'Check gateway/platform health for the authenticated project.',
+            inputSchema: {},
+            annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async () => jsonResult(await client.get('/v1/health')),
+    );
+
+    server.registerTool(
+        'check_quota',
+        {
+            title: 'Check billing quota',
+            description: 'Check remaining quota/credits and usage limits for the authenticated project.',
+            inputSchema: {},
+            annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async () => jsonResult(await client.get('/v1/billing/check-quota')),
+    );
 }

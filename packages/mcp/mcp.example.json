@@ -4,8 +4,8 @@
       "command": "npx",
       "args": ["-y", "@cencori/mcp"],
       "env": {
-        "CENCORI_API_KEY": "",
-        "CENCORI_MCP_FEATURES": "docs,gateway,agents"
+        "CENCORI_API_KEY": "csk_your_project_key",
+        "CENCORI_MCP_WRITE": "1"
       }
     }
   }

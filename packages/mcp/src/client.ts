@@ -78,51 +78,88 @@ export interface MetricsResponse {
     models: Record<string, { requests: number; cost_usd: number }>;
 }
 
+export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+export interface RequestOptions {
+    searchParams?: Record<string, string | undefined>;
+    body?: unknown;
+}
+
 export class PlatformClient {
     constructor(
         private readonly baseUrl: string,
         private readonly apiKey: string,
     ) {}
 
-    private async request<T>(path: string, searchParams?: Record<string, string | undefined>): Promise<T> {
+    /**
+     * Low-level request against the Cencori API. Sends `Authorization: Bearer`,
+     * which the gateway accepts for both `/v1/*` and `/api/ai/*` routes.
+     */
+    async request<T = unknown>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
         const url = new URL(`/api${path}`, this.baseUrl);
 
-        if (searchParams) {
-            for (const [key, value] of Object.entries(searchParams)) {
+        if (options.searchParams) {
+            for (const [key, value] of Object.entries(options.searchParams)) {
                 if (value !== undefined) {
                     url.searchParams.set(key, value);
                 }
             }
         }
 
-        const response = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${this.apiKey}`,
-            },
-            signal: fetchSignal(),
-        });
+        const headers: Record<string, string> = {
+            Authorization: `Bearer ${this.apiKey}`,
+        };
+        const init: RequestInit = { method, headers, signal: fetchSignal() };
+
+        if (options.body !== undefined) {
+            headers['Content-Type'] = 'application/json';
+            init.body = JSON.stringify(options.body);
+        }
+
+        const response = await fetch(url, init);
 
         if (!response.ok) {
             const message = await readHttpErrorMessage(response);
             throw new Error(`Cencori API error: ${message}`);
         }
 
-        return response.json() as Promise<T>;
+        // Some routes (e.g. DELETE) may return an empty body.
+        const text = await response.text();
+        if (!text) {
+            return undefined as T;
+        }
+        return JSON.parse(text) as T;
     }
 
-    async listModels(): Promise<ModelListResponse> {
-        return this.request<ModelListResponse>('/v1/models');
+    get<T = unknown>(path: string, searchParams?: Record<string, string | undefined>): Promise<T> {
+        return this.request<T>('GET', path, { searchParams });
     }
 
-    async getMetrics(period: MetricsPeriod = '7d'): Promise<MetricsResponse> {
-        return this.request<MetricsResponse>('/v1/metrics', { period });
+    post<T = unknown>(path: string, body?: unknown, searchParams?: Record<string, string | undefined>): Promise<T> {
+        return this.request<T>('POST', path, { body, searchParams });
     }
 
-    async listAgents(): Promise<{ data: AgentListItem[] }> {
-        return this.request<{ data: AgentListItem[] }>('/v1/agents');
+    patch<T = unknown>(path: string, body?: unknown): Promise<T> {
+        return this.request<T>('PATCH', path, { body });
     }
 
-    async getAgent(agentId: string): Promise<Agent> {
-        return this.request<Agent>(`/v1/agents/${agentId}`);
+    del<T = unknown>(path: string): Promise<T> {
+        return this.request<T>('DELETE', path);
+    }
+
+    listModels(): Promise<ModelListResponse> {
+        return this.get<ModelListResponse>('/v1/models');
+    }
+
+    getMetrics(period: MetricsPeriod = '7d'): Promise<MetricsResponse> {
+        return this.get<MetricsResponse>('/v1/metrics', { period });
+    }
+
+    listAgents(): Promise<{ data: AgentListItem[] }> {
+        return this.get<{ data: AgentListItem[] }>('/v1/agents');
+    }
+
+    getAgent(agentId: string): Promise<Agent> {
+        return this.get<Agent>(`/v1/agents/${agentId}`);
     }
 }

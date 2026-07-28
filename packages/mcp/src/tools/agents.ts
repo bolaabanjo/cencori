@@ -33,4 +33,15 @@ export function registerAgentsTools(server: McpServer, client: PlatformClient): 
             return jsonResult(agent);
         },
     );
+
+    server.registerTool(
+        'poll_agent_actions',
+        {
+            title: 'Poll pending agent actions',
+            description: 'Poll for pending actions queued for agents in the authenticated project.',
+            inputSchema: {},
+            annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async () => jsonResult(await client.get('/v1/agent/actions/poll')),
+    );
 }

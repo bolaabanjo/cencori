@@ -151,32 +151,44 @@ test('MCP server: feature flag docs-only hides platform tools even with API key'
     );
 });
 
-test('MCP server: authenticated mode exposes all 7 tools', async (t) => {
-    if (!API_KEY) {
-        skipWithoutApiKey(t);
-        return;
+// ── Tool composition / tiering (offline: listTools does not call the API, so a
+// dummy key exercises registration without network). ──────────────────────
+async function toolNames(env) {
+    return withMcpClient(env, async (client) => {
+        const { tools } = await client.listTools();
+        return tools.map((tool) => tool.name);
+    });
+}
+
+test('MCP server: guidance tools are always available without an API key', async () => {
+    const names = await toolNames({ CENCORI_API_KEY: '' });
+    // Manual-only guidance is read-only and key-less.
+    assert.ok(names.includes('how_to_create_api_key'));
+    assert.ok(names.includes('how_to_revoke_api_key'));
+    assert.ok(names.includes('how_to_activate_policy'));
+    assert.ok(names.includes('how_to_manage_members'));
+    // No platform tools without a key.
+    assert.ok(!names.includes('list_models'));
+    assert.ok(!names.includes('generate_text'));
+    // There is no executable API-key/billing/activation tool — guidance only.
+    assert.ok(!names.includes('create_api_key'));
+    assert.ok(!names.includes('activate_policy'));
+    assert.ok(!names.includes('create_agent_key'));
+});
+
+test('MCP server: reads register with a key; inference is gated behind CENCORI_MCP_WRITE', async () => {
+    const readOnly = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing' });
+    // Reads across products.
+    for (const t of ['list_models', 'get_health', 'check_quota', 'list_memories', 'list_sessions', 'list_policies', 'poll_agent_actions']) {
+        assert.ok(readOnly.includes(t), `expected read tool ${t}`);
     }
+    // Inference must NOT be present without the write flag.
+    assert.ok(!readOnly.includes('generate_text'), 'inference should be gated');
 
-    await withMcpClient(
-        {
-            CENCORI_API_KEY: API_KEY,
-            CENCORI_MCP_FEATURES: 'docs,gateway,agents',
-        },
-        async (client) => {
-            const { tools } = await client.listTools();
-            const names = tools.map((tool) => tool.name).sort();
-
-            assert.deepEqual(names, [
-                'get_agent',
-                'get_doc',
-                'get_metrics',
-                'list_agents',
-                'list_docs',
-                'list_models',
-                'search_docs',
-            ]);
-        },
-    );
+    const withWrite = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_WRITE: '1' });
+    for (const t of ['generate_text', 'describe_image', 'query_document', 'create_embeddings']) {
+        assert.ok(withWrite.includes(t), `expected inference tool ${t} with write enabled`);
+    }
 });
 
 test('MCP server: list_models returns model list', async (t) => {
