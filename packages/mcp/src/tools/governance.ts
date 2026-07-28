@@ -1,14 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { PlatformClient } from '../client.js';
-import { jsonResult, READ_ONLY_ANNOTATIONS } from './shared.js';
+import type { McpCapabilities } from '../config.js';
+import { jsonResult, READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS } from './shared.js';
 
 /**
- * Governance read tools. Phase 3 adds maker/draft write tools (create_policy,
- * install_template). Activation and change-request responses stay MANUAL — see
- * the how_to_* guidance tools.
+ * Governance tools. Reads always register; maker/draft writes (create_policy,
+ * install_template) need CENCORI_MCP_WRITE. Activation and change-request
+ * responses stay MANUAL — see the how_to_* guidance tools. There is
+ * deliberately no destructive governance tool.
  */
-export function registerGovernanceTools(server: McpServer, client: PlatformClient): void {
+export function registerGovernanceTools(server: McpServer, client: PlatformClient, caps: McpCapabilities): void {
     server.registerTool(
         'list_policies',
         {
@@ -76,4 +78,39 @@ export function registerGovernanceTools(server: McpServer, client: PlatformClien
         },
         async () => jsonResult(await client.get('/v1/governance/templates')),
     );
+
+    if (caps.write) {
+        server.registerTool(
+            'create_policy',
+            {
+                title: 'Draft a governance policy',
+                description:
+                    'Create a governance policy as a DRAFT. It is not enforced until a human activates it (see how_to_activate_policy).',
+                inputSchema: {
+                    name: z.string().min(1).describe('Policy name (unique per org).'),
+                    spec: z
+                        .record(z.string(), z.unknown())
+                        .describe('Policy spec object: match + rules + defaults + controls.'),
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ name, spec }) => jsonResult(await client.post('/v1/governance/policies', { name, spec })),
+        );
+
+        server.registerTool(
+            'install_template',
+            {
+                title: 'Install a governance policy template',
+                description:
+                    'Install a policy template as a new DRAFT policy. Activation remains a manual human step (see how_to_activate_policy).',
+                inputSchema: {
+                    template_id: z.string().min(1).describe('The template id to install.'),
+                    name: z.string().min(1).describe('Name for the new draft policy.'),
+                },
+                annotations: WRITE_ANNOTATIONS,
+            },
+            async ({ template_id, name }) =>
+                jsonResult(await client.post(`/v1/governance/templates/${template_id}/install`, { name })),
+        );
+    }
 }
