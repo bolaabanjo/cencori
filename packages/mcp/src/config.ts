@@ -1,19 +1,42 @@
 const DEFAULT_BASE_URL = 'https://cencori.com';
 
-export type McpFeature = 'docs' | 'gateway' | 'agents';
+export type McpFeature =
+    | 'docs'
+    | 'gateway'
+    | 'agents'
+    | 'memory'
+    | 'sessions'
+    | 'multimodal'
+    | 'governance'
+    | 'guidance';
 
-const KNOWN_FEATURES: readonly McpFeature[] = ['docs', 'gateway', 'agents'];
+const KNOWN_FEATURES: readonly McpFeature[] = [
+    'docs',
+    'gateway',
+    'agents',
+    'memory',
+    'sessions',
+    'multimodal',
+    'governance',
+    'guidance',
+];
+
+/**
+ * Action tiers the server is allowed to expose. Reads are always available
+ * (given a key); writes and destructive actions are opt-in via env.
+ */
+export interface McpCapabilities {
+    /** Non-destructive writes + inference. CENCORI_MCP_WRITE. */
+    write: boolean;
+    /** Deletes and approvals. CENCORI_MCP_DESTRUCTIVE (implies write). */
+    destructive: boolean;
+}
 
 export interface McpConfig {
     docsBaseUrl: string;
     baseUrl: string;
     apiKey?: string;
-    /**
-     * Placeholder for future write-tool gating.
-     * v1 has no write tools; this flag is parsed but not used for registration.
-     * Defaults to true. Setting false logs a warning at startup.
-     */
-    readOnly: boolean;
+    capabilities: McpCapabilities;
     features: Record<McpFeature, boolean>;
 }
 
@@ -33,15 +56,22 @@ function isMcpFeature(value: string): value is McpFeature {
     return (KNOWN_FEATURES as readonly string[]).includes(value);
 }
 
-function parseFeatures(value: string | undefined): Record<McpFeature, boolean> {
-    const allFeatures: Record<McpFeature, boolean> = {
+function allFeaturesEnabled(): Record<McpFeature, boolean> {
+    return {
         docs: true,
         gateway: true,
         agents: true,
+        memory: true,
+        sessions: true,
+        multimodal: true,
+        governance: true,
+        guidance: true,
     };
+}
 
+function parseFeatures(value: string | undefined): Record<McpFeature, boolean> {
     if (!value || value.trim() === '') {
-        return allFeatures;
+        return allFeaturesEnabled();
     }
 
     const tokens = value
@@ -63,6 +93,11 @@ function parseFeatures(value: string | undefined): Record<McpFeature, boolean> {
         docs: enabled.has('docs'),
         gateway: enabled.has('gateway'),
         agents: enabled.has('agents'),
+        memory: enabled.has('memory'),
+        sessions: enabled.has('sessions'),
+        multimodal: enabled.has('multimodal'),
+        governance: enabled.has('governance'),
+        guidance: enabled.has('guidance'),
     };
 }
 
@@ -70,21 +105,17 @@ export function loadConfig(): McpConfig {
     const docsBaseUrl = normalizeBaseUrl(process.env.CENCORI_DOCS_BASE_URL ?? DEFAULT_BASE_URL);
     const baseUrl = normalizeBaseUrl(process.env.CENCORI_BASE_URL ?? DEFAULT_BASE_URL);
     const apiKey = process.env.CENCORI_API_KEY?.trim() || undefined;
-    const readOnly = parseBooleanEnv(process.env.CENCORI_MCP_READ_ONLY, true);
     const features = parseFeatures(process.env.CENCORI_MCP_FEATURES);
 
-    if (!readOnly) {
-        console.error(
-            '[cencori-mcp] CENCORI_MCP_READ_ONLY=false has no effect yet: v1 has no write tools. ' +
-                'This flag is reserved for future write gating.',
-        );
-    }
+    // Destructive implies write. Both default off — reads-only unless opted in.
+    const destructive = parseBooleanEnv(process.env.CENCORI_MCP_DESTRUCTIVE, false);
+    const write = destructive || parseBooleanEnv(process.env.CENCORI_MCP_WRITE, false);
 
     return {
         docsBaseUrl,
         baseUrl,
         apiKey,
-        readOnly,
+        capabilities: { write, destructive },
         features,
     };
 }

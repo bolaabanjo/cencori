@@ -6,10 +6,15 @@ import {
     registerAgentsTools,
     registerDocsTools,
     registerGatewayTools,
+    registerGovernanceTools,
+    registerGuidanceTools,
+    registerMemoryTools,
+    registerMultimodalTools,
+    registerSessionsTools,
 } from './tools.js';
 
 const SERVER_NAME = 'cencori';
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.2.0';
 
 export function createServer(config: McpConfig): McpServer {
     const server = new McpServer(
@@ -25,20 +30,30 @@ export function createServer(config: McpConfig): McpServer {
         },
     );
 
-    if (config.features.docs) {
+    const { features, capabilities } = config;
+
+    // Docs + guidance need no API key.
+    if (features.docs) {
         const docs = new DocsClient(config.docsBaseUrl);
         registerDocsTools(server, docs, config.docsBaseUrl);
     }
+    if (features.guidance) {
+        registerGuidanceTools(server, config.baseUrl);
+    }
 
-    if (config.apiKey && (config.features.gateway || config.features.agents)) {
+    // Everything else needs a key. Reads register whenever a key is present;
+    // multimodal inference is Write-tier (incurs cost) so it needs the flag.
+    if (config.apiKey) {
         const client = new PlatformClient(config.baseUrl, config.apiKey);
 
-        if (config.features.gateway) {
-            registerGatewayTools(server, client);
-        }
+        if (features.gateway) registerGatewayTools(server, client);
+        if (features.agents) registerAgentsTools(server, client);
+        if (features.memory) registerMemoryTools(server, client);
+        if (features.sessions) registerSessionsTools(server, client);
+        if (features.governance) registerGovernanceTools(server, client);
 
-        if (config.features.agents) {
-            registerAgentsTools(server, client);
+        if (features.multimodal && capabilities.write) {
+            registerMultimodalTools(server, client);
         }
     }
 

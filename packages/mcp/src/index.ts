@@ -13,8 +13,14 @@ async function main(): Promise<void> {
         .map(([feature]) => feature)
         .join(', ');
 
+    const tier = config.capabilities.destructive
+        ? 'read+write+destructive'
+        : config.capabilities.write
+          ? 'read+write'
+          : 'read-only';
+
     console.error(
-        `Cencori MCP server running (readOnly=${config.readOnly}, docsBase=${config.docsBaseUrl}, base=${config.baseUrl}, features=${enabledFeatures}, apiKey=${config.apiKey ? 'configured' : 'not set'})`,
+        `Cencori MCP server running (tier=${tier}, base=${config.baseUrl}, features=${enabledFeatures}, apiKey=${config.apiKey ? 'configured' : 'not set'})`,
     );
 }
 
