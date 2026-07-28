@@ -7,30 +7,50 @@ import { jsonResult, READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS, DESTRUCTIVE_ANNOT
 /**
  * Memory tools. Reads are always registered; writes need CENCORI_MCP_WRITE and
  * deletes need CENCORI_MCP_DESTRUCTIVE.
+ *
+ * Memory is scoped to a user or a session (the only scopes today). Scoped tools
+ * therefore require `user_id` (user scope, the default) or `session_id`
+ * (session scope) — a bare call has no scope key and the API rejects it.
  */
 
 const scopeShape = {
     namespace: z.string().optional().describe('Memory namespace to scope to.'),
-    scope: z.string().optional().describe('Memory scope (e.g. project, user, session).'),
-    user_id: z.string().optional().describe('Scope to a specific end-user id.'),
-    session_id: z.string().optional().describe('Scope to a specific session id.'),
+    scope: z.enum(['user', 'session']).optional().describe('Memory scope. Defaults to "user".'),
+    user_id: z.string().optional().describe('End-user id. REQUIRED for user scope (the default).'),
+    session_id: z.string().optional().describe('Session id. REQUIRED for session scope.'),
 };
+
+type ScopeArgs = { scope?: 'user' | 'session'; user_id?: string; session_id?: string };
+
+/** Returns a clear error message if the required scope key is missing, else null. */
+function missingScopeKey({ scope, user_id, session_id }: ScopeArgs): string | null {
+    if ((scope ?? 'user') === 'session') {
+        return session_id || user_id ? null : 'session_id (or user_id) is required for session scope.';
+    }
+    return user_id
+        ? null
+        : 'user_id is required for user scope (the default). Pass user_id, or use scope="session" with session_id.';
+}
+
+const scopeErr = (msg: string) => jsonResult({ error: 'missing_scope', message: msg });
 
 export function registerMemoryTools(server: McpServer, client: PlatformClient, caps: McpCapabilities): void {
     server.registerTool(
         'list_memories',
         {
             title: 'List memories',
-            description: 'List stored memories for the project, optionally scoped by namespace/user/session.',
+            description: 'List stored memories for a user or session. Requires user_id (or session_id for session scope).',
             inputSchema: {
                 ...scopeShape,
-                limit: z.number().int().positive().max(200).optional(),
+                limit: z.number().int().positive().max(100).optional(),
                 cursor: z.string().optional().describe('Pagination cursor from a previous response.'),
             },
             annotations: READ_ONLY_ANNOTATIONS,
         },
-        async ({ namespace, scope, user_id, session_id, limit, cursor }) =>
-            jsonResult(
+        async ({ namespace, scope, user_id, session_id, limit, cursor }) => {
+            const err = missingScopeKey({ scope, user_id, session_id });
+            if (err) return scopeErr(err);
+            return jsonResult(
                 await client.get('/v1/memory/list', {
                     namespace,
                     scope,
@@ -39,14 +59,15 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                     limit: limit?.toString(),
                     cursor,
                 }),
-            ),
+            );
+        },
     );
 
     server.registerTool(
         'search_memory',
         {
             title: 'Search memory (semantic)',
-            description: 'Semantically search stored memories by query.',
+            description: 'Semantically search a user’s or session’s memories. Requires user_id (or session_id for session scope).',
             inputSchema: {
                 query: z.string().min(1).describe('Natural-language search query.'),
                 ...scopeShape,
@@ -55,8 +76,10 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
             },
             annotations: READ_ONLY_ANNOTATIONS,
         },
-        async ({ query, namespace, scope, user_id, session_id, top_k, threshold }) =>
-            jsonResult(
+        async ({ query, namespace, scope, user_id, session_id, top_k, threshold }) => {
+            const err = missingScopeKey({ scope, user_id, session_id });
+            if (err) return scopeErr(err);
+            return jsonResult(
                 await client.post('/v1/memory/search', {
                     query,
                     namespace,
@@ -66,7 +89,8 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                     topK: top_k,
                     threshold,
                 }),
-            ),
+            );
+        },
     );
 
     server.registerTool(
@@ -84,26 +108,24 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
         'list_memory_entities',
         {
             title: 'List memory entities',
-            description: 'List entities resolved from the memory graph.',
+            description: 'List entities resolved from a user’s or session’s memory graph. Requires user_id (or session_id).',
             inputSchema: scopeShape,
             annotations: READ_ONLY_ANNOTATIONS,
         },
-        async ({ namespace, scope, user_id, session_id }) =>
-            jsonResult(
-                await client.get('/v1/memory/entities', {
-                    namespace,
-                    scope,
-                    userId: user_id,
-                    sessionId: session_id,
-                }),
-            ),
+        async ({ namespace, scope, user_id, session_id }) => {
+            const err = missingScopeKey({ scope, user_id, session_id });
+            if (err) return scopeErr(err);
+            return jsonResult(
+                await client.get('/v1/memory/entities', { namespace, scope, userId: user_id, sessionId: session_id }),
+            );
+        },
     );
 
     server.registerTool(
         'get_memory_graph',
         {
             title: 'Get memory entity graph',
-            description: 'Traverse the memory entity graph from an optional starting entity.',
+            description: 'Traverse a user’s or session’s memory entity graph. Requires user_id (or session_id).',
             inputSchema: {
                 ...scopeShape,
                 entity: z.string().optional().describe('Entity to start traversal from.'),
@@ -111,8 +133,10 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
             },
             annotations: READ_ONLY_ANNOTATIONS,
         },
-        async ({ namespace, scope, user_id, session_id, entity, hops }) =>
-            jsonResult(
+        async ({ namespace, scope, user_id, session_id, entity, hops }) => {
+            const err = missingScopeKey({ scope, user_id, session_id });
+            if (err) return scopeErr(err);
+            return jsonResult(
                 await client.get('/v1/memory/graph', {
                     namespace,
                     scope,
@@ -121,26 +145,30 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                     entity,
                     hops: hops?.toString(),
                 }),
-            ),
+            );
+        },
     );
 
     server.registerTool(
         'get_forget_suggestions',
         {
             title: 'Get forget suggestions',
-            description: 'List memories the system suggests forgetting (stale/superseded).',
+            description: 'List memories the system suggests forgetting for a user or session. Requires user_id (or session_id).',
             inputSchema: scopeShape,
             annotations: READ_ONLY_ANNOTATIONS,
         },
-        async ({ namespace, scope, user_id, session_id }) =>
-            jsonResult(
+        async ({ namespace, scope, user_id, session_id }) => {
+            const err = missingScopeKey({ scope, user_id, session_id });
+            if (err) return scopeErr(err);
+            return jsonResult(
                 await client.get('/v1/memory/forget-suggestions', {
                     namespace,
                     scope,
                     userId: user_id,
                     sessionId: session_id,
                 }),
-            ),
+            );
+        },
     );
 
     if (caps.write) {
@@ -148,7 +176,8 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
             'remember_memory',
             {
                 title: 'Remember a conversation turn',
-                description: 'Store a user/assistant exchange as memory for later retrieval.',
+                description:
+                    'Store a user/assistant exchange as memory. Requires user_id (or session_id for session scope).',
                 inputSchema: {
                     user: z.string().min(1).describe('The user message.'),
                     assistant: z.string().min(1).describe('The assistant response.'),
@@ -156,8 +185,10 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                 },
                 annotations: WRITE_ANNOTATIONS,
             },
-            async ({ user, assistant, namespace, scope, user_id, session_id }) =>
-                jsonResult(
+            async ({ user, assistant, namespace, scope, user_id, session_id }) => {
+                const err = missingScopeKey({ scope, user_id, session_id });
+                if (err) return scopeErr(err);
+                return jsonResult(
                     await client.post('/v1/memory/remember', {
                         user,
                         assistant,
@@ -166,14 +197,15 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                         userId: user_id,
                         sessionId: session_id,
                     }),
-                ),
+                );
+            },
         );
 
         server.registerTool(
             'write_memory',
             {
                 title: 'Write a memory',
-                description: 'Store a single memory (a fact/note) directly.',
+                description: 'Store a single memory (a fact/note). Requires user_id (or session_id for session scope).',
                 inputSchema: {
                     content: z.string().min(1).describe('The memory content to store.'),
                     importance: z.number().min(0).max(1).optional().describe('Importance weight 0–1.'),
@@ -181,8 +213,10 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                 },
                 annotations: WRITE_ANNOTATIONS,
             },
-            async ({ content, importance, namespace, scope, user_id, session_id }) =>
-                jsonResult(
+            async ({ content, importance, namespace, scope, user_id, session_id }) => {
+                const err = missingScopeKey({ scope, user_id, session_id });
+                if (err) return scopeErr(err);
+                return jsonResult(
                     await client.post('/v1/memory/write', {
                         content,
                         importance,
@@ -191,7 +225,8 @@ export function registerMemoryTools(server: McpServer, client: PlatformClient, c
                         userId: user_id,
                         sessionId: session_id,
                     }),
-                ),
+                );
+            },
         );
 
         server.registerTool(
