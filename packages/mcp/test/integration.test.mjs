@@ -188,7 +188,7 @@ test('MCP server: reads register with a key; inference is gated behind CENCORI_M
     assert.ok(!readOnly.includes('generate_text'), 'inference should be gated');
 
     const withWrite = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_WRITE: '1' });
-    for (const t of ['generate_text', 'describe_image', 'query_document', 'create_embeddings']) {
+    for (const t of ['generate_text', 'describe_image', 'query_document', 'create_embeddings', 'text_to_speech', 'transcribe_audio']) {
         assert.ok(withWrite.includes(t), `expected inference tool ${t} with write enabled`);
     }
 });

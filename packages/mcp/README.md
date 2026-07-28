@@ -60,7 +60,7 @@ Docs + `how_to_*` guidance tools work with **no API key**. Add `CENCORI_API_KEY`
 
 ### Write — requires `CENCORI_MCP_WRITE=1`
 
-- **Inference:** `generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, `describe_image`, `ocr_image`, `classify_image`, `extract_document`, `summarize_document`, `query_document`.
+- **Inference:** `generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, `describe_image`, `ocr_image`, `classify_image`, `extract_document`, `summarize_document`, `query_document`, `text_to_speech`, `transcribe_audio`.
 - **Memory:** `remember_memory`, `write_memory`, `create_namespace`.
 - **Agents:** `create_agent`, `update_agent`.
 - **Sessions:** `create_session`, `add_session_turn`.

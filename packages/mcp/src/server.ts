@@ -4,6 +4,7 @@ import { DocsClient } from './docs/client.js';
 import type { McpConfig } from './config.js';
 import {
     registerAgentsTools,
+    registerAudioTools,
     registerDocsTools,
     registerGatewayTools,
     registerGovernanceTools,
@@ -14,7 +15,7 @@ import {
 } from './tools.js';
 
 const SERVER_NAME = 'cencori';
-const SERVER_VERSION = '0.5.0';
+const SERVER_VERSION = '0.6.0';
 
 export function createServer(config: McpConfig): McpServer {
     const server = new McpServer(
@@ -54,6 +55,7 @@ export function createServer(config: McpConfig): McpServer {
 
         if (features.multimodal && capabilities.write) {
             registerMultimodalTools(server, client);
+            registerAudioTools(server, client);
         }
     }
 
