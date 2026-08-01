@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VercelLogo, SupabaseLogo } from '@/components/icons/BrandIcons';
 import type { EdgeDeploymentSummary, EdgeIntegration } from '@/lib/edge-integrations/types';
+import { useOrganizationProject } from '@/lib/contexts/OrganizationProjectContext';
 
 interface PageProps {
     params: Promise<{ orgSlug: string; projectSlug: string }>;
@@ -116,7 +117,7 @@ const PROVIDER_CARDS: ProviderCardDefinition[] = [
     },
 ];
 
-function useProjectId(orgSlug: string, projectSlug: string) {
+function useProjectId(orgSlug: string, projectSlug: string, initialData?: ProjectData) {
     return useQuery({
         queryKey: ['projectId', orgSlug, projectSlug],
         queryFn: async () => {
@@ -142,6 +143,8 @@ function useProjectId(orgSlug: string, projectSlug: string) {
                 projectName: project.name,
             } satisfies ProjectData;
         },
+        initialData,
+        initialDataUpdatedAt: initialData ? 0 : undefined,
         staleTime: 5 * 60 * 1000,
     });
 }
@@ -168,9 +171,19 @@ export default function EdgePage({ params }: PageProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
+    const { organizations, projects } = useOrganizationProject();
     const [connectingProvider, setConnectingProvider] = useState<ProviderCardId | null>(null);
 
-    const { data: projectData, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug);
+    const cachedProjectData = useMemo(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+        const project = projects.find((item) => (
+            item.slug === projectSlug && item.organization_id === organization.id
+        ));
+        return project ? { projectId: project.id, projectName: project.name } : undefined;
+    }, [organizations, projects, orgSlug, projectSlug]);
+
+    const { data: projectData, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug, cachedProjectData);
     const { data: edgeData, isLoading: integrationsLoading } = useEdgeIntegrations(projectData?.projectId);
 
     const vercelIntegration = useMemo(
@@ -244,20 +257,6 @@ export default function EdgePage({ params }: PageProps) {
         window.location.href = `/api/projects/${projectData.projectId}/edge-integrations/vercel/install?${params.toString()}`;
     };
 
-    if (projectLoading) {
-        return (
-            <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-6">
-                <Skeleton className="h-8 w-48" />
-                <Skeleton className="h-4 w-96 max-w-full" />
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                        <Skeleton key={index} className="h-64 rounded-xl" />
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="w-full max-w-5xl mx-auto px-6 py-8 space-y-6">
             <div>
@@ -309,7 +308,7 @@ export default function EdgePage({ params }: PageProps) {
                 ))}
             </div>
 
-            {integrationsLoading ? (
+            {projectLoading || integrationsLoading ? (
                 <Skeleton className="h-44 rounded-xl" />
             ) : vercelIntegration ? (
                 <section className="rounded-xl border border-border/50 bg-card p-5">

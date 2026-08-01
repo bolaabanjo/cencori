@@ -16,6 +16,7 @@ import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import {
     Dialog,
     DialogContent,
@@ -178,6 +179,46 @@ function categoryTag(value: string) {
         : "border-emerald-500/20 bg-emerald-500/[0.055] text-emerald-400";
 }
 
+function AuditLedgerSkeletonRows() {
+    return Array.from({ length: 8 }).map((_, index) => (
+        <tr key={index} className="border-b border-border/20 last:border-b-0">
+            <td className="px-5 py-4 sm:px-6"><Skeleton className="h-7 w-24" /></td>
+            <td className="px-4 py-4"><Skeleton className="h-8 w-full max-w-sm" /></td>
+            <td className="px-4 py-4"><Skeleton className="h-7 w-28" /></td>
+            <td className="px-4 py-4"><Skeleton className="h-7 w-20" /></td>
+            <td className="px-4 py-4"><Skeleton className="size-4" /></td>
+        </tr>
+    ));
+}
+
+function AuditLedgerSkeleton() {
+    return (
+        <section className="mt-10 overflow-hidden rounded-lg bg-muted/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] dark:bg-[#111111]">
+            <div className="flex items-center justify-between border-b border-border/25 bg-foreground/[0.018] px-5 py-4 sm:px-6">
+                <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="h-3 w-20" />
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] border-collapse text-left">
+                    <thead>
+                        <tr className="border-b border-border/25 text-[9px] tracking-[0.08em] text-muted-foreground">
+                            <th className="w-[164px] px-5 py-3 font-medium sm:px-6">TIME</th>
+                            <th className="px-4 py-3 font-medium">EVENT</th>
+                            <th className="w-[190px] px-4 py-3 font-medium">ACTOR</th>
+                            <th className="w-[130px] px-4 py-3 font-medium">SCOPE</th>
+                            <th className="w-12 px-4 py-3"><span className="sr-only">Details</span></th>
+                        </tr>
+                    </thead>
+                    <tbody><AuditLedgerSkeletonRows /></tbody>
+                </table>
+            </div>
+        </section>
+    );
+}
+
 interface PageProps {
     params: Promise<{ orgSlug: string }>;
 }
@@ -198,6 +239,25 @@ export default function AuditLogPage({ params }: PageProps) {
     const [page, setPage] = useState(1);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [teamUpgradeOpen, setTeamUpgradeOpen] = useState(false);
+    const {
+        organizations,
+        projects: cachedProjects,
+    } = useOrganizationProject();
+
+    const cachedOrganizationContext = useMemo<OrganizationContext | undefined>(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+
+        return {
+            id: organization.id,
+            name: organization.name,
+            subscription_tier: (organization.subscription_tier || "free") as SubscriptionTier,
+            projects: cachedProjects
+                .filter((project) => project.organization_id === organization.id)
+                .map((project) => ({ id: project.id, name: project.name }))
+                .sort((left, right) => left.name.localeCompare(right.name)),
+        };
+    }, [organizations, cachedProjects, orgSlug]);
 
     useEffect(() => {
         if (routeCategory && VALID_CATEGORIES.has(routeCategory)) {
@@ -238,6 +298,8 @@ export default function AuditLogPage({ params }: PageProps) {
                 projects: (projects || []) as Project[],
             };
         },
+        initialData: cachedOrganizationContext,
+        initialDataUpdatedAt: cachedOrganizationContext ? 0 : undefined,
         staleTime: 60_000,
     });
 
@@ -417,7 +479,7 @@ export default function AuditLogPage({ params }: PageProps) {
         return (
             <main className="mx-auto w-full max-w-[1080px] px-4 py-8 pb-24 sm:px-6 sm:py-10 lg:px-8">
                 {pageHeader}
-                <Skeleton className="mt-10 h-48 w-full rounded-lg" />
+                <AuditLedgerSkeleton />
             </main>
         );
     }
@@ -599,15 +661,7 @@ export default function AuditLogPage({ params }: PageProps) {
                         </thead>
                         <tbody>
                             {isLoading ? (
-                                Array.from({ length: 8 }).map((_, index) => (
-                                    <tr key={index} className="border-b border-border/20 last:border-b-0">
-                                        <td className="px-5 py-4 sm:px-6"><Skeleton className="h-7 w-24" /></td>
-                                        <td className="px-4 py-4"><Skeleton className="h-8 w-full max-w-sm" /></td>
-                                        <td className="px-4 py-4"><Skeleton className="h-7 w-28" /></td>
-                                        <td className="px-4 py-4"><Skeleton className="h-7 w-20" /></td>
-                                        <td className="px-4 py-4"><Skeleton className="size-4" /></td>
-                                    </tr>
-                                ))
+                                <AuditLedgerSkeletonRows />
                             ) : isError ? (
                                 <tr>
                                     <td colSpan={5} className="px-6 py-16 text-center">

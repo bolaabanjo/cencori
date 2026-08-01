@@ -15,9 +15,13 @@ import { checkSpendCap } from '@/lib/budgets';
 import { deductCredits } from '@/lib/credits';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
 import { logGatewayEvent } from '@/lib/gateway-reliability';
-import { getCachedApiKeyConfig, setCachedApiKeyConfig, invalidateApiKeyCache } from '@/lib/config-cache';
+import { getCachedApiKeyConfig, setCachedApiKeyConfig } from '@/lib/config-cache';
 import { processUsageQueue } from '@/lib/queue';
 import { recordGatewayGovernanceDecision } from '@/lib/governance/record-decision';
+import {
+    isProjectIngressAllowed,
+    loadProjectNetworkPolicy,
+} from '@/lib/networking/project-network-policy';
 
 // ──────────────────────────────────────────────
 // Types
@@ -113,6 +117,43 @@ function validateDomain(origin: string | null, allowedDomains: string[] | null):
 // per request. We now rely on Vercel's geolocation() (free, zero-latency)
 // and customer-provided X-Cencori-User-Country headers instead.
 
+async function enforceProjectIngressPolicy(params: {
+    supabase: ReturnType<typeof createAdminClient>;
+    projectId: string;
+    sourceIp: string | null;
+    requestId: string;
+}): Promise<NextResponse | null> {
+    try {
+        const policy = await loadProjectNetworkPolicy(params.supabase, params.projectId);
+        if (isProjectIngressAllowed(policy, params.sourceIp)) return null;
+
+        return addGatewayHeaders(
+            NextResponse.json(
+                {
+                    error: 'Network access denied',
+                    message: 'This request source is not permitted by the project ingress policy.',
+                    code: 'network_access_denied',
+                },
+                { status: 403 }
+            ),
+            { requestId: params.requestId }
+        );
+    } catch (error) {
+        console.error('[GatewayMiddleware] Network policy lookup failed:', error);
+        return addGatewayHeaders(
+            NextResponse.json(
+                {
+                    error: 'Network policy unavailable',
+                    message: 'The project ingress policy could not be evaluated.',
+                    code: 'network_policy_unavailable',
+                },
+                { status: 503 }
+            ),
+            { requestId: params.requestId }
+        );
+    }
+}
+
 // ──────────────────────────────────────────────
 // Main Validation
 // ──────────────────────────────────────────────
@@ -130,6 +171,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
     const customerProvidedIp = req.headers.get('x-cencori-user-ip');
     const vercelIp = ipAddress(req);
     const fallbackIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const requestSourceIp = vercelIp || fallbackIp || req.headers.get('x-real-ip');
     const clientIp = customerProvidedIp || vercelIp || fallbackIp || 'unknown';
     // Use customer-provided country header first, then Vercel's free geolocation
     let countryCode = req.headers.get('x-cencori-user-country');
@@ -190,6 +232,14 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                 ),
             };
         }
+
+        const networkDenial = await enforceProjectIngressPolicy({
+            supabase,
+            projectId: project.id,
+            sourceIp: requestSourceIp,
+            requestId,
+        });
+        if (networkDenial) return { success: false, response: networkDenial };
 
         const organization = project.organizations as unknown as {
             id: string;
@@ -301,6 +351,14 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                         .single();
 
                     if (project && !pError) {
+                        const networkDenial = await enforceProjectIngressPolicy({
+                            supabase,
+                            projectId: project.id,
+                            sourceIp: requestSourceIp,
+                            requestId,
+                        });
+                        if (networkDenial) return { success: false, response: networkDenial };
+
                         // Find an active API key for this project and environment to use as a logging reference
                         const { data: activeKey } = await supabase
                             .from('api_keys')
@@ -465,6 +523,14 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
     const organizationId = organization.id;
     const tier = organization.subscription_tier || 'free';
     const billingFrozen = Boolean(organization.billing_frozen);
+
+    const networkDenial = await enforceProjectIngressPolicy({
+        supabase,
+        projectId: project.id,
+        sourceIp: requestSourceIp,
+        requestId,
+    });
+    if (networkDenial) return { success: false, response: networkDenial };
     
     // ── Credits Fast-Path (Redis) ──
     const shouldEnforceCredits = tier !== 'free' && tier !== 'enterprise';

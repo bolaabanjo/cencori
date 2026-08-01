@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 
 interface CacheAnalyticsDashboardProps {
-    projectId: string;
+    projectId?: string;
     timeRange: string;
     environment?: string;
 }
@@ -68,6 +68,7 @@ export function CacheAnalyticsDashboard({ projectId, timeRange, environment = 'p
             return res.json();
         },
         staleTime: 30 * 1000,
+        enabled: !!projectId,
     });
 
     const invalidateMutation = useMutation({
@@ -101,7 +102,7 @@ export function CacheAnalyticsDashboard({ projectId, timeRange, environment = 'p
         },
     });
 
-    if (isLoading) {
+    if (!projectId || isLoading) {
         return (
             <div className="space-y-4">
                 <div className="rounded-md border border-border/40 bg-card overflow-hidden">

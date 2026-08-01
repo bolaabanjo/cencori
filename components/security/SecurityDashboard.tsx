@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface SecurityDashboardProps {
-    projectId: string;
+    projectId?: string;
 }
 
 interface SecurityStats {
@@ -24,7 +24,7 @@ interface SecurityStats {
     totalIncidents30d: number;
 }
 
-function useSecurityStats(projectId: string) {
+function useSecurityStats(projectId?: string) {
     return useQuery({
         queryKey: ['securityStats', projectId],
         queryFn: async () => {
@@ -35,6 +35,7 @@ function useSecurityStats(projectId: string) {
         },
         staleTime: 30 * 1000,
         refetchInterval: 60 * 1000,
+        enabled: !!projectId,
     });
 }
 
@@ -56,7 +57,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 export function SecurityDashboard({ projectId }: SecurityDashboardProps) {
     const { data: stats, isLoading } = useSecurityStats(projectId);
 
-    if (isLoading) {
+    if (!projectId || isLoading) {
         return (
             <div className="space-y-4">
                 {/* Metrics skeleton */}

@@ -53,7 +53,7 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
 
     if (total === 0) {
         return (
-        <div className="bg-card p-4">
+        <div className="bg-transparent p-4">
                 <div className="mb-3">
                     <h3 className="text-xs font-medium">Model Usage</h3>
                     <p className="text-[10px] text-muted-foreground">Requests by model</p>
@@ -66,7 +66,7 @@ export function ModelUsageChart({ data }: ModelUsageChartProps) {
     }
 
     return (
-        <div className="flex h-full flex-col bg-card p-4">
+        <div className="flex h-full flex-col bg-transparent p-4">
             <div className="mb-3">
                 <h3 className="text-xs font-medium">Model usage</h3>
                 <p className="text-[10px] text-muted-foreground">Requests by model</p>

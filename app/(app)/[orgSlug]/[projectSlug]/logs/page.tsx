@@ -22,6 +22,7 @@ import { Search, X } from 'lucide-react';
 import { useEnvironment } from '@/lib/contexts/EnvironmentContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 
 interface PageProps {
     params: Promise<{
@@ -40,29 +41,7 @@ interface ApiKey {
 type LogSource = 'ai' | 'http';
 
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: orgData } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-
-            if (!orgData) throw new Error('Organization not found');
-
-            const { data: projectData } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('slug', projectSlug)
-                .eq('organization_id', orgData.id)
-                .single();
-
-            if (!projectData) throw new Error('Project not found');
-            return projectData.id;
-        },
-        staleTime: 5 * 60 * 1000,
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 export default function RequestLogsPage({ params }: PageProps) {
@@ -184,52 +163,7 @@ export default function RequestLogsPage({ params }: PageProps) {
         || httpFilters.time_range !== '7d'
         || httpFilters.api_key_id !== 'all';
 
-    if (isLoading) {
-        return (
-            <div className="w-full max-w-[1360px] mx-auto px-6 py-8">
-                <div className="mb-8">
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-3 w-56 mt-1" />
-                </div>
-                <div className="lg:grid lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6">
-                    <div className="mb-4 lg:mb-0">
-                        <Skeleton className="h-20 w-full max-w-[180px]" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-3 mb-6">
-                            <Skeleton className="h-7 w-28" />
-                            <Skeleton className="h-7 w-28" />
-                            <Skeleton className="h-7 w-40" />
-                        </div>
-                        <div className="bg-card border border-border/40 rounded-md">
-                            <div className="border-b border-border/40 px-4 py-2">
-                                <div className="grid grid-cols-7 gap-4">
-                                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                                        <Skeleton key={i} className="h-3 w-12" />
-                                    ))}
-                                </div>
-                            </div>
-                            {[1, 2, 3, 4, 5].map((i) => (
-                                <div key={i} className="border-b border-border/40 px-4 py-3 last:border-b-0">
-                                    <div className="grid grid-cols-7 gap-4 items-center">
-                                        <Skeleton className="h-5 w-16" />
-                                        <Skeleton className="h-3 w-20" />
-                                        <Skeleton className="h-3 w-24" />
-                                        <Skeleton className="h-3 w-full" />
-                                        <Skeleton className="h-3 w-12" />
-                                        <Skeleton className="h-3 w-16" />
-                                        <Skeleton className="h-3 w-14" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    if (!projectId) {
+    if (!isLoading && !projectId) {
         return (
             <div className="w-full max-w-[1360px] mx-auto px-6 py-8">
                 <div className="text-center py-16">
@@ -376,7 +310,11 @@ export default function RequestLogsPage({ params }: PageProps) {
                                 )}
 
                                 <div className="ml-auto">
-                                    <ExportButton projectId={projectId} filters={aiFilters} environment={environment} />
+                                    {projectId ? (
+                                        <ExportButton projectId={projectId} filters={aiFilters} environment={environment} />
+                                    ) : (
+                                        <Skeleton className="h-7 w-16" />
+                                    )}
                                 </div>
                             </div>
 

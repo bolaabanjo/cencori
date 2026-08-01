@@ -2,7 +2,6 @@
 
 import { use, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
 import { Plus, FileText, MoreHorizontal, Trash2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { PromptEditor } from '@/components/prompts/PromptEditor';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -52,24 +52,7 @@ interface PromptEntry {
 }
 
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-            if (!org) return null;
-            const { data: project } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('organization_id', org.id)
-                .eq('slug', projectSlug)
-                .single();
-            return project?.id || null;
-        },
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 function timeAgo(date: string): string {
@@ -144,10 +127,28 @@ export default function PromptsPage({ params }: PageProps) {
         },
     });
 
-    if (projectLoading || !projectId) {
+    if (projectLoading || isLoading || !projectId) {
         return (
             <div className="w-full max-w-[1100px] mx-auto px-6 py-8">
-                <div className="h-5 w-28 bg-secondary rounded animate-pulse" />
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 className="text-base font-medium">Prompt Registry</h1>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Version, deploy, and manage prompts across your AI gateway.
+                        </p>
+                    </div>
+                    <Button size="sm" className="h-8 text-xs" disabled>
+                        New Prompt
+                    </Button>
+                </div>
+                <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                        <div key={i} className="rounded-xl border border-border/20 p-4 animate-pulse">
+                            <div className="h-4 w-40 bg-secondary rounded mb-2" />
+                            <div className="h-3 w-64 bg-secondary/50 rounded" />
+                        </div>
+                    ))}
+                </div>
             </div>
         );
     }

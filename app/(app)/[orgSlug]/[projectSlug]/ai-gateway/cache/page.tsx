@@ -1,13 +1,12 @@
 'use client';
 
 import { use, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
 import { CacheAnalyticsDashboard } from '@/components/cache/CacheAnalyticsDashboard';
 import { CacheSettingsPanel } from '@/components/cache/CacheSettingsPanel';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useEnvironment } from '@/lib/contexts/EnvironmentContext';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 
 interface PageProps {
     params: Promise<{
@@ -19,24 +18,7 @@ interface PageProps {
 type Tab = 'analytics' | 'settings';
 
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-            if (!org) return null;
-            const { data: project } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('organization_id', org.id)
-                .eq('slug', projectSlug)
-                .single();
-            return project?.id || null;
-        },
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 const TIME_RANGES = ['Last 1 Hour', 'Last 24 Hours', 'Last 7 Days', 'Last 30 Days'] as const;
@@ -48,10 +30,10 @@ export default function CachePage({ params }: PageProps) {
     const [tab, setTab] = useState<Tab>('analytics');
     const [timeRange, setTimeRange] = useState<string>('Last 7 Days');
 
-    if (isLoading || !projectId) {
+    if (!isLoading && !projectId) {
         return (
             <div className="w-full max-w-[1100px] mx-auto px-6 py-8">
-                <div className="h-5 w-28 bg-secondary rounded animate-pulse" />
+                <p className="py-16 text-center text-sm text-muted-foreground">Project not found.</p>
             </div>
         );
     }

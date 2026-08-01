@@ -79,7 +79,7 @@ interface ProviderKeysResponse {
 }
 
 interface ProviderKeyManagerProps {
-    projectId: string;
+    projectId?: string;
 }
 
 export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
@@ -102,6 +102,7 @@ export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
             if (!res.ok) throw new Error("Failed to fetch provider keys");
             return res.json();
         },
+        enabled: !!projectId,
     });
 
     // Add/update key mutation
@@ -275,7 +276,7 @@ export function ProviderKeyManager({ projectId }: ProviderKeyManagerProps) {
         setDialogOpen(true);
     };
 
-    if (isLoading) {
+    if (!projectId || isLoading) {
         return (
             <div className="space-y-1">
                 {[...Array(6)].map((_, i) => (

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Plus, Trash2, Webhook, Copy, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { normalizeWebhookResponse } from '@/lib/webhook-response';
 
 interface SecurityWebhooksProps {
     projectId: string;
@@ -34,14 +35,14 @@ const SECURITY_EVENTS = [
 ];
 
 function useWebhooks(projectId: string) {
-    return useQuery({
+    return useQuery<unknown, Error, WebhookData[]>({
         queryKey: ['webhooks', projectId],
         queryFn: async () => {
             const response = await fetch(`/api/projects/${projectId}/webhooks`);
             if (!response.ok) throw new Error('Failed to fetch webhooks');
-            const data = await response.json();
-            return data.webhooks as WebhookData[];
+            return response.json();
         },
+        select: normalizeWebhookResponse<WebhookData>,
         staleTime: 30 * 1000,
     });
 }

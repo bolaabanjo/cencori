@@ -1,7 +1,7 @@
 'use client';
 
-import { useId, useMemo } from 'react';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useId, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -46,50 +46,102 @@ export function formatValue(val: number, format?: ChartSeries['format']): string
     }
 }
 
-function getTimeLabels(timestamps: string[]): { start: string; end: string } {
-    if (timestamps.length === 0) return { start: '', end: 'Now' };
-
-    const first = timestamps[0];
-    const now = new Date();
-
-    let date: Date;
-    if (first.match(/^\d{2}:\d{2}$/)) {
-        const [h, m] = first.split(':').map(Number);
-        date = new Date(now);
-        date.setHours(h, m, 0, 0);
-    } else if (first.includes(' ')) {
-        date = new Date(first.replace(' ', 'T'));
-    } else {
-        date = new Date(first);
-    }
-
-    if (isNaN(date.getTime())) return { start: first, end: 'Now' };
-
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.round(diffMs / 60000);
-    const diffHours = Math.round(diffMs / 3600000);
-    const diffDays = Math.round(diffMs / 86400000);
-
-    let start: string;
-    if (diffMins < 60) start = `${diffMins}m ago`;
-    else if (diffHours < 48) start = `${diffHours}h ago`;
-    else start = `${diffDays}d ago`;
-
-    return { start, end: 'Now' };
+export function formatAxisValue(val: number, format?: ChartSeries['format']): string {
+    if (format === 'percentage') return `${Math.round(val)}%`;
+    return formatValue(val, format);
 }
 
-function ChartTooltipContent({ active, payload, label }: { active?: boolean; payload?: Array<{ color: string; name: string; value: number; dataKey: string }>; label?: string }) {
-    if (!active || !payload?.length) return null;
+export function getAxisTicks(maxValue: number, format?: ChartSeries['format']): number[] {
+    if (format === 'percentage') return [0, 50, 100];
+    if (!Number.isFinite(maxValue) || maxValue <= 0) return [0, 1, 2];
+
+    const halfRange = maxValue / 2;
+    const magnitude = 10 ** Math.floor(Math.log10(halfRange));
+    const normalized = halfRange / magnitude;
+    const niceMultiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    const middle = niceMultiplier * magnitude;
+
+    return [0, middle, middle * 2];
+}
+
+function timestampToDate(value: string, now: Date) {
+    if (/^\d{2}:\d{2}$/.test(value)) {
+        const [hours, minutes] = value.split(':').map(Number);
+        const date = new Date(now);
+        date.setHours(hours, minutes, 0, 0);
+        if (date.getTime() > now.getTime()) date.setDate(date.getDate() - 1);
+        return date;
+    }
+
+    const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+    return new Date(normalized);
+}
+
+function formatRelativeTime(value: string, now: Date) {
+    const date = timestampToDate(value, now);
+    if (Number.isNaN(date.getTime())) return value;
+
+    const diffMs = Math.max(0, now.getTime() - date.getTime());
+    const diffMinutes = Math.max(1, Math.round(diffMs / 60_000));
+
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    const diffHours = Math.round(diffMs / 3_600_000);
+    if (diffHours < 48) return `${diffHours}h ago`;
+
+    return `${Math.round(diffMs / 86_400_000)}d ago`;
+}
+
+export function getTimeLabels(timestamps: string[]): { start: string; end: string } {
+    if (timestamps.length === 0) return { start: '', end: 'Now' };
+
+    const now = new Date();
+    return {
+        start: formatRelativeTime(timestamps[0], now),
+        end: formatRelativeTime(timestamps[timestamps.length - 1], now),
+    };
+}
+
+function formatTooltipLabel(value?: string) {
+    if (!value) return 'Current period';
+    if (/^\d{2}:\d{2}$/.test(value)) return value;
+
+    const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+    const date = new Date(normalized);
+
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+}
+
+function ChartTooltipContent({
+    timestamp,
+    row,
+    series,
+}: {
+    timestamp: string;
+    row: Record<string, string | number>;
+    series: ChartSeries[];
+}) {
     return (
-        <div className="rounded-lg border border-border/50 bg-popover px-3 py-2 shadow-xl text-xs backdrop-blur-sm">
-            <p className="text-muted-foreground/70 mb-1 text-[10px]">{label}</p>
-            {payload.map((p) => (
-                <div key={p.dataKey} className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: p.color }} />
-                    <span className="text-muted-foreground">{p.name}</span>
-                    <span className="font-medium ml-auto pl-4 tabular-nums">{p.value?.toLocaleString()}</span>
-                </div>
-            ))}
+        <div className="w-52 rounded-lg bg-white px-3.5 py-3 text-xs text-black shadow-[0_18px_48px_rgba(0,0,0,0.22)] ring-1 ring-black/10 dark:bg-[#1a1a1a] dark:text-white dark:ring-white/10">
+            <p className="font-mono text-[10px] tabular-nums text-black/55 dark:text-white/55">{formatTooltipLabel(timestamp)}</p>
+            <div className="mt-3 space-y-2">
+                {series.map((item) => (
+                    <div key={item.key} className="flex items-center gap-2.5">
+                        <span className="size-2 shrink-0 rounded-[2px]" style={{ background: item.color }} />
+                        <span className="text-black/55 dark:text-white/55">{item.label}</span>
+                        <span className="ml-auto pl-5 font-mono font-medium tabular-nums">
+                            {formatValue(Number(row[item.key] ?? 0), item.format)}
+                        </span>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
@@ -116,6 +168,7 @@ export function ObservabilityChartCard({
     chartHeight = 100,
 }: ObservabilityChartCardProps) {
     const gradientId = useId().replace(/:/g, '');
+    const [hoveredPoint, setHoveredPoint] = useState<{ index: number; x: number; tooltipX: number } | null>(null);
     const chartData = useMemo(() => {
         if (series.length === 0) return [];
         const allTimestamps = [...new Set(series.flatMap(s => s.data.map(d => d.timestamp)))].sort();
@@ -134,6 +187,12 @@ export function ObservabilityChartCard({
 
     const primaryFormat = series[0]?.format;
     const primaryTotal = series[0]?.total;
+    const maxValue = useMemo(
+        () => Math.max(0, ...chartData.flatMap(row => series.map(item => Number(row[item.key] ?? 0)))),
+        [chartData, series],
+    );
+    const axisTicks = useMemo(() => getAxisTicks(maxValue, primaryFormat), [maxValue, primaryFormat]);
+    const hoveredRow = hoveredPoint ? chartData[hoveredPoint.index] : undefined;
     const hasData = chartData.length > 0 && chartData.some(d => {
         for (const s of series) {
             if ((d[s.key] as number) > 0) return true;
@@ -144,6 +203,26 @@ export function ObservabilityChartCard({
     if (isLoading) {
         return <ObservabilityChartCardSkeleton className={className} />;
     }
+
+    const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!chartData.length) return;
+
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const plotLeft = 48;
+        const plotRight = 12;
+        const plotWidth = Math.max(1, bounds.width - plotLeft - plotRight);
+        const plotX = Math.min(Math.max(event.clientX - bounds.left - plotLeft, 0), plotWidth);
+        const index = chartData.length === 1
+            ? 0
+            : Math.round((plotX / plotWidth) * (chartData.length - 1));
+        const crosshairX = plotLeft + (chartData.length === 1 ? plotWidth / 2 : (index / (chartData.length - 1)) * plotWidth);
+        const tooltipWidth = 208;
+        const tooltipX = crosshairX > bounds.width / 2
+            ? Math.max(8, crosshairX - tooltipWidth - 12)
+            : Math.min(bounds.width - tooltipWidth - 8, crosshairX + 12);
+
+        setHoveredPoint({ index, x: crosshairX, tooltipX });
+    };
 
     return (
         <div className={cn(
@@ -186,71 +265,108 @@ export function ObservabilityChartCard({
             )}
 
             {/* Chart */}
-            <div className="flex-1 min-h-0 px-0">
+            <div
+                className="relative min-h-0 flex-1 touch-pan-y cursor-crosshair px-0"
+                onPointerMove={handlePointerMove}
+                onPointerLeave={() => setHoveredPoint(null)}
+            >
                 {hasData ? (
-                    <ResponsiveContainer width="100%" height={chartHeight}>
-                        {type === 'bar' ? (
-                            <BarChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 12 }} barCategoryGap="25%">
-                                <defs>
-                                    {series.map(s => (
-                                        <linearGradient key={s.key} id={`fill-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor={s.color} stopOpacity={0.85} />
-                                            <stop offset="100%" stopColor={s.color} stopOpacity={0.35} />
-                                        </linearGradient>
-                                    ))}
-                                </defs>
-                                <CartesianGrid
-                                    horizontal vertical={false}
-                                    stroke="hsl(var(--muted-foreground))"
-                                    strokeOpacity={0.06}
-                                />
-                                <XAxis dataKey="timestamp" hide />
-                                <YAxis hide />
-                                <Tooltip
-                                    cursor={{ fill: 'hsl(var(--muted-foreground))', fillOpacity: 0.04 }}
-                                    content={<ChartTooltipContent />}
-                                />
-                                {series.map(s => (
-                                    <Bar key={s.key} dataKey={s.key} name={s.label} fill={`url(#fill-${gradientId}-${s.key})`} radius={[3, 3, 0, 0]} maxBarSize={16} />
-                                ))}
-                            </BarChart>
-                        ) : (
-                            <AreaChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 12 }}>
-                                <defs>
-                                    {series.map(s => (
-                                        <linearGradient key={s.key} id={`grad-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor={s.color} stopOpacity={0.25} />
-                                            <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
-                                        </linearGradient>
-                                    ))}
-                                </defs>
-                                <CartesianGrid
-                                    horizontal vertical={false}
-                                    stroke="hsl(var(--muted-foreground))"
-                                    strokeOpacity={0.06}
-                                />
-                                <XAxis dataKey="timestamp" hide />
-                                <YAxis hide />
-                                <Tooltip
-                                    cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeOpacity: 0.3 }}
-                                    content={<ChartTooltipContent />}
-                                />
-                                {series.map(s => (
-                                    <Area
-                                        key={s.key}
-                                        type="monotone"
-                                        dataKey={s.key}
-                                        name={s.label}
-                                        stroke={s.color}
-                                        strokeWidth={1.5}
-                                        fill={`url(#grad-${gradientId}-${s.key})`}
-                                        dot={false}
-                                        activeDot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
+                    <>
+                        <ResponsiveContainer width="100%" height={chartHeight}>
+                            {type === 'bar' ? (
+                                <BarChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 0 }} barCategoryGap="25%">
+                                    <defs>
+                                        {series.map(s => (
+                                            <linearGradient key={s.key} id={`fill-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor={s.color} stopOpacity={0.85} />
+                                                <stop offset="100%" stopColor={s.color} stopOpacity={0.35} />
+                                            </linearGradient>
+                                        ))}
+                                    </defs>
+                                    <CartesianGrid
+                                        vertical={false}
+                                        stroke="var(--muted-foreground)"
+                                        strokeOpacity={0.1}
                                     />
-                                ))}
-                            </AreaChart>
+                                    <XAxis dataKey="timestamp" hide />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        width={48}
+                                        ticks={axisTicks}
+                                        domain={[axisTicks[0], axisTicks[axisTicks.length - 1]]}
+                                        allowDecimals={primaryFormat === 'currency' || primaryFormat === 'ms'}
+                                        tick={{ fill: 'var(--muted-foreground)', fillOpacity: 0.68, fontSize: 10 }}
+                                        tickFormatter={(value: number) => formatAxisValue(value, primaryFormat)}
+                                    />
+                                    {series.map(s => (
+                                        <Bar key={s.key} dataKey={s.key} name={s.label} fill={`url(#fill-${gradientId}-${s.key})`} radius={[3, 3, 0, 0]} maxBarSize={16} />
+                                    ))}
+                                </BarChart>
+                            ) : (
+                                <AreaChart data={chartData} margin={{ top: 2, right: 12, bottom: 0, left: 0 }}>
+                                    <defs>
+                                        {series.map(s => (
+                                            <linearGradient key={s.key} id={`grad-${gradientId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor={s.color} stopOpacity={0.25} />
+                                                <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
+                                            </linearGradient>
+                                        ))}
+                                    </defs>
+                                    <CartesianGrid
+                                        vertical={false}
+                                        stroke="var(--muted-foreground)"
+                                        strokeOpacity={0.1}
+                                    />
+                                    <XAxis dataKey="timestamp" hide />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        width={48}
+                                        ticks={axisTicks}
+                                        domain={[axisTicks[0], axisTicks[axisTicks.length - 1]]}
+                                        allowDecimals={primaryFormat === 'currency' || primaryFormat === 'ms'}
+                                        tick={{ fill: 'var(--muted-foreground)', fillOpacity: 0.68, fontSize: 10 }}
+                                        tickFormatter={(value: number) => formatAxisValue(value, primaryFormat)}
+                                    />
+                                    {series.map(s => (
+                                        <Area
+                                            key={s.key}
+                                            type="monotone"
+                                            dataKey={s.key}
+                                            name={s.label}
+                                            stroke={s.color}
+                                            strokeWidth={1.5}
+                                            fill={`url(#grad-${gradientId}-${s.key})`}
+                                            dot={false}
+                                            activeDot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
+                                        />
+                                    ))}
+                                </AreaChart>
+                            )}
+                        </ResponsiveContainer>
+
+                        {hoveredPoint && hoveredRow && (
+                            <>
+                                <div
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute bottom-0 top-0 z-10 w-px bg-foreground/20"
+                                    style={{ left: hoveredPoint.x }}
+                                />
+                                <div
+                                    role="tooltip"
+                                    className="pointer-events-none absolute top-2 z-20"
+                                    style={{ left: hoveredPoint.tooltipX }}
+                                >
+                                    <ChartTooltipContent
+                                        timestamp={String(hoveredRow.timestamp)}
+                                        row={hoveredRow}
+                                        series={series}
+                                    />
+                                </div>
+                            </>
                         )}
-                    </ResponsiveContainer>
+                    </>
                 ) : (
                     <div className="flex items-center justify-center" style={{ height: chartHeight }}>
                         <p className="text-[11px] text-muted-foreground/30">No data yet</p>
@@ -260,9 +376,9 @@ export function ObservabilityChartCard({
 
             {/* Time range footer */}
             {hasData && (
-                <div className="flex items-center justify-between px-4 pb-3 pt-1">
-                    <span className="text-[10px] text-muted-foreground/40 tabular-nums">{start}</span>
-                    <span className="text-[10px] text-muted-foreground/40 tabular-nums">{end}</span>
+                <div className="flex items-center justify-between pb-3 pl-12 pr-3 pt-1">
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/65">{start}</span>
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/65">{end}</span>
                 </div>
             )}
         </div>

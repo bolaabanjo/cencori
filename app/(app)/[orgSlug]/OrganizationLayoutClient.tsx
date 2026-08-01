@@ -155,7 +155,7 @@ export default function OrganizationLayoutClient({
         : rawObservabilitySection || "overview";
     const organizationSettingsSection = searchParams.get("section") === "advanced" ? "advanced" : "general";
     const requestedProjectSettingsTab = searchParams.get("tab");
-    const projectSettingsTab = ["general", "budget", "providers", "infrastructure", "integrations", "api"].includes(requestedProjectSettingsTab || "")
+    const projectSettingsTab = ["general", "budget", "providers", "infrastructure", "networking", "integrations", "api"].includes(requestedProjectSettingsTab || "")
         ? requestedProjectSettingsTab
         : "general";
 
@@ -206,7 +206,7 @@ export default function OrganizationLayoutClient({
     //   2. Observability toggle           — expands to observabilitySubItems
     //   3. projectItems                  — Logs
     //   4. AI Gateway toggle             — expands to projectSubItems
-    //   5. projectSecondaryItems         — Security, Edge, End-User Billing
+    //   5. projectSecondaryItems         — Security, Edge, Monetization
     //   6. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
     //   7. bottomItems                   — Webhooks, Settings
 
@@ -251,7 +251,7 @@ export default function OrganizationLayoutClient({
     const projectSecondaryItems = [
         { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
         { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
-        { href: isInsideProject ? `${basePath}/end-user-billing` : `${orgBase}/~/end-user-billing`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "End-User Billing" },
+        { href: isInsideProject ? `${basePath}/monetization` : `${orgBase}/~/monetization`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "Monetization" },
     ];
 
     const orgItems = [
@@ -278,6 +278,7 @@ export default function OrganizationLayoutClient({
         { tab: "budget", href: `${basePath}/settings?tab=budget`, label: "Budget" },
         { tab: "providers", href: `${basePath}/settings?tab=providers`, label: "Providers" },
         { tab: "infrastructure", href: `${basePath}/settings?tab=infrastructure`, label: "Infrastructure" },
+        { tab: "networking", href: `${basePath}/settings?tab=networking`, label: "Networking" },
         { tab: "integrations", href: `${basePath}/settings?tab=integrations`, label: "Integrations" },
         { tab: "api", href: `${basePath}/settings?tab=api`, label: "API" },
     ];
@@ -349,8 +350,9 @@ export default function OrganizationLayoutClient({
                                             <SidebarMenuButton
                                                 onClick={() => setActiveView("main")}
                                                 size="sm"
-                                                className="text-muted-foreground"
+                                                className="gap-1 text-muted-foreground"
                                             >
+                                                <ChevronLeft className="!h-5 !w-5" />
                                                 <span className="text-sm">Back</span>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -454,7 +456,7 @@ export default function OrganizationLayoutClient({
                                                 <ChevronRight className="!h-3 !w-3 ml-auto text-muted-foreground/50" />
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
-                                        {/* 5. Security, Edge, End-User Billing */}
+                                        {/* 5. Security, Edge, Monetization */}
                                         {projectSecondaryItems.map((item) => (
                                             <SidebarMenuItem key={item.href}>
                                                 <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item.href)} size="sm">

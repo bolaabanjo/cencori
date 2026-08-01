@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
+import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 
 // Query keys for cache management
 export const queryKeys = {
@@ -51,6 +53,12 @@ export function useProjects(orgId?: string) {
 
 // Fetch single organization by slug
 export function useOrganization(orgSlug: string) {
+    const { organizations } = useOrganizationProject();
+    const cachedOrganization = useMemo(
+        () => organizations.find((organization) => organization.slug === orgSlug),
+        [organizations, orgSlug],
+    );
+
     return useQuery({
         queryKey: queryKeys.orgDetails(orgSlug),
         queryFn: async () => {
@@ -64,12 +72,22 @@ export function useOrganization(orgSlug: string) {
             return data;
         },
         enabled: !!orgSlug,
+        initialData: cachedOrganization,
+        initialDataUpdatedAt: cachedOrganization ? 0 : undefined,
         staleTime: 60 * 1000, // Org details rarely change
     });
 }
 
 // Fetch single project by slug
 export function useProject(projectSlug: string, orgId?: string) {
+    const { projects } = useOrganizationProject();
+    const cachedProject = useMemo(
+        () => projects.find((project) => (
+            project.slug === projectSlug && (!orgId || project.organization_id === orgId)
+        )),
+        [projects, projectSlug, orgId],
+    );
+
     return useQuery({
         queryKey: queryKeys.projectDetails(projectSlug),
         queryFn: async () => {
@@ -86,8 +104,68 @@ export function useProject(projectSlug: string, orgId?: string) {
             return data;
         },
         enabled: !!projectSlug && !!orgId,
+        initialData: cachedProject,
+        initialDataUpdatedAt: cachedProject ? 0 : undefined,
         staleTime: 60 * 1000,
     });
+}
+
+/**
+ * Resolve a project slug without making every project page repeat the same
+ * organization -> project lookup. The application shell already owns this
+ * identity data, so seed React Query from that cache and refresh it in the
+ * background. This prevents a second, identity-only loading screen before a
+ * page can start loading its actual content.
+ */
+export function useProjectIdBySlug(orgSlug: string, projectSlug: string) {
+    const {
+        organizations,
+        projects,
+    } = useOrganizationProject();
+
+    const cachedProjectId = useMemo(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+
+        return projects.find((item) => (
+            item.slug === projectSlug && item.organization_id === organization.id
+        ))?.id;
+    }, [organizations, projects, orgSlug, projectSlug]);
+
+    const query = useQuery<string>({
+        queryKey: ["projectId", orgSlug, projectSlug],
+        queryFn: async () => {
+            const { data: organization, error: organizationError } = await supabase
+                .from("organizations")
+                .select("id")
+                .eq("slug", orgSlug)
+                .single();
+
+            if (organizationError) throw organizationError;
+
+            const { data: project, error: projectError } = await supabase
+                .from("projects")
+                .select("id")
+                .eq("slug", projectSlug)
+                .eq("organization_id", organization.id)
+                .single();
+
+            if (projectError) throw projectError;
+            return project.id;
+        },
+        enabled: Boolean(orgSlug && projectSlug),
+        initialData: cachedProjectId,
+        initialDataUpdatedAt: cachedProjectId ? 0 : undefined,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const projectId = query.data ?? cachedProjectId;
+
+    return {
+        ...query,
+        data: projectId,
+        isLoading: !projectId && query.isLoading,
+    };
 }
 
 // Fetch providers for a project

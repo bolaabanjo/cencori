@@ -2,7 +2,6 @@
 
 import { useState, use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +31,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { normalizeWebhookResponse } from "@/lib/webhook-response";
+import { useProjectIdBySlug } from "@/lib/hooks/useQueries";
 
 interface PageProps {
     params: Promise<{
@@ -61,27 +62,7 @@ const WEBHOOK_EVENTS = [
 ];
 
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ["projectId", orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: orgData } = await supabase
-                .from("organizations")
-                .select("id")
-                .eq("slug", orgSlug)
-                .single();
-            if (!orgData) throw new Error("Organization not found");
-
-            const { data: projectData } = await supabase
-                .from("projects")
-                .select("id")
-                .eq("slug", projectSlug)
-                .eq("organization_id", orgData.id)
-                .single();
-            if (!projectData) throw new Error("Project not found");
-            return projectData.id;
-        },
-        staleTime: 5 * 60 * 1000,
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 export default function WebhooksPage({ params }: PageProps) {
@@ -98,17 +79,18 @@ export default function WebhooksPage({ params }: PageProps) {
 
     const { data: projectId, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug);
 
-    const { data: webhooksData, isLoading: webhooksLoading } = useQuery({
+    const { data: webhooksData, isLoading: webhooksLoading } = useQuery<unknown, Error, Webhook[]>({
         queryKey: ["webhooks", projectId],
         queryFn: async () => {
             const res = await fetch(`/api/projects/${projectId}/webhooks`);
             if (!res.ok) throw new Error("Failed to fetch webhooks");
             return res.json();
         },
+        select: normalizeWebhookResponse<Webhook>,
         enabled: !!projectId,
     });
 
-    const webhooks: Webhook[] = webhooksData?.webhooks || [];
+    const webhooks = webhooksData ?? [];
 
     const createMutation = useMutation({
         mutationFn: async (data: { name: string; url: string; events: string[] }) => {

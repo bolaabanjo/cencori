@@ -21,14 +21,23 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 interface ExportDialogProps {
     projectId: string;
     type: "logs" | "analytics" | "security-incidents";
     environment?: string;
+    triggerClassName?: string;
+    showTriggerIcon?: boolean;
 }
 
-export function ExportDialog({ projectId, type, environment = "production" }: ExportDialogProps) {
+export function ExportDialog({
+    projectId,
+    type,
+    environment = "production",
+    triggerClassName,
+    showTriggerIcon = true,
+}: ExportDialogProps) {
     const [open, setOpen] = useState(false);
     const [format, setFormat] = useState<"csv" | "json">("csv");
     const [dateRange, setDateRange] = useState<"7d" | "30d" | "90d" | "all">("7d");
@@ -106,12 +115,12 @@ export function ExportDialog({ projectId, type, environment = "production" }: Ex
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs">
-                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                <Button variant="outline" size="sm" className={cn("h-8 text-xs", triggerClassName)}>
+                    {showTriggerIcon && <Download className="mr-1.5 h-3.5 w-3.5" />}
                     Export
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[400px]">
+            <DialogContent className="border-black/[0.06] bg-[#f3f3f1] shadow-[0_28px_80px_rgba(0,0,0,0.28)] dark:border-white/[0.06] dark:bg-[#111111] sm:max-w-[400px]">
                 <DialogHeader>
                     <DialogTitle className="text-base">Export {typeLabels[type]}</DialogTitle>
                     <DialogDescription className="text-xs">
@@ -171,10 +180,7 @@ export function ExportDialog({ projectId, type, environment = "production" }: Ex
                                 Exporting...
                             </>
                         ) : (
-                            <>
-                                <Download className="h-3 w-3 mr-1.5" />
-                                Download
-                            </>
+                            "Download"
                         )}
                     </Button>
                 </DialogFooter>

@@ -4,7 +4,7 @@
  * Organization-scoped settings for identity and low-level controls.
  */
 
-import { use, useState, useTransition } from 'react';
+import { use, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ import { deleteOrganization, updateOrgName, updateOrgSlug } from './actions';
 import { SsoSettings } from './SsoSettings';
 import { AuditInfrastructureSettings } from './AuditInfrastructureSettings';
 import type { SubscriptionTier } from '@/lib/entitlements';
+import { useOrganizationProject } from '@/lib/contexts/OrganizationProjectContext';
 
 interface PageProps {
     params: Promise<{ orgSlug: string }>;
@@ -43,8 +44,19 @@ export default function OrgSettingsPage({ params }: PageProps) {
     const { orgSlug } = use(params);
     const searchParams = useSearchParams();
     const activeSection = searchParams.get('section') === 'advanced' ? 'advanced' : 'general';
+    const { organizations } = useOrganizationProject();
+    const cachedOrganization = useMemo<OrgRow | undefined>(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+        return {
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+            subscription_tier: (organization.subscription_tier || null) as SubscriptionTier | null,
+        };
+    }, [organizations, orgSlug]);
 
-    const { data: org, isLoading, refetch } = useQuery({
+    const { data: org, isLoading, refetch } = useQuery<OrgRow>({
         queryKey: ['orgSettings', orgSlug],
         queryFn: async (): Promise<OrgRow> => {
             const { data, error } = await supabase
@@ -55,6 +67,8 @@ export default function OrgSettingsPage({ params }: PageProps) {
             if (error || !data) throw new Error('Organization not found');
             return data as OrgRow;
         },
+        initialData: cachedOrganization,
+        initialDataUpdatedAt: cachedOrganization ? 0 : undefined,
         staleTime: 30 * 1000,
     });
 

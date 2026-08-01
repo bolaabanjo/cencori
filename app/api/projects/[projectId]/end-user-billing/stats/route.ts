@@ -72,6 +72,14 @@ export async function GET(
             .select("id", { count: "exact", head: true })
             .eq("project_id", projectId);
 
+        const { data: newEndUsers } = await admin
+            .from("end_users")
+            .select("created_at")
+            .eq("project_id", projectId)
+            .gte("created_at", startISO)
+            .order("created_at", { ascending: true })
+            .limit(50000);
+
         // 2. Active end users (with requests in period)
         let activeEndUsers = 0;
         const { data: distinctUsers } = await admin
@@ -118,6 +126,15 @@ export async function GET(
             }
         > = {};
 
+        const periodDates: string[] = [];
+        const startDay = new Date(startDate);
+        startDay.setUTCHours(0, 0, 0, 0);
+        const endDay = new Date();
+        endDay.setUTCHours(0, 0, 0, 0);
+        for (const cursor = new Date(startDay); cursor <= endDay; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+            periodDates.push(cursor.toISOString().split("T")[0]);
+        }
+
         // Daily breakdown aggregation
         const dailyMap: Record<
             string,
@@ -128,6 +145,21 @@ export async function GET(
                 revenue: number;
             }
         > = {};
+        const dailyActiveUsers: Record<string, Set<string>> = {};
+        const dailyNewCustomers: Record<string, number> = {};
+
+        for (const date of periodDates) {
+            dailyMap[date] = { requests: 0, tokens: 0, cost: 0, revenue: 0 };
+            dailyActiveUsers[date] = new Set<string>();
+            dailyNewCustomers[date] = 0;
+        }
+
+        for (const customer of newEndUsers || []) {
+            const dateKey = new Date(customer.created_at).toISOString().split("T")[0];
+            if (dateKey in dailyNewCustomers) {
+                dailyNewCustomers[dateKey] += 1;
+            }
+        }
 
         for (const r of allRequests) {
             const tokens = r.total_tokens || 0;
@@ -167,6 +199,8 @@ export async function GET(
             dailyMap[dateKey].tokens += tokens;
             dailyMap[dateKey].cost += cost;
             dailyMap[dateKey].revenue += revenue;
+            if (!dailyActiveUsers[dateKey]) dailyActiveUsers[dateKey] = new Set<string>();
+            dailyActiveUsers[dateKey].add(userId);
         }
 
         const marginUsd = customerRevenueUsd - providerCostUsd;
@@ -187,16 +221,21 @@ export async function GET(
                 customer_revenue_usd: Math.round(stats.revenue * 1e6) / 1e6,
             }));
 
-        // Daily breakdown sorted by date
-        const dailyBreakdown = Object.entries(dailyMap)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([date, stats]) => ({
+        // Daily breakdown with cumulative customer growth and daily activity.
+        let cumulativeCustomers = Math.max(0, (totalEndUsers || 0) - (newEndUsers?.length || 0));
+        const dailyBreakdown = periodDates.map((date) => {
+            cumulativeCustomers += dailyNewCustomers[date] || 0;
+            const stats = dailyMap[date];
+            return {
                 date,
                 requests: stats.requests,
                 tokens: stats.tokens,
                 cost: Math.round(stats.cost * 1e6) / 1e6,
                 revenue: Math.round(stats.revenue * 1e6) / 1e6,
-            }));
+                total_customers: cumulativeCustomers,
+                active_customers: dailyActiveUsers[date]?.size || 0,
+            };
+        });
 
         return NextResponse.json({
             period,

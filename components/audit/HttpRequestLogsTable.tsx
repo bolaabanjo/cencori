@@ -25,7 +25,7 @@ interface HttpRequestLog {
 }
 
 interface HttpRequestLogsTableProps {
-    projectId: string;
+    projectId?: string;
     environment: 'production' | 'test';
     filters: {
         kind?: string;
@@ -74,6 +74,10 @@ export function HttpRequestLogsTable({ projectId, environment, filters }: HttpRe
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchLogs = useCallback(async () => {
+        if (!projectId) {
+            setLoading(true);
+            return;
+        }
         setLoading(true);
         try {
             const params = new URLSearchParams({
@@ -107,8 +111,8 @@ export function HttpRequestLogsTable({ projectId, environment, filters }: HttpRe
     }, [filters]);
 
     useEffect(() => {
-        void fetchLogs();
-    }, [fetchLogs]);
+        if (projectId) void fetchLogs();
+    }, [fetchLogs, projectId]);
 
     const handleRowClick = (requestId: string, kind: HttpLogKind) => {
         setSelectedRequest({ id: requestId, kind });
@@ -309,7 +313,7 @@ export function HttpRequestLogsTable({ projectId, environment, filters }: HttpRe
                 </div>
             </div>
 
-            {selectedRequest?.kind === 'api' && (
+            {projectId && selectedRequest?.kind === 'api' && (
                 <ApiGatewayRequestDetailModal
                     projectId={projectId}
                     requestId={selectedRequest.id}
@@ -318,7 +322,7 @@ export function HttpRequestLogsTable({ projectId, environment, filters }: HttpRe
                 />
             )}
 
-            {selectedRequest?.kind === 'web' && (
+            {projectId && selectedRequest?.kind === 'web' && (
                 <WebRequestDetailModal
                     projectId={projectId}
                     requestId={selectedRequest.id}

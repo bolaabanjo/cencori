@@ -158,7 +158,7 @@ export function LatencyHistogram({ data, history, timeRange }: LatencyHistogramP
     };
 
     return (
-        <section className="flex h-full min-h-[360px] flex-col bg-card" aria-labelledby="latency-profile-heading">
+        <section className="flex h-full min-h-[360px] flex-col bg-transparent" aria-labelledby="latency-profile-heading">
             <header className="flex items-start justify-between gap-4 px-4 pb-1 pt-4">
                 <div>
                     <h3 id="latency-profile-heading" className="text-xs font-medium">Latency percentiles</h3>
@@ -213,7 +213,7 @@ export function LatencyHistogram({ data, history, timeRange }: LatencyHistogramP
                     <p className="text-[11px] text-muted-foreground/55">No latency in this period</p>
                 </div>
             ) : (
-                <div className="min-h-[190px] w-full flex-1 pb-2 pt-1">
+                <div className="h-[220px] w-full shrink-0 pb-2 pt-1">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={chartData} margin={{ top: 12, right: 8, bottom: 0, left: 8 }}>
                             <CartesianGrid vertical={false} stroke={axisColor} strokeOpacity={0.09} />

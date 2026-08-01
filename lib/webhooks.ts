@@ -1,6 +1,6 @@
 /**
  * Webhook Trigger Utility
- * 
+ *
  * Sends webhook notifications for project events
  */
 

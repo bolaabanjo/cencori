@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2, Power, PowerOff, Server, Zap } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { toast } from '@/components/ui/toast';
-import { queryKeys } from '@/lib/hooks/useQueries';
+import { queryKeys, useProjectIdBySlug } from '@/lib/hooks/useQueries';
 
 interface CustomProvider {
     id: string;
@@ -33,29 +32,7 @@ interface PageProps {
 
 // Hook to get projectId from slugs (with caching)
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ["projectId", orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: orgData } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-
-            if (!orgData) throw new Error("Organization not found");
-
-            const { data: projectData } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('slug', projectSlug)
-                .eq('organization_id', orgData.id)
-                .single();
-
-            if (!projectData) throw new Error("Project not found");
-            return projectData.id;
-        },
-        staleTime: 5 * 60 * 1000, // IDs rarely change, cache for 5 min
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 export default function ProvidersPage({ params }: PageProps) {

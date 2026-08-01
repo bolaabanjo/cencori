@@ -2,7 +2,6 @@
 
 import React, { useState, use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase as browserSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +11,7 @@ import { GenerateKeyDialog } from "@/components/api-keys/GenerateKeyDialog";
 import { useEnvironment } from "@/lib/contexts/EnvironmentContext";
 import { maskApiKey } from "@/lib/api-keys";
 import { toast } from "@/components/ui/toast";
-import { queryKeys } from "@/lib/hooks/useQueries";
+import { queryKeys, useProjectIdBySlug } from "@/lib/hooks/useQueries";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -42,33 +41,7 @@ interface ApiKey {
 
 // Hook to get projectId from slugs (with caching)
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ["projectId", orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: { user }, error: userError } = await browserSupabase.auth.getUser();
-            if (userError || !user) throw new Error("Not authenticated");
-
-            const { data: orgData, error: orgError } = await browserSupabase
-                .from("organizations")
-                .select("id")
-                .eq("slug", orgSlug)
-                .eq("owner_id", user.id)
-                .single();
-
-            if (orgError || !orgData) throw new Error("Organization not found");
-
-            const { data: projectData, error: projectError } = await browserSupabase
-                .from("projects")
-                .select("id")
-                .eq("organization_id", orgData.id)
-                .eq("slug", projectSlug)
-                .single();
-
-            if (projectError || !projectData) throw new Error("Project not found");
-            return projectData.id;
-        },
-        staleTime: 5 * 60 * 1000, // IDs rarely change
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 export default function ApiKeysPage({

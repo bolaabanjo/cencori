@@ -1,9 +1,10 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useEnvironment } from "@/lib/contexts/EnvironmentContext";
+import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlaygroundChat } from "@/components/dashboard/playground/PlaygroundChat";
 
@@ -11,7 +12,13 @@ interface PlaygroundPageProps {
     params: Promise<{ orgSlug: string; projectSlug: string }>;
 }
 
-function useProjectData(orgSlug: string, projectSlug: string) {
+interface ProjectData {
+    projectId: string;
+    orgId: string;
+    subscriptionTier: string;
+}
+
+function useProjectData(orgSlug: string, projectSlug: string, initialData?: ProjectData) {
     return useQuery({
         queryKey: ["projectData", orgSlug, projectSlug],
         queryFn: async () => {
@@ -38,6 +45,8 @@ function useProjectData(orgSlug: string, projectSlug: string) {
                 subscriptionTier: orgData.subscription_tier || "free",
             };
         },
+        initialData,
+        initialDataUpdatedAt: initialData ? 0 : undefined,
         staleTime: 60 * 1000,
     });
 }
@@ -45,9 +54,26 @@ function useProjectData(orgSlug: string, projectSlug: string) {
 export default function PlaygroundPage({ params }: PlaygroundPageProps) {
     const { orgSlug, projectSlug } = use(params);
     const { environment } = useEnvironment();
+    const { organizations, projects } = useOrganizationProject();
+    const cachedProjectData = useMemo<ProjectData | undefined>(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+
+        const project = projects.find((item) => (
+            item.slug === projectSlug && item.organization_id === organization.id
+        ));
+        if (!project) return undefined;
+
+        return {
+            projectId: project.id,
+            orgId: organization.id,
+            subscriptionTier: organization.subscription_tier || "free",
+        };
+    }, [organizations, projects, orgSlug, projectSlug]);
     const { data: projectData, isLoading: loadingProject } = useProjectData(
         orgSlug,
-        projectSlug
+        projectSlug,
+        cachedProjectData,
     );
 
     if (loadingProject) {

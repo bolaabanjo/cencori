@@ -60,7 +60,7 @@ export function FailoverMetrics({ projectId, environment, timeRange, className }
 
     if (isLoading) {
         return (
-            <article className={cn('flex min-h-[320px] flex-col rounded-xl border border-border/55 bg-card p-5', className)}>
+            <article className={cn('flex min-h-[320px] flex-col rounded-lg bg-[#f3f3f1] p-5 ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]', className)}>
                 <Skeleton className="h-4 w-36" />
                 <Skeleton className="mt-2 h-3 w-64 max-w-full" />
                 <div className="mt-6 grid grid-cols-2 gap-3">
@@ -87,7 +87,7 @@ export function FailoverMetrics({ projectId, environment, timeRange, className }
 
     if (isError) {
         return (
-            <article className={cn('flex min-h-[320px] flex-col rounded-xl border border-border/55 bg-card p-5', className)}>
+            <article className={cn('flex min-h-[320px] flex-col rounded-lg bg-[#f3f3f1] p-5 ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]', className)}>
                 <h3 className="text-sm font-medium">Provider recovery</h3>
                 <p className="mt-1 text-[11px] text-muted-foreground">Fallback routing and provider continuity.</p>
                 <div className="flex flex-1 items-center justify-center">
@@ -101,27 +101,27 @@ export function FailoverMetrics({ projectId, environment, timeRange, className }
 
     return (
         <article className={cn(
-            'group flex min-h-[320px] flex-col overflow-hidden rounded-xl border border-border/55 bg-card transition-[border-color,background-color,transform] duration-200 hover:-translate-y-px hover:border-foreground/15',
+            'group flex min-h-[320px] flex-col overflow-hidden rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] transition-colors duration-200 dark:bg-[#111111] dark:ring-white/[0.035]',
             className,
         )}>
-            <header className="flex items-start justify-between gap-4 px-5 pb-4 pt-4">
+            <header className="flex items-start justify-between gap-4 border-b border-black/[0.055] px-5 pb-5 pt-5 dark:border-white/[0.045] sm:px-6 sm:pt-6">
                 <div>
-                    <h3 className="text-sm font-medium tracking-[-0.01em]">Provider recovery</h3>
-                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Fallback routing when a primary model cannot deliver.</p>
+                    <h3 className="text-base font-medium tracking-[-0.025em]">Provider recovery</h3>
+                    <p className="mt-1.5 text-xs leading-5 text-muted-foreground">Fallback routing when a primary model cannot deliver.</p>
                 </div>
-                <span className="shrink-0 text-[9px] text-muted-foreground">{periodLabel}</span>
+                <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">{periodLabel}</span>
             </header>
 
-            <div className="grid grid-cols-2 border-y border-border/40">
-                <div className="px-5 py-4">
+            <div className="grid grid-cols-2 border-b border-black/[0.055] dark:border-white/[0.045]">
+                <div className="px-5 py-5 sm:px-6">
                     <p className="text-[10px] text-muted-foreground">Recovered requests</p>
-                    <p className="mt-1 font-mono text-2xl font-medium tracking-[-0.04em] tabular-nums">
+                    <p className="mt-2 font-mono text-3xl font-medium tracking-[-0.055em] tabular-nums">
                         {stats?.total_fallbacks.toLocaleString() ?? '0'}
                     </p>
                 </div>
-                <div className="border-l border-border/40 px-5 py-4">
+                <div className="border-l border-black/[0.055] px-5 py-5 dark:border-white/[0.045] sm:px-6">
                     <p className="text-[10px] text-muted-foreground">Fallback rate</p>
-                    <p className="mt-1 font-mono text-2xl font-medium tracking-[-0.04em] tabular-nums">
+                    <p className="mt-2 font-mono text-3xl font-medium tracking-[-0.055em] tabular-nums">
                         {stats?.fallback_rate.toFixed(1) ?? '0.0'}%
                     </p>
                 </div>

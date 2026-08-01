@@ -17,6 +17,7 @@ const TTL = {
     API_KEY: 60,           // 1 minute for API key + project config
     CACHE_CONFIG: 300,     // 5 minutes for cache config
     SECURITY_CONFIG: 60,   // 1 minute for security config
+    NETWORK_CONFIG: 60,    // 1 minute for project ingress policy
     CREDITS: 300,          // 5 minutes for balance (invalidated on spend)
     MEMORY_CONFIG: 300,    // 5 minutes for project memory settings
 };
@@ -240,5 +241,41 @@ export async function invalidateSecurityConfig(projectId: string): Promise<void>
         await redis.del(cacheKey);
     } catch {
         // Silently fail
+    }
+}
+
+/**
+ * Cache project ingress policy. Policy writes invalidate this key so gateway
+ * enforcement changes take effect immediately instead of waiting for the TTL.
+ */
+export async function getCachedNetworkConfig<T = unknown>(projectId: string): Promise<{
+    data: T;
+    fromCache: boolean;
+} | null> {
+    const cacheKey = `${CONFIG_PREFIX}network:${projectId}`;
+
+    try {
+        const cached = await redis.get<T>(cacheKey);
+        return cached ? { data: cached, fromCache: true } : null;
+    } catch {
+        return null;
+    }
+}
+
+export async function setCachedNetworkConfig(projectId: string, data: unknown): Promise<void> {
+    const cacheKey = `${CONFIG_PREFIX}network:${projectId}`;
+    try {
+        await redis.set(cacheKey, data, { ex: TTL.NETWORK_CONFIG });
+    } catch {
+        // Network policy must still work when Redis is unavailable.
+    }
+}
+
+export async function invalidateNetworkConfig(projectId: string): Promise<void> {
+    const cacheKey = `${CONFIG_PREFIX}network:${projectId}`;
+    try {
+        await redis.del(cacheKey);
+    } catch {
+        // The one-minute TTL remains the fallback.
     }
 }

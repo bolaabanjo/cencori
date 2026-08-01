@@ -12,6 +12,7 @@ const mockCheckSpendCap = vi.fn();
 const mockGetCachedCreditsBalance = vi.fn();
 const mockSupabaseFrom = vi.fn();
 const mockProcessUsageQueue = vi.fn();
+const mockLoadProjectNetworkPolicy = vi.fn();
 
 vi.mock('@vercel/functions', () => ({
     geolocation: vi.fn(() => ({})),
@@ -40,6 +41,14 @@ vi.mock('@/lib/credits', () => ({
 
 vi.mock('@/lib/queue', () => ({
     processUsageQueue: (...args: unknown[]) => mockProcessUsageQueue(...args),
+}));
+
+vi.mock('@/lib/networking/project-network-policy', () => ({
+    loadProjectNetworkPolicy: (...args: unknown[]) => mockLoadProjectNetworkPolicy(...args),
+    isProjectIngressAllowed: (
+        policy: { accessMode: 'public' | 'restricted'; allowedCidrs: string[] },
+        sourceIp: string | null
+    ) => policy.accessMode === 'public' || (sourceIp === '127.0.0.1' && policy.allowedCidrs.includes('127.0.0.1/32')),
 }));
 
 vi.mock('@/lib/supabaseAdmin', () => ({
@@ -108,6 +117,7 @@ describe('validateGatewayRequest', () => {
         mockGetCachedApiKeyConfig.mockResolvedValue(null);
         mockGetCachedCreditsBalance.mockResolvedValue(null);
         mockProcessUsageQueue.mockResolvedValue(0);
+        mockLoadProjectNetworkPolicy.mockResolvedValue({ accessMode: 'public', allowedCidrs: [] });
         mockCheckRateLimit.mockResolvedValue({
             allowed: true,
             status: 'ok',
@@ -219,6 +229,21 @@ describe('validateGatewayRequest', () => {
             expect(result.response.status).toBe(403);
             const body = await result.response.json();
             expect(body.error).toMatch(/frozen/i);
+        }
+    });
+
+    it('returns 403 when the request source is outside the project allowlist', async () => {
+        mockLoadProjectNetworkPolicy.mockResolvedValue({
+            accessMode: 'restricted',
+            allowedCidrs: ['203.0.113.0/24'],
+        });
+
+        const result = await validateGatewayRequest(authRequest('/api/v1/chat/completions'));
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.response.status).toBe(403);
+            const body = await result.response.json();
+            expect(body.code).toBe('network_access_denied');
         }
     });
 

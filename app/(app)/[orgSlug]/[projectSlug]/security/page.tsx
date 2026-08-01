@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, use } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
 import { SecurityDashboard } from '@/components/security/SecurityDashboard';
 import { SecuritySettings } from '@/components/security/SecuritySettings';
 import { SecurityAuditLog } from '@/components/security/SecurityAuditLog';
@@ -15,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { X, ShieldAlert, LayoutDashboard, AlertTriangle, Settings, FileText, Webhook, Database, Sparkles } from 'lucide-react';
 import { useEnvironment } from '@/lib/contexts/EnvironmentContext';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 
 interface PageProps {
     params: Promise<{
@@ -26,29 +24,7 @@ interface PageProps {
 
 // Hook to get projectId from slugs (with caching)
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ["projectId", orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: orgData } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-
-            if (!orgData) throw new Error("Organization not found");
-
-            const { data: projectData } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('slug', projectSlug)
-                .eq('organization_id', orgData.id)
-                .single();
-
-            if (!projectData) throw new Error("Project not found");
-            return projectData.id;
-        },
-        staleTime: 5 * 60 * 1000, // IDs rarely change
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 export default function SecurityPage({ params }: PageProps) {
@@ -80,23 +56,7 @@ export default function SecurityPage({ params }: PageProps) {
         filters.reviewed !== 'all' ||
         filters.time_range !== '7d';
 
-    if (isLoading) {
-        return (
-            <div className="w-full max-w-5xl mx-auto px-6 py-8">
-                <div className="mb-6">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-3 w-64 mt-1" />
-                </div>
-                <Skeleton className="h-10 w-full mb-4" />
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)}
-                </div>
-                <Skeleton className="h-[300px]" />
-            </div>
-        );
-    }
-
-    if (!projectId) {
+    if (!isLoading && !projectId) {
         return (
             <div className="w-full max-w-5xl mx-auto px-6 py-8">
                 <div className="text-center py-16 flex flex-col items-center">
@@ -123,12 +83,12 @@ export default function SecurityPage({ params }: PageProps) {
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList>
-                    <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-                    <TabsTrigger value="incidents">Incidents</TabsTrigger>
-                    <TabsTrigger value="data-rules">Data Rules</TabsTrigger>
-                    <TabsTrigger value="ai-detect">AI Detect</TabsTrigger>
-                    <TabsTrigger value="settings">Settings</TabsTrigger>
-                    <TabsTrigger value="audit">Audit Log</TabsTrigger>
+                    <TabsTrigger value="dashboard" disabled={!projectId}>Dashboard</TabsTrigger>
+                    <TabsTrigger value="incidents" disabled={!projectId}>Incidents</TabsTrigger>
+                    <TabsTrigger value="data-rules" disabled={!projectId}>Data Rules</TabsTrigger>
+                    <TabsTrigger value="ai-detect" disabled={!projectId}>AI Detect</TabsTrigger>
+                    <TabsTrigger value="settings" disabled={!projectId}>Settings</TabsTrigger>
+                    <TabsTrigger value="audit" disabled={!projectId}>Audit Log</TabsTrigger>
                 </TabsList>
 
                 {/* Dashboard Tab */}
@@ -222,22 +182,24 @@ export default function SecurityPage({ params }: PageProps) {
                     </div>
 
                     {/* Security incidents table */}
-                    <SecurityIncidentsTable projectId={projectId} filters={filters} environment={environment} />
+                    {projectId && (
+                        <SecurityIncidentsTable projectId={projectId} filters={filters} environment={environment} />
+                    )}
                 </TabsContent>
 
                 {/* Data Rules Tab */}
                 <TabsContent value="data-rules" className="mt-0">
-                    <CustomDataRulesManager projectId={projectId} />
+                    {projectId && <CustomDataRulesManager projectId={projectId} />}
                 </TabsContent>
 
                 {/* Settings Tab */}
                 <TabsContent value="settings" className="mt-0">
-                    <SecuritySettings projectId={projectId} />
+                    {projectId && <SecuritySettings projectId={projectId} />}
                 </TabsContent>
 
                 {/* Audit Log Tab */}
                 <TabsContent value="audit" className="mt-0">
-                    <SecurityAuditLog projectId={projectId} />
+                    {projectId && <SecurityAuditLog projectId={projectId} />}
                 </TabsContent>
 
                 {/* AI Detect Tab */}
@@ -249,7 +211,7 @@ export default function SecurityPage({ params }: PageProps) {
                                 Test content against AI detection to identify sensitive data, security risks, and policy violations.
                             </p>
                         </div>
-                        <AIDetectTest projectId={projectId} />
+                        {projectId && <AIDetectTest projectId={projectId} />}
                     </div>
                 </TabsContent>
             </Tabs>

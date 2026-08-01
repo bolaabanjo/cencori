@@ -3,6 +3,7 @@
 import React, { useState, use } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,21 +27,6 @@ interface PageProps {
     params: Promise<{ orgSlug: string; projectSlug: string }>;
 }
 
-function useProjectId(projectSlug: string) {
-    return useQuery({
-        queryKey: ["projectIdForLogs", projectSlug],
-        queryFn: async () => {
-            const response = await fetch(`/api/projects?slug=${projectSlug}`);
-            if (!response.ok) throw new Error('Failed to fetch project');
-            const { projects } = await response.json();
-            const project = projects?.[0];
-            if (!project) throw new Error('Project not found');
-            return project.id as string;
-        },
-        staleTime: 5 * 60 * 1000,
-    });
-}
-
 function useAILogs(projectId: string | undefined, page: number) {
     return useQuery({
         queryKey: ["aiLogs", projectId, page],
@@ -62,8 +48,9 @@ export default function AILogsPage({ params }: PageProps) {
     const { orgSlug, projectSlug } = use(params);
     const [page, setPage] = useState(1);
 
-    const { data: projectId } = useProjectId(projectSlug);
-    const { data: logsData, isLoading } = useAILogs(projectId, page);
+    const { data: projectId, isLoading: isProjectLoading } = useProjectIdBySlug(orgSlug, projectSlug);
+    const { data: logsData, isLoading: isLogsLoading } = useAILogs(projectId, page);
+    const isLoading = isProjectLoading || isLogsLoading;
     const logs = logsData?.logs || [];
     const totalPages = logsData?.totalPages || 1;
 

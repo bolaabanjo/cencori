@@ -5,7 +5,7 @@ import { Bar, BarChart, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartConfig } from '@/components/ui/chart';
 
 interface LogsBarChartProps {
-    projectId: string;
+    projectId?: string;
     timeRange: string;
     environment?: 'production' | 'test';
     source?: 'ai' | 'http' | 'api' | 'web';
@@ -35,6 +35,11 @@ export function LogsBarChart({
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!projectId) {
+            setLoading(true);
+            setData([]);
+            return;
+        }
         const fetchData = async () => {
             setLoading(true);
             try {

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Trash2, Globe, Clock, Webhook, Server, AlertTriangle, Plus, MoreHorizontal, RefreshCw, DollarSign, Bell, Loader2 } from "lucide-react";
@@ -48,6 +49,7 @@ import { GeoAnalyticsSection } from "@/components/dashboard/GeoAnalyticsSection"
 import { GenerateKeyDialog } from "@/components/api-keys/GenerateKeyDialog";
 import { SUPPORTED_PROVIDERS, getModelsForProvider } from "@/lib/providers/config";
 import { cn } from "@/lib/utils";
+import { normalizeWebhookResponse } from "@/lib/webhook-response";
 
 interface ProjectData {
   id: string;
@@ -92,6 +94,12 @@ interface RateLimitsData {
   };
 }
 
+interface NetworkPolicyData {
+  access_mode: 'public' | 'restricted';
+  allowed_cidrs: string[];
+  updated_at?: string;
+}
+
 interface PageProps {
   params: Promise<{ orgSlug: string; projectSlug: string }>;
 }
@@ -101,6 +109,7 @@ const PROJECT_SETTINGS_TABS = [
   'budget',
   'providers',
   'infrastructure',
+  'networking',
   'integrations',
   'api',
 ] as const;
@@ -148,8 +157,10 @@ const REGION_MAP: Record<string, { name: string; flag: string }> = {
   'default': { name: 'Americas (Auto)', flag: '🌎' },
 };
 
+const GATEWAY_ENDPOINT = 'https://api.cencori.com/v1';
+
 // Hook to fetch project details with caching
-function useProjectDetails(orgSlug: string, projectSlug: string) {
+function useProjectDetails(orgSlug: string, projectSlug: string, initialData?: ProjectData) {
   return useQuery({
     queryKey: ["projectDetails", orgSlug, projectSlug],
     queryFn: async () => {
@@ -171,6 +182,8 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
       if (!projectData) throw new Error("Project not found");
       return projectData as ProjectData;
     },
+    initialData,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
     staleTime: 60 * 1000,
   });
 }
@@ -180,7 +193,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { updateProject: updateProjectContext } = useOrganizationProject();
+  const { organizations, projects, updateProject: updateProjectContext } = useOrganizationProject();
   const requestedTab = searchParams.get('tab');
   const activeSettingsTab: ProjectSettingsTab = isProjectSettingsTab(requestedTab) ? requestedTab : 'general';
 
@@ -226,6 +239,13 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   const [budgetAlertsEnabled, setBudgetAlertsEnabled] = useState(true);
   const [isSavingBudget, setIsSavingBudget] = useState(false);
 
+  // Network policy state
+  const [networkAccessMode, setNetworkAccessMode] = useState<'public' | 'restricted'>('public');
+  const [allowedCidrsText, setAllowedCidrsText] = useState('');
+  const [networkPolicyDirty, setNetworkPolicyDirty] = useState(false);
+  const [isSavingNetworkPolicy, setIsSavingNetworkPolicy] = useState(false);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
+
   // RagMetrics state
   const [ragmetricsEnabled, setRagmetricsEnabled] = useState(false);
   const [ragmetricsApiKey, setRagmetricsApiKey] = useState('');
@@ -244,8 +264,23 @@ export default function ProjectSettingsPage({ params }: PageProps) {
     created_at: string;
   }
 
+  const cachedProject = React.useMemo<ProjectData | undefined>(() => {
+    const organization = organizations.find((item) => item.slug === orgSlug);
+    if (!organization) return undefined;
+    const project = projects.find((item) => (
+      item.slug === projectSlug && item.organization_id === organization.id
+    ));
+    if (!project) return undefined;
+    return {
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      organization_id: project.organization_id,
+    };
+  }, [organizations, projects, orgSlug, projectSlug]);
+
   // Fetch project with caching - INSTANT ON REVISIT!
-  const { data: project, isLoading: projectLoading, error } = useProjectDetails(orgSlug, projectSlug);
+  const { data: project, isLoading: projectLoading, error } = useProjectDetails(orgSlug, projectSlug, cachedProject);
 
   // Sync form state when project loads
   React.useEffect(() => {
@@ -255,14 +290,14 @@ export default function ProjectSettingsPage({ params }: PageProps) {
   }, [project]);
 
   // Fetch webhooks with caching
-  const { data: webhooksData } = useQuery<WebhookData[]>({
+  const { data: webhooksData } = useQuery<unknown, Error, WebhookData[]>({
     queryKey: ["webhooks", project?.id],
     queryFn: async () => {
       const response = await fetch(`/api/projects/${project!.id}/webhooks`);
       if (!response.ok) throw new Error("Failed to fetch webhooks");
-      const result = await response.json();
-      return Array.isArray(result.webhooks) ? result.webhooks : [];
+      return response.json();
     },
+    select: normalizeWebhookResponse<WebhookData>,
     enabled: !!project?.id,
     staleTime: 5 * 60 * 1000,
   });
@@ -440,6 +475,24 @@ export default function ProjectSettingsPage({ params }: PageProps) {
     }
   }, [budgetSettings]);
 
+  const { data: networkPolicy, isLoading: networkPolicyLoading } = useQuery<NetworkPolicyData>({
+    queryKey: ["networkPolicy", project?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${project!.id}/networking`);
+      if (!response.ok) throw new Error("Failed to fetch network policy");
+      return response.json();
+    },
+    enabled: !!project?.id,
+    staleTime: 30 * 1000,
+  });
+
+  React.useEffect(() => {
+    if (!networkPolicy) return;
+    setNetworkAccessMode(networkPolicy.access_mode);
+    setAllowedCidrsText(networkPolicy.allowed_cidrs.join('\n'));
+    setNetworkPolicyDirty(false);
+  }, [networkPolicy]);
+
   // Create webhook mutation
   const createWebhookMutation = useMutation({
     mutationFn: async (data: { name: string; url: string; events: string[] }) => {
@@ -522,6 +575,50 @@ export default function ProjectSettingsPage({ params }: PageProps) {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSaveNetworkPolicy = async () => {
+    if (!project) return;
+
+    const allowedCidrs = allowedCidrsText
+      .split(/[\n,]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (networkAccessMode === 'restricted' && allowedCidrs.length === 0) {
+      toast.error('Add at least one source range before restricting access.');
+      return;
+    }
+
+    setIsSavingNetworkPolicy(true);
+    try {
+      const response = await fetch(`/api/projects/${project.id}/networking`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_mode: networkAccessMode,
+          allowed_cidrs: allowedCidrs,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to update network policy');
+
+      setAllowedCidrsText(result.allowed_cidrs.join('\n'));
+      setNetworkPolicyDirty(false);
+      queryClient.setQueryData(["networkPolicy", project.id], result);
+      toast.success('Ingress policy updated.');
+    } catch (saveError) {
+      toast.error(saveError instanceof Error ? saveError.message : 'Failed to update network policy');
+    } finally {
+      setIsSavingNetworkPolicy(false);
+    }
+  };
+
+  const handleCopyEndpoint = async () => {
+    await navigator.clipboard.writeText(GATEWAY_ENDPOINT);
+    setCopiedEndpoint(true);
+    setTimeout(() => setCopiedEndpoint(false), 2000);
+    toast.success('Gateway endpoint copied.');
   };
 
   const handleDeleteProject = async () => {
@@ -1564,6 +1661,158 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </section>
+        </TabsContent>
+
+        {/* NETWORKING TAB */}
+        <TabsContent value="networking" className={settingsTabClass}>
+          <SettingsPageLabel
+            title="Networking"
+            description="Control how traffic reaches this project and where its data plane runs."
+          />
+
+          <section>
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium">Gateway ingress</h2>
+              <p className="text-[10px] leading-4 text-muted-foreground">
+                The public endpoint used by every environment in this project.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-xs font-medium">API base URL</p>
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">{GATEWAY_ENDPOINT}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 px-3 text-xs dark:bg-white dark:text-black dark:hover:bg-white/90"
+                  onClick={handleCopyEndpoint}
+                >
+                  {copiedEndpoint ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+              <div className="grid border-t border-border/30 sm:grid-cols-3 sm:divide-x sm:divide-border/30">
+                <div className="px-4 py-3">
+                  <p className="text-[10px] text-muted-foreground">Data-plane region</p>
+                  <p className="mt-1 font-mono text-xs">{project.region || 'us-east-1'}</p>
+                </div>
+                <div className="border-t border-border/30 px-4 py-3 sm:border-t-0">
+                  <p className="text-[10px] text-muted-foreground">Transport</p>
+                  <p className="mt-1 text-xs">HTTPS · TLS 1.2+</p>
+                </div>
+                <div className="border-t border-border/30 px-4 py-3 sm:border-t-0">
+                  <p className="text-[10px] text-muted-foreground">Edge routing</p>
+                  <p className="mt-1 text-xs">Anycast ingress</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium">Source policy</h2>
+              <p className="text-[10px] leading-4 text-muted-foreground">
+                Restrict gateway traffic to trusted IPv4 and IPv6 networks.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              {networkPolicyLoading ? (
+                <div className="space-y-3 px-4 py-4">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-medium">Access mode</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Restricted mode is enforced before rate limits or model routing.
+                      </p>
+                    </div>
+                    <Select
+                      value={networkAccessMode}
+                      onValueChange={(value: 'public' | 'restricted') => {
+                        setNetworkAccessMode(value);
+                        setNetworkPolicyDirty(true);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-full text-xs sm:w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="public">Public ingress</SelectItem>
+                        <SelectItem value="restricted">Restricted ingress</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {networkAccessMode === 'restricted' && (
+                    <div className="border-t border-border/30 px-4 py-4">
+                      <Label htmlFor="network-cidrs" className="text-xs font-medium">Allowed source ranges</Label>
+                      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                        Add one address or CIDR per line. Exact addresses are stored as /32 or /128 ranges.
+                      </p>
+                      <Textarea
+                        id="network-cidrs"
+                        value={allowedCidrsText}
+                        onChange={(event) => {
+                          setAllowedCidrsText(event.target.value);
+                          setNetworkPolicyDirty(true);
+                        }}
+                        placeholder={'203.0.113.0/24\n2001:db8:1234::/48'}
+                        spellCheck={false}
+                        className="mt-3 min-h-28 resize-y bg-background/40 font-mono text-xs leading-6"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 border-t border-border/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="max-w-2xl text-[10px] leading-4 text-muted-foreground">
+                      Cencori evaluates the connection source at the edge. End-user IP metadata cannot bypass this policy.
+                    </p>
+                    <Button
+                      size="sm"
+                      className="h-7 shrink-0 px-3 text-xs"
+                      disabled={!networkPolicyDirty || isSavingNetworkPolicy}
+                      onClick={handleSaveNetworkPolicy}
+                    >
+                      {isSavingNetworkPolicy ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-medium">Enforcement path</h2>
+              <p className="text-[10px] leading-4 text-muted-foreground">
+                Where the policy runs in the request lifecycle.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/35 bg-muted/30">
+              <div className="grid sm:grid-cols-3 sm:divide-x sm:divide-border/30">
+                <div className="px-4 py-3">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">01 · Edge</p>
+                  <p className="mt-1.5 text-xs font-medium">Resolve source</p>
+                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Read the trusted connection IP.</p>
+                </div>
+                <div className="border-t border-border/30 px-4 py-3 sm:border-t-0">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">02 · Policy</p>
+                  <p className="mt-1.5 text-xs font-medium">Match network</p>
+                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Evaluate all configured CIDR ranges.</p>
+                </div>
+                <div className="border-t border-border/30 px-4 py-3 sm:border-t-0">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">03 · Gateway</p>
+                  <p className="mt-1.5 text-xs font-medium">Route or reject</p>
+                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Block before spend or provider execution.</p>
+                </div>
               </div>
             </div>
           </section>

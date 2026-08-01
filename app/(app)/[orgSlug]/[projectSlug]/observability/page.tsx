@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ChartBarIcon } from '@heroicons/react/24/outline';
 import { ArrowRight } from 'lucide-react';
 import { useEnvironment } from '@/lib/contexts/EnvironmentContext';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useOrganizationProject } from '@/lib/contexts/OrganizationProjectContext';
 import { queryKeys } from '@/lib/hooks/useQueries';
 import { ExportDialog } from '@/components/dashboard/ExportDialog';
 import { IntelligencePanel } from '@/components/analytics/intelligence/IntelligencePanel';
@@ -79,6 +79,16 @@ interface PageProps {
     }>;
 }
 
+interface ProjectDetails {
+    id: string;
+    name: string;
+    organization: {
+        id: string;
+        name: string;
+        subscription_tier?: string;
+    };
+}
+
 type ObservabilitySection = 'overview' | 'ai' | 'reliability' | 'security' | 'intelligence';
 
 interface SectionDefinition {
@@ -102,8 +112,12 @@ function isObservabilitySection(value: string | null): value is ObservabilitySec
         || value === 'intelligence';
 }
 
-function useProjectDetails(orgSlug: string, projectSlug: string) {
-    return useQuery({
+function useProjectDetails(
+    orgSlug: string,
+    projectSlug: string,
+    initialData?: ProjectDetails,
+) {
+    return useQuery<ProjectDetails>({
         queryKey: ['observabilityProject', orgSlug, projectSlug],
         queryFn: async () => {
             const { data: orgData } = await supabase
@@ -124,6 +138,10 @@ function useProjectDetails(orgSlug: string, projectSlug: string) {
             if (!projectData) throw new Error('Project not found');
             return { ...projectData, organization: orgData };
         },
+        initialData,
+        // The shared project context gives us an immediate render while this
+        // observability-specific lookup quietly refreshes in the background.
+        initialDataUpdatedAt: initialData ? 0 : undefined,
         staleTime: 5 * 60 * 1000,
     });
 }
@@ -133,6 +151,7 @@ export default function ObservabilityPage({ params }: PageProps) {
     const { environment } = useEnvironment();
     const searchParams = useSearchParams();
     const pathname = usePathname();
+    const { organizations, projects } = useOrganizationProject();
 
     const [timeRange, setTimeRange] = useState('7d');
 
@@ -141,7 +160,31 @@ export default function ObservabilityPage({ params }: PageProps) {
         ? rawSectionParam
         : 'overview';
 
-    const { data: project, isLoading: projectLoading } = useProjectDetails(orgSlug, projectSlug);
+    const cachedProject = useMemo<ProjectDetails | undefined>(() => {
+        const organization = organizations.find((item) => item.slug === orgSlug);
+        if (!organization) return undefined;
+
+        const project = projects.find((item) => (
+            item.slug === projectSlug && item.organization_id === organization.id
+        ));
+        if (!project) return undefined;
+
+        return {
+            id: project.id,
+            name: project.name,
+            organization: {
+                id: organization.id,
+                name: organization.name,
+                subscription_tier: organization.subscription_tier,
+            },
+        };
+    }, [organizations, orgSlug, projectSlug, projects]);
+
+    const { data: project, isLoading: projectLoading } = useProjectDetails(
+        orgSlug,
+        projectSlug,
+        cachedProject,
+    );
     const projectId = project?.id ?? '';
 
     const { data: overview, error: overviewError } = useQuery<OverviewData>({
@@ -166,38 +209,7 @@ export default function ObservabilityPage({ params }: PageProps) {
 
     const trends = useMemo(() => trendsData?.trends || [], [trendsData?.trends]);
 
-    if (projectLoading) {
-        return (
-            <div className="w-full max-w-[1480px] mx-auto px-6 py-8 lg:px-8">
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <Skeleton className="h-7 w-40" />
-                        <Skeleton className="h-3.5 w-72 mt-2" />
-                    </div>
-                    <div className="flex gap-2">
-                        <Skeleton className="h-8 w-20" />
-                        <Skeleton className="h-8 w-32" />
-                    </div>
-                </div>
-                <div className="overflow-hidden rounded-2xl border border-border/50">
-                    <div className="border-b border-border/50 px-5 py-4">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-3 w-56 mt-2" />
-                    </div>
-                    <div className="grid grid-cols-1 gap-px bg-border/40 md:grid-cols-2 xl:grid-cols-12">
-                        <ObservabilityChartCardSkeleton className="min-h-[250px] md:col-span-2 xl:col-span-8" />
-                        <ObservabilityChartCardSkeleton className="min-h-[250px] xl:col-span-4" />
-                        {[1, 2, 3].map(i => (
-                            <ObservabilityChartCardSkeleton key={i} className="min-h-[210px] xl:col-span-3" />
-                        ))}
-                        <ObservabilityChartCardSkeleton className="min-h-[210px] md:col-span-2 xl:col-span-3" />
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    if (!project) {
+    if (!project && !projectLoading) {
         return (
             <div className="w-full max-w-6xl mx-auto px-6 py-8">
                 <div className="text-center py-16 flex flex-col items-center">
@@ -210,7 +222,7 @@ export default function ObservabilityPage({ params }: PageProps) {
         );
     }
 
-    if (isFeatureGateError(overviewError)) {
+    if (project && isFeatureGateError(overviewError)) {
         return (
             <div className="w-full max-w-6xl mx-auto px-6 py-8">
                 <FeatureUpgradeWall
@@ -227,13 +239,16 @@ export default function ObservabilityPage({ params }: PageProps) {
     }
 
     return (
-        <div className="w-full max-w-[1480px] mx-auto px-6 py-8 lg:px-8">
-            <div className="mb-6">
+        <main className="mx-auto w-full max-w-[980px] px-4 py-8 pb-24 sm:px-6 sm:py-10 lg:px-8">
+            <header className="mb-8">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-[-0.035em]">Observability</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Live AI telemetry for {project.name}.</p>
+                    <p className="text-[10px] font-medium tracking-[0.18em] text-muted-foreground">PROJECT TELEMETRY</p>
+                    <h1 className="mt-3 text-[2rem] font-medium leading-none tracking-[-0.055em]">Observability</h1>
+                    <p className="mt-3 max-w-[60ch] text-xs leading-5 text-muted-foreground">
+                        {project ? `Live AI telemetry for ${project.name}.` : 'Live AI telemetry for this project.'}
+                    </p>
                 </div>
-            </div>
+            </header>
 
             <nav className="mb-4 flex gap-1 overflow-x-auto pb-1 lg:hidden" aria-label="Observability sections">
                 {sections.map((item) => (
@@ -262,7 +277,19 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         <p className="mt-0.5 text-xs text-muted-foreground">The operating pulse of every model request.</p>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                        {projectId ? (
+                                            <ExportDialog
+                                                projectId={projectId}
+                                                type="analytics"
+                                                environment={environment}
+                                                showTriggerIcon={false}
+                                                triggerClassName="border-black bg-black text-white hover:bg-black/85 dark:border-white dark:bg-white dark:text-black dark:hover:bg-white/90"
+                                            />
+                                        ) : (
+                                            <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
+                                                Export
+                                            </Button>
+                                        )}
                                         <Select value={timeRange} onValueChange={setTimeRange}>
                                             <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
                                                 <SelectValue placeholder="Period" />
@@ -280,18 +307,18 @@ export default function ObservabilityPage({ params }: PageProps) {
                                 </div>
 
                                 {!overview ? (
-                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
-                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 xl:col-span-5" />
-                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-5" />
-                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-7" />
-                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-xl border border-border/55 xl:col-span-7" />
-                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-xl border border-border/55 xl:col-span-5" />
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                        <ObservabilityChartCardSkeleton className="min-h-[250px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                    <div className="grid grid-cols-1 gap-4">
                                         <ObservabilitySignalCard
-                                            className="md:col-span-2 xl:col-span-7"
+                                            className="w-full"
                                             title="Request outcomes"
                                             description="Successful, failed, and filtered AI requests over time."
                                             href={`/${orgSlug}/${projectSlug}/logs`}
@@ -322,7 +349,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilitySignalCard
-                                            className="xl:col-span-5"
+                                            className="w-full"
                                             title="Spend"
                                             description="Provider cost accumulated across model traffic."
                                             type="line"
@@ -340,7 +367,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilitySignalCard
-                                            className="xl:col-span-5"
+                                            className="w-full"
                                             title="Success rate"
                                             description="The share of AI requests completed successfully."
                                             type="line"
@@ -361,7 +388,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilitySignalCard
-                                            className="xl:col-span-7"
+                                            className="w-full"
                                             title="Response latency"
                                             description="Mean end-to-end response time across providers."
                                             type="line"
@@ -379,7 +406,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilitySignalCard
-                                            className="xl:col-span-7"
+                                            className="w-full"
                                             title="Token throughput"
                                             description="Tokens processed across prompts and model output."
                                             type="line"
@@ -397,7 +424,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                             ]}
                                         />
                                         <ObservabilitySignalCard
-                                            className="xl:col-span-5"
+                                            className="w-full"
                                             title="Security signals"
                                             description="Policy incidents and blocked model output."
                                             href={`/${orgSlug}/${projectSlug}/security`}
@@ -435,7 +462,19 @@ export default function ObservabilityPage({ params }: PageProps) {
                                     <p className="mt-0.5 text-xs text-muted-foreground">Model traffic, token usage, provider cost, and latency.</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                    {projectId ? (
+                                        <ExportDialog
+                                            projectId={projectId}
+                                            type="analytics"
+                                            environment={environment}
+                                            showTriggerIcon={false}
+                                            triggerClassName="border-black bg-black text-white hover:bg-black/85 dark:border-white dark:bg-white dark:text-black dark:hover:bg-white/90"
+                                        />
+                                    ) : (
+                                        <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
+                                            Export
+                                        </Button>
+                                    )}
                                     <Select value={timeRange} onValueChange={setTimeRange}>
                                         <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
                                             <SelectValue placeholder="Period" />
@@ -459,16 +498,16 @@ export default function ObservabilityPage({ params }: PageProps) {
                             </div>
 
                             {!overview ? (
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-xl border border-border/55 xl:col-span-5" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-5" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-xl border border-border/55 xl:col-span-7" />
+                                <div className="grid grid-cols-1 gap-4">
+                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[300px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[270px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                <div className="grid grid-cols-1 gap-4">
                                     <ObservabilitySignalCard
-                                        className="md:col-span-2 xl:col-span-7"
+                                        className="w-full"
                                         title="Request outcomes"
                                         description="Successful, failed, and filtered model requests over time."
                                         href={`/${orgSlug}/${projectSlug}/logs`}
@@ -499,7 +538,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilitySignalCard
-                                        className="xl:col-span-5"
+                                        className="w-full"
                                         title="Token throughput"
                                         description="Tokens processed across prompts and model output."
                                         type="line"
@@ -517,7 +556,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilitySignalCard
-                                        className="xl:col-span-5"
+                                        className="w-full"
                                         title="Spend"
                                         description="Provider cost accumulated across model traffic."
                                         type="line"
@@ -535,7 +574,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilitySignalCard
-                                        className="xl:col-span-7"
+                                        className="w-full"
                                         title="Response latency"
                                         description="Mean end-to-end response time across model providers."
                                         type="line"
@@ -561,10 +600,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         <h3 id="model-intelligence-heading" className="text-sm font-medium">Model intelligence</h3>
                                         <p className="mt-0.5 text-xs text-muted-foreground">Traffic concentration, provider spend, and latency percentiles.</p>
                                     </div>
-                                    <div className="overflow-hidden rounded-xl border border-border/55 bg-card">
-                                        <div className="grid grid-cols-1 md:grid-cols-3">
-                                            <div className="border-b border-border/40 md:border-b-0 md:border-r"><ModelUsageChart data={overview.breakdown.model_usage} /></div>
-                                            <div className="border-b border-border/40 md:border-b-0 md:border-r">
+                                    <div className="overflow-hidden rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]">
+                                        <div className="divide-y divide-border/40">
+                                            <div><ModelUsageChart data={overview.breakdown.model_usage} /></div>
+                                            <div>
                                                 <CostByProviderChart
                                                     data={overview.breakdown.cost_by_provider}
                                                     requests={overview.breakdown.requests_by_provider}
@@ -600,7 +639,19 @@ export default function ObservabilityPage({ params }: PageProps) {
                                     <p className="mt-0.5 text-xs text-muted-foreground">AI delivery health, provider recovery, and response stability.</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <ExportDialog projectId={projectId} type="analytics" environment={environment} />
+                                    {projectId ? (
+                                        <ExportDialog
+                                            projectId={projectId}
+                                            type="analytics"
+                                            environment={environment}
+                                            showTriggerIcon={false}
+                                            triggerClassName="border-black bg-black text-white hover:bg-black/85 dark:border-white dark:bg-white dark:text-black dark:hover:bg-white/90"
+                                        />
+                                    ) : (
+                                        <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
+                                            Export
+                                        </Button>
+                                    )}
                                     <Select value={timeRange} onValueChange={setTimeRange}>
                                         <SelectTrigger className="h-8 w-[130px] bg-background text-xs">
                                             <SelectValue placeholder="Period" />
@@ -624,16 +675,16 @@ export default function ObservabilityPage({ params }: PageProps) {
                             </div>
 
                             {!overview ? (
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-xl border border-border/55 md:col-span-2 xl:col-span-7" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-xl border border-border/55 xl:col-span-5" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-xl border border-border/55 xl:col-span-5" />
-                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-xl border border-border/55 xl:col-span-7" />
+                                <div className="grid grid-cols-1 gap-4">
+                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[320px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
+                                    <ObservabilityChartCardSkeleton className="min-h-[260px] rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]" />
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                                <div className="grid grid-cols-1 gap-4">
                                     <ObservabilitySignalCard
-                                        className="md:col-span-2 xl:col-span-7"
+                                        className="w-full"
                                         title="Delivery outcomes"
                                         description="Completed, failed, and policy-filtered AI requests over time."
                                         href={`/${orgSlug}/${projectSlug}/logs`}
@@ -665,14 +716,14 @@ export default function ObservabilityPage({ params }: PageProps) {
                                     />
 
                                     <FailoverMetrics
-                                        className="xl:col-span-5"
+                                        className="w-full"
                                         projectId={projectId}
                                         environment={environment}
                                         timeRange={timeRange}
                                     />
 
                                     <ObservabilitySignalCard
-                                        className="xl:col-span-5"
+                                        className="w-full"
                                         title="Delivery rate"
                                         description="The share of AI requests completed successfully, including recovered fallbacks."
                                         type="line"
@@ -694,7 +745,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                     />
 
                                     <ObservabilitySignalCard
-                                        className="xl:col-span-7"
+                                        className="w-full"
                                         title="Response stability"
                                         description="Mean end-to-end latency across model providers."
                                         type="line"
@@ -723,10 +774,10 @@ export default function ObservabilityPage({ params }: PageProps) {
                                 <p className="text-xs text-muted-foreground mt-0.5">Incident severity, filtered patterns, and safety-related request behavior.</p>
                             </div>
 
-                            <div className="border border-border/40 bg-card mb-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                            <div className="mb-6 overflow-hidden rounded-lg bg-[#f3f3f1] ring-1 ring-inset ring-black/[0.045] dark:bg-[#111111] dark:ring-white/[0.035]">
+                                <div className="grid grid-cols-1 divide-y divide-black/[0.055] dark:divide-white/[0.045]">
                                     <ObservabilityChartCard
-                                        className="border-b md:border-r border-border/40"
+                                        className="w-full bg-transparent"
                                         title="Security Incidents"
                                         series={[
                                             {
@@ -739,7 +790,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b border-border/40"
+                                        className="w-full bg-transparent"
                                         title="Critical Severity"
                                         series={[
                                             {
@@ -752,7 +803,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className="border-b md:border-r md:border-b-0 border-border/40"
+                                        className="w-full bg-transparent"
                                         title="High Priority"
                                         series={[
                                             {
@@ -767,7 +818,7 @@ export default function ObservabilityPage({ params }: PageProps) {
                                         ]}
                                     />
                                     <ObservabilityChartCard
-                                        className=""
+                                        className="w-full bg-transparent"
                                         title="Blocked Output"
                                         series={[
                                             {
@@ -799,6 +850,6 @@ export default function ObservabilityPage({ params }: PageProps) {
                         />
                     )}
             </div>
-        </div>
+        </main>
     );
 }

@@ -28,7 +28,7 @@ interface RequestLog {
 }
 
 interface RequestLogsTableProps {
-    projectId: string;
+    projectId?: string;
     environment: 'production' | 'test';
     filters: {
         status?: string;
@@ -48,6 +48,10 @@ export function RequestLogsTable({ projectId, environment, filters }: RequestLog
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchLogs = useCallback(async () => {
+        if (!projectId) {
+            setLoading(true);
+            return;
+        }
         setLoading(true);
         try {
             const params = new URLSearchParams({
@@ -80,10 +84,11 @@ export function RequestLogsTable({ projectId, environment, filters }: RequestLog
     }, [filters]);
 
     useEffect(() => {
-        fetchLogs();
-    }, [fetchLogs]);
+        if (projectId) fetchLogs();
+    }, [fetchLogs, projectId]);
 
     useEffect(() => {
+        if (!projectId) return;
         const eventSource = new EventSource(`/api/projects/${projectId}/logs/stream`);
 
         eventSource.addEventListener('message', (event) => {
@@ -316,7 +321,7 @@ export function RequestLogsTable({ projectId, environment, filters }: RequestLog
             </div>
 
             {/* Detail Modal */}
-            {selectedRequest && (
+            {projectId && selectedRequest && (
                 <RequestDetailModal
                     projectId={projectId}
                     requestId={selectedRequest}

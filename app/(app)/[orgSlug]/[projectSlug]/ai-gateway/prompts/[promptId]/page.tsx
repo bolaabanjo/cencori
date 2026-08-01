@@ -2,7 +2,6 @@
 
 import { use, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
 import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,6 +10,7 @@ import { PromptVersionHistory } from '@/components/prompts/PromptVersionHistory'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { useProjectIdBySlug } from '@/lib/hooks/useQueries';
 
 interface PageProps {
     params: Promise<{ orgSlug: string; projectSlug: string; promptId: string }>;
@@ -48,24 +48,7 @@ interface AnalyticsData {
 type Tab = 'editor' | 'versions' | 'analytics';
 
 function useProjectId(orgSlug: string, projectSlug: string) {
-    return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
-        queryFn: async () => {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('id')
-                .eq('slug', orgSlug)
-                .single();
-            if (!org) return null;
-            const { data: project } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('organization_id', org.id)
-                .eq('slug', projectSlug)
-                .single();
-            return project?.id || null;
-        },
-    });
+    return useProjectIdBySlug(orgSlug, projectSlug);
 }
 
 function CopiedButton({ text }: { text: string }) {
@@ -277,15 +260,8 @@ export default function PromptDetailPage({ params }: PageProps) {
         },
     });
 
-    if (projectLoading || !projectId) {
-        return (
-            <div className="w-full max-w-[1100px] mx-auto px-6 py-8">
-                <div className="h-5 w-28 bg-secondary rounded animate-pulse" />
-            </div>
-        );
-    }
-
     const parentPath = pathname.replace(`/${promptId}`, '');
+    const pageLoading = projectLoading || isLoading || !prompt;
 
     return (
         <div className="w-full max-w-[1100px] mx-auto px-6 py-8">
@@ -299,7 +275,7 @@ export default function PromptDetailPage({ params }: PageProps) {
                     All Prompts
                 </Link>
 
-                {isLoading || !prompt ? (
+                {pageLoading ? (
                     <div className="space-y-2">
                         <div className="h-5 w-48 bg-secondary rounded animate-pulse" />
                         <div className="h-3 w-72 bg-secondary/50 rounded animate-pulse" />
@@ -336,6 +312,7 @@ export default function PromptDetailPage({ params }: PageProps) {
                 {(['editor', 'versions', 'analytics'] as Tab[]).map((t) => (
                     <button
                         key={t}
+                        disabled={!projectId}
                         onClick={() => setTab(t)}
                         className={cn(
                             'px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px capitalize',
@@ -350,6 +327,14 @@ export default function PromptDetailPage({ params }: PageProps) {
             </div>
 
             {/* Tab content */}
+            {tab === 'editor' && pageLoading && (
+                <div className="space-y-4 rounded-xl border border-border/30 p-5">
+                    <div className="h-4 w-24 animate-pulse rounded bg-secondary" />
+                    <div className="h-48 w-full animate-pulse rounded-lg bg-secondary/50" />
+                    <div className="ml-auto h-8 w-28 animate-pulse rounded bg-secondary" />
+                </div>
+            )}
+
             {tab === 'editor' && prompt?.active_version && (
                 <PromptEditor
                     key={prompt.active_version_id}

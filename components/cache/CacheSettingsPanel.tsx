@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 interface CacheSettingsPanelProps {
-    projectId: string;
+    projectId?: string;
 }
 
 interface CacheSettings {
@@ -45,6 +45,7 @@ export function CacheSettingsPanel({ projectId }: CacheSettingsPanelProps) {
             return res.json();
         },
         staleTime: 60 * 1000,
+        enabled: !!projectId,
     });
 
     const mutation = useMutation({
@@ -83,7 +84,7 @@ export function CacheSettingsPanel({ projectId }: CacheSettingsPanelProps) {
         },
     });
 
-    const update = useCallback((field: keyof CacheSettings, value: any) => {
+    const update = useCallback(<K extends keyof CacheSettings,>(field: K, value: CacheSettings[K]) => {
         if (debounceTimers.current[field]) {
             clearTimeout(debounceTimers.current[field]);
         }
@@ -98,7 +99,7 @@ export function CacheSettingsPanel({ projectId }: CacheSettingsPanelProps) {
         }
     }, [mutation]);
 
-    if (isLoading || !settings) {
+    if (!projectId || isLoading || !settings) {
         return (
             <div className="space-y-6">
                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}

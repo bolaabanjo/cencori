@@ -58,7 +58,7 @@ export function CostByProviderChart({ data, requests = {} }: CostByProviderChart
     const totalRequests = items.reduce((sum, item) => sum + item.requestCount, 0);
 
     return (
-        <section className="flex h-full min-h-[286px] flex-col bg-card" aria-labelledby="provider-cost-heading">
+        <section className="flex h-full min-h-[286px] flex-col bg-transparent" aria-labelledby="provider-cost-heading">
             <header className="flex items-start justify-between gap-4 px-4 pb-4 pt-4">
                 <div>
                     <h3 id="provider-cost-heading" className="text-xs font-medium">Cost by provider</h3>
