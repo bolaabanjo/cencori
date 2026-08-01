@@ -85,25 +85,36 @@ export async function POST(request: NextRequest) {
     const clientUA: string = (body?.user_agent as string) || '';
     const ip: string = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || '';
 
-    const prevUA = meta.last_login_user_agent as string | undefined;
     const prevIP = meta.last_login_ip as string | undefined;
 
-    const sameUA = prevUA && clientUA && prevUA === clientUA;
-    const sameIP = prevIP && ip && prevIP === ip;
+    // Stable device signature: browser + OS with NO version numbers. Comparing
+    // the raw user agent was the core bug — Chrome's UA string changes on every
+    // (~monthly) auto-update, so each update looked like a brand-new device.
+    const deviceKey = clientUA ? parseUA(clientUA) : 'Unknown device';
 
-    if (sameUA && sameIP) {
+    // Alert only on genuinely new devices/browsers, so track the full set of
+    // devices we've already notified about — not just the most recent one, and
+    // not the IP (which changes constantly across Wi-Fi/mobile/VPN and should
+    // never on its own re-trigger a "new sign-in" email).
+    const knownDevices: string[] = Array.isArray(meta.known_login_devices)
+      ? (meta.known_login_devices as unknown[]).filter((d): d is string => typeof d === 'string')
+      : [];
+
+    if (knownDevices.includes(deviceKey)) {
       return NextResponse.json({ success: true, skipped: true, reason: 'known_device' });
     }
 
+    // Burst guard: prevents duplicate emails if the client double-fires (e.g.
+    // two tabs) before the new device is persisted. Not a substitute for the set.
     const lastAlertAt = meta.last_login_alert_sent_at as string | undefined;
     if (lastAlertAt) {
       const elapsed = Date.now() - new Date(lastAlertAt).getTime();
-      if (elapsed < 3600000) {
+      if (elapsed < 600000) {
         return NextResponse.json({ success: true, skipped: true, reason: 'recent_alert_sent' });
       }
     }
 
-    const device = clientUA ? parseUA(clientUA) : 'Unknown device';
+    const device = deviceKey;
     let location: string | null = null;
     if (ip && ip !== prevIP) {
       location = await lookupLocation(ip);
@@ -149,16 +160,17 @@ export async function POST(request: NextRequest) {
     const link = (text: string, href: string) =>
       `<a href="${href}" style="color:#111;text-decoration:underline;">${text} &#8594;</a>`;
 
-    const updateMeta: Record<string, string> = {};
+    const updateMeta: Record<string, unknown> = {};
+    // Record this device so future sign-ins from it stay silent. Cap the list
+    // so metadata can't grow unbounded.
+    updateMeta.known_login_devices = [...knownDevices, deviceKey].slice(-20);
     if (clientUA) updateMeta.last_login_user_agent = clientUA;
     if (ip) updateMeta.last_login_ip = ip;
     updateMeta.last_login_alert_sent_at = new Date().toISOString();
 
-    if (Object.keys(updateMeta).length > 0) {
-      await supabaseAdmin.auth.admin.updateUserById(user.id, {
-        user_metadata: { ...meta, ...updateMeta },
-      });
-    }
+    await supabaseAdmin.auth.admin.updateUserById(user.id, {
+      user_metadata: { ...meta, ...updateMeta },
+    });
 
     const sendbyte = new SendByte(SENDBYTE_API_KEY);
     try {
