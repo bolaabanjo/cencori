@@ -223,8 +223,76 @@ export interface PricingTier {
 }
 
 /**
+ * Order tiers by their ceiling, smallest first, with the open-ended tier last.
+ * Tiers arrive as JSON from the rate plan, so their order is not guaranteed and
+ * both pricing models depend on reading them in ascending order.
+ */
+function sortTiers(pricingTiers: PricingTier[]): PricingTier[] {
+  return [...pricingTiers].sort(
+    (a, b) => (a.up_to ?? Infinity) - (b.up_to ?? Infinity)
+  );
+}
+
+/**
+ * Graduated pricing: every unit is charged at the rate of the tier it falls in,
+ * so a single request that crosses a tier boundary is split across both rates.
+ * `usageBefore` is the end-user's usage this period prior to this request, which
+ * is what decides where in the tier ladder these units land.
+ */
+function calculateGraduatedCharge(
+  units: number,
+  pricingTiers: PricingTier[],
+  usageBefore: number
+): number {
+  const tiers = sortTiers(pricingTiers);
+  let remaining = units;
+  let cursor = usageBefore;
+  let charge = 0;
+
+  for (const tier of tiers) {
+    if (remaining <= 0) break;
+    const ceiling = tier.up_to ?? Infinity;
+    if (cursor >= ceiling) continue;
+
+    const unitsInTier = Math.min(remaining, ceiling - cursor);
+    charge += unitsInTier * tier.unit_amount;
+    cursor += unitsInTier;
+    remaining -= unitsInTier;
+  }
+
+  // Rate plans that stop at a finite ceiling leave usage above it unpriced.
+  // Bill the overflow at the highest configured rate rather than for free.
+  if (remaining > 0 && tiers.length > 0) {
+    charge += remaining * tiers[tiers.length - 1].unit_amount;
+  }
+
+  return charge;
+}
+
+/**
+ * Volume pricing: every unit is charged at the single rate of the tier the
+ * period total reaches. Usage is metered per request, so the total including
+ * this request decides the rate — otherwise a first request large enough to
+ * clear a discount tier would still be billed at the most expensive rate.
+ */
+function calculateVolumeCharge(
+  units: number,
+  pricingTiers: PricingTier[],
+  usageBefore: number
+): number {
+  const tiers = sortTiers(pricingTiers);
+  const total = usageBefore + units;
+  const tier = tiers.find(t => t.up_to === null || total <= t.up_to)
+    ?? tiers[tiers.length - 1];
+
+  return units * tier.unit_amount;
+}
+
+/**
  * Calculate what the customer should charge their end-user.
- * Supports Flat, Tiered, and Volume pricing models.
+ *
+ * Flat applies the customer's markup to Cencori's charge. Graduated and volume
+ * rate plans price the request's units directly and replace the markup entirely.
  */
 export function calculateCustomerCharge(
   cencoriChargeUsd: number,
@@ -235,17 +303,14 @@ export function calculateCustomerCharge(
   requestUnits: number = 0,
   totalMonthlyUsage: number = 0
 ): number {
-  // 1. Base Charge (Markup based)
-  let charge = cencoriChargeUsd * (1 + markupPercentage / 100) + (flatRatePerRequest || 0);
-
-  // 2. Override with Tiered/Volume models if applicable
-  if (pricingTiers.length > 0 && (pricingModel === 'tiered' || pricingModel === 'volume')) {
-    // Determine the current tier based on total monthly usage
-    const tier = pricingTiers.find(t => t.up_to === null || totalMonthlyUsage <= t.up_to) || pricingTiers[pricingTiers.length - 1];
-    
-    // The charge for THIS request is based on the current tier's unit price
-    charge = requestUnits * tier.unit_amount;
+  if (pricingTiers.length > 0) {
+    if (pricingModel === 'tiered') {
+      return calculateGraduatedCharge(requestUnits, pricingTiers, totalMonthlyUsage);
+    }
+    if (pricingModel === 'volume') {
+      return calculateVolumeCharge(requestUnits, pricingTiers, totalMonthlyUsage);
+    }
   }
 
-  return charge;
+  return cencoriChargeUsd * (1 + markupPercentage / 100) + (flatRatePerRequest || 0);
 }
