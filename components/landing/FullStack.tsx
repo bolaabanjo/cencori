@@ -8,7 +8,7 @@ const layers = [
         name: "AI Gateway",
         status: "Live",
         statusColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-        description: "Unified routing across 100+ models. Automatic failover, rate limiting, jailbreak detection, PII masking, audit trails, and end-user billing — all in one endpoint."
+        description: "Unified routing across 100+ models. Automatic failover, rate limiting, jailbreak detection, PII masking, audit trails, and monetization — all in one endpoint."
     },
     {
         name: "Scan",

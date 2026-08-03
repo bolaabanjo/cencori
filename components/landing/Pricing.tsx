@@ -60,7 +60,7 @@ const tiers: Array<{
         features: [
             `${CENCORI_PAID_PLANS.pro.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
-            "End-user billing",
+            "Monetization",
             "Full security pipeline",
             "Jailbreak detection",
             "PII masking & audit trails",
@@ -83,7 +83,7 @@ const tiers: Array<{
         features: [
             `${CENCORI_PAID_PLANS.team.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
-            "End-user billing",
+            "Monetization",
             "Full security pipeline",
             "PII masking & jailbreak detection",
             "Team seats & collaboration",

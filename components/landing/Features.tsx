@@ -86,7 +86,7 @@ export const Features = () => {
                                     </div>
                                     <div>
                                         <h4 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors mb-1.5">
-                                            End-User Billing
+                                            Monetization
                                         </h4>
                                         <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                                             <span className="text-green-400 font-medium">The feature nobody else has.</span> Meter your users&apos; AI usage. Apply markup. Collect revenue automatically through Stripe Connect. Turn infrastructure cost into margin.

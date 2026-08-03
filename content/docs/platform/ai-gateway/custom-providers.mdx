@@ -7,7 +7,7 @@ order: 5
 
 Custom providers let you connect your own model endpoints to Cencori. Self-hosted LLaMA, a fine-tuned model on your GPU server, a private vLLM instance — anything that speaks the OpenAI or Anthropic API format.
 
-Once connected, custom providers go through the same gateway pipeline as OpenAI, Anthropic, and every other built-in provider. Security filtering, rate limiting, end-user billing, observability, caching — all of it works automatically.
+Once connected, custom providers go through the same gateway pipeline as OpenAI, Anthropic, and every other built-in provider. Security filtering, rate limiting, Monetization, observability, caching — all of it works automatically.
 
 ## How It Works
 
@@ -128,7 +128,7 @@ Everything that built-in providers get:
 | :--- | :--- |
 | **Security filtering** | PII detection and prompt injection blocking run on every request before it reaches your model |
 | **Rate limiting** | Project-level and per-key limits enforced at the gateway |
-| **End-user billing** | Pass `user: "..."` to meter, limit, and charge per user |
+| **Monetization** | Pass `user: "..."` to meter, limit, and charge per user |
 | **Observability** | Every request logged with model, latency, tokens, cost, status, user |
 | **Semantic caching** | Repeated queries served from cache if enabled |
 | **Environment scoping** | Test-key and production-key traffic tracked separately |
@@ -174,5 +174,5 @@ For production, deploy on a cloud VM with a public IP or domain. For testing, us
 - [Custom Providers API](/docs/api/custom-providers) — full API reference
 - [Blog: Connect a Local LLM to Cencori](/blog/connect-local-llm-to-cencori) — step-by-step walkthrough
 - [BYOK](/docs/platform/byok) — use your own API keys with built-in providers
-- [End-User Billing](/docs/platform/end-user-billing) — meter and charge your users
+- [Monetization](/docs/platform/monetization) — meter and charge your users
 - [Core Architecture](/docs/platform/core-architecture) — how the gateway pipeline works

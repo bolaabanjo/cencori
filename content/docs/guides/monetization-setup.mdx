@@ -1,11 +1,11 @@
 ---
-title: "End-User Billing"
+title: "Monetization Setup"
 description: "Step-by-step guide to billing your customers for AI usage — from enabling billing to collecting your first payment."
 section: "Guides"
 order: 7
 ---
 
-This guide walks you through setting up end-user billing from scratch. By the end, you'll have rate plans, markup pricing, and Stripe payments — all managed from the Cencori dashboard.
+This guide walks you through setting up Monetization from scratch. By the end, you'll have rate plans, markup pricing, and Stripe payments — all managed from the Cencori dashboard.
 
 No code is required for the setup. Your engineering team only needs to integrate later (and it's minimal).
 
@@ -16,12 +16,12 @@ You need:
 - Admin or owner access to the organization
 - A Stripe account (for collecting payments — can be set up during this guide)
 
-## Step 1: Enable End-User Billing
+## Step 1: Enable Monetization
 
 1. Open your project in the Cencori dashboard.
-2. Click **End-User Billing** in the left sidebar.
+2. Click **Monetization** in the left sidebar.
 3. You'll land on the **Configuration** tab.
-4. Toggle **Enable End-User Billing** to on.
+4. Toggle **Enable Monetization** to on.
 5. Click **Save Configuration**.
 
 That's it — billing is now active for this project.
@@ -162,7 +162,7 @@ That's it. Billing, rate limits, quotas — all handled automatically.
 
 **If you have your own AI infrastructure:**
 
-Your engineers add two API calls — one before processing (quota check) and one after (usage report). See the [End-User Billing API Reference](/docs/platform/end-user-billing#option-2-usage-events-api) for the full integration guide.
+Your engineers add two API calls — one before processing (quota check) and one after (usage report). See the [Monetization API Reference](/docs/platform/monetization#option-2-usage-events-api) for the full integration guide.
 
 ## Step 7: Generate Invoices
 
@@ -236,7 +236,7 @@ No. Quota checks and usage aggregation are scoped by API key environment. Test-k
 
 ## Next Steps
 
-- [End-User Billing API Reference](/docs/platform/end-user-billing) — technical documentation for your engineering team
+- [Monetization API Reference](/docs/platform/monetization) — technical documentation for your engineering team
 - [Cost Optimization](/docs/guides/cost-optimization) — reduce your AI costs before applying markup
 - [Rate Limiting](/docs/platform/ai-gateway/rate-limiting) — project-level rate limits (separate from per-user limits)
 - [Audit Logs](/docs/guides/audit-logs) — track who changed billing settings and when

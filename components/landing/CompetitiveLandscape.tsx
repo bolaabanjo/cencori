@@ -47,7 +47,7 @@ export const CompetitiveLandscape = () => {
                                     <th className="py-4 px-6 font-medium">Competitor</th>
                                     <th className="py-4 px-6 text-center font-medium">Gateway</th>
                                     <th className="py-4 px-6 text-center font-medium">Compute</th>
-                                    <th className="py-4 px-6 text-center font-medium">End-User Billing</th>
+                                    <th className="py-4 px-6 text-center font-medium">Monetization</th>
                                     <th className="py-4 px-6 text-center font-medium">Full Stack</th>
                                 </tr>
                             </thead>
@@ -88,7 +88,7 @@ export const CompetitiveLandscape = () => {
                                             </div>
                                         </td>
 
-                                        {/* End-User Billing Column */}
+                                        {/* Monetization Column */}
                                         <td className="py-4 px-6 text-center">
                                             <div className="flex justify-center">
                                                 {comp.billing === "yes" ? (
@@ -122,7 +122,7 @@ export const CompetitiveLandscape = () => {
                 <div className="max-w-3xl mx-auto mt-12 text-center space-y-8">
                     <Reveal delay={0.2}>
                         <p className="text-sm sm:text-base text-muted-foreground leading-relaxed italic max-w-2xl mx-auto">
-                            &ldquo;No one else ships gateway + compute + end-user billing + memory under one roof. That&apos;s not a roadmap advantage, that&apos;s a category advantage.&rdquo;
+                            &ldquo;No one else ships gateway + compute + monetization + memory under one roof. That&apos;s not a roadmap advantage, that&apos;s a category advantage.&rdquo;
                         </p>
                     </Reveal>
                     

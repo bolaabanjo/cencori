@@ -55,7 +55,7 @@ const useCases = [
         title: "Personalized Banking & Monetization",
         description: "Deliver tailored financial advice and product recommendations — and bill your end users per request via Stripe Connect.",
         points: [
-            "End-user billing with markup pricing",
+            "Monetization with markup pricing",
             "Per-customer rate limits and budgets",
             "Usage analytics per product line",
         ],
@@ -90,7 +90,7 @@ const features = [
     },
     {
         icon: Users,
-        title: "End-User Billing",
+        title: "Monetization",
         desc: "Pass AI costs directly to your end customers with configurable markup. Stripe Connect handles payments and payouts. Rate plans, quotas, and spend caps per customer.",
     },
 ];
@@ -123,7 +123,7 @@ export default function FintechPage() {
                         </Reveal>
                         <Reveal delay={0.1}>
                             <p className="text-base text-muted-foreground max-w-[34rem] mb-10 leading-[1.7]">
-                                Deploy AI across customer support, fraud detection, and personalized banking — with PII redaction, audit trails, and end-user billing baked in. Compliance-ready architecture.
+                                Deploy AI across customer support, fraud detection, and personalized banking — with PII redaction, audit trails, and monetization baked in. Compliance-ready architecture.
                             </p>
                         </Reveal>
                         <Reveal delay={0.15}>
@@ -225,7 +225,7 @@ export default function FintechPage() {
                                             "PII redacted before reaching any LLM",
                                             "Immutable audit logs for SOX & GLBA",
                                             "Multi-provider failover with zero downtime",
-                                            "End-user billing with configurable markup",
+                                            "Monetization with configurable markup",
                                             "Per-customer quotas, budgets, and rate limits",
                                         ].map((item, i) => (
                                             <li key={i} className="flex gap-3 text-sm text-muted-foreground">
@@ -382,7 +382,7 @@ export default function FintechPage() {
                                     { step: "01", title: "User sends a request", desc: "Your app sends a chat completion to Cencori's OpenAI-compatible endpoint. Account number, SSN, or transaction data may be in the prompt." },
                                     { step: "02", title: "Cencori redacts PII before it reaches the model", desc: "Custom data rules and PII detectors scan the input. Card numbers, SSNs, routing numbers are redacted or tokenized. Only safe text reaches the LLM." },
                                     { step: "03", title: "Request is logged for compliance", desc: "The full request, redaction events, model response, and latency are recorded in an append-only audit log. Ready for SOX/GLBA examiners." },
-                                    { step: "04", title: "Usage is metered and billed", desc: "Token count, cost, and end-user ID are recorded. If you use end-user billing, Stripe Connect handles invoices and payouts automatically." },
+                                    { step: "04", title: "Usage is metered and billed", desc: "Token count, cost, and end-user ID are recorded. If you enable Monetization, Stripe Connect handles invoices and payouts automatically." },
                                 ].map((item, i) => (
                                     <Reveal key={item.step} delay={i * 0.08}>
                                         <div className={cn(
@@ -567,7 +567,7 @@ export default function FintechPage() {
                             </Reveal>
                             <Reveal delay={0.05}>
                                 <p className="text-muted-foreground text-sm leading-[1.7] mb-10 max-w-md mx-auto">
-                                    PII redaction, audit trails, end-user billing, and multi-provider failover — one platform, one API. Used by fintechs serving millions of customers.
+                                    PII redaction, audit trails, monetization, and multi-provider failover — one platform, one API. Used by fintechs serving millions of customers.
                                 </p>
                             </Reveal>
                             <Reveal delay={0.1}>

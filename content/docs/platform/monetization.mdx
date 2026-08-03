@@ -1,14 +1,14 @@
 ---
-title: "End-User Billing"
+title: "Monetization"
 description: "Bill your end-users for AI usage with rate plans, quotas, and Stripe Connect payouts."
 section: "Platform"
 order: 3
 ---
 
-End-user billing lets you charge your customers for AI usage. Set per-user rate plans with token/request limits, apply markup, and collect payments through Stripe Connect — all from the dashboard.
+Monetization lets you charge your customers for AI usage. Set per-user rate plans with token/request limits, apply markup, and collect payments through Stripe Connect — all from the dashboard.
 
 > [!NOTE]
-> New to end-user billing? Start with the [Setup Guide](/docs/guides/end-user-billing-setup) — a step-by-step walkthrough for non-technical users. This page is the API reference for your engineering team.
+> New to Monetization? Start with the [Setup Guide](/docs/guides/monetization-setup) — a step-by-step walkthrough for non-technical users. This page is the API reference for your engineering team.
 
 ## How It Works
 
@@ -17,7 +17,7 @@ End-user billing lets you charge your customers for AI usage. Set per-user rate 
 3. If allowed, process the request.
 4. Report the usage back to Cencori.
 5. Cencori tracks everything — limits, costs, revenue.
-6. You view it all in the End-User Billing dashboard.
+6. You view it all in the Monetization dashboard.
 
 There are two ways to connect:
 
@@ -28,7 +28,7 @@ There are two ways to connect:
 
 ## Option 1: AI Gateway (Recommended)
 
-If you route AI requests through the Cencori gateway, end-user billing works automatically. Just pass the user ID in your request:
+If you route AI requests through the Cencori gateway, Monetization works automatically. Just pass the user ID in your request:
 
 ```typescript
 const response = await fetch("https://api.cencori.com/v1/chat/completions", {
@@ -227,7 +227,7 @@ async function handleUserMessage(userId: string, message: string) {
 
 ## Rate Plans
 
-Rate plans define per-user limits and pricing. Create them in the dashboard under **End-User Billing > Rate Plans**.
+Rate plans define per-user limits and pricing. Create them in the dashboard under **Monetization > Rate Plans**.
 
 Each plan can set:
 
@@ -433,7 +433,7 @@ Collect payments from your end-users using Stripe Connect. Cencori acts as the p
 
 Stripe Connect is **organization-scoped**, not project-scoped. You connect one Stripe account per organization, and every project in that organization reuses it.
 
-1. Open any project's **End-User Billing > Configuration** page.
+1. Open any project's **Monetization > Configuration** page.
 2. Click **Connect Stripe Account**.
 3. Complete the Stripe onboarding flow.
 4. Once connected, every project in that organization can generate invoices and collect payments.
@@ -464,7 +464,7 @@ Set the webhook URL in your Stripe dashboard to `https://your-domain.com/api/bil
 
 ## Dashboard
 
-The **End-User Billing** page has four tabs:
+The **Monetization** page has four tabs:
 
 - **Configuration**: Enable/disable billing, set default markup, connect Stripe.
 - **End Users**: View all users, their plans, usage, and status. Block/unblock users.
@@ -531,7 +531,7 @@ Possible `reason` values:
 
 ## SDK Support
 
-The TypeScript SDK (`cencori` on npm) currently covers the AI Gateway, which handles end-user billing automatically when you pass `user: "user_123"` in your requests. Dedicated `cencori.billing.checkQuota()` and `cencori.billing.recordUsage()` methods for the Usage Events API path are not yet available — use the REST endpoints directly for now.
+The TypeScript SDK (`cencori` on npm) currently covers the AI Gateway, which handles Monetization automatically when you pass `user: "user_123"` in your requests. Dedicated `cencori.billing.checkQuota()` and `cencori.billing.recordUsage()` methods for the Usage Events API path are not yet available — use the REST endpoints directly for now.
 
 ## Limits
 

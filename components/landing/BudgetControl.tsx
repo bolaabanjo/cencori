@@ -11,7 +11,7 @@ const items = [
         description: "Get warned before you hit the threshold, with alerts designed for teams managing production and staging separately.",
     },
     {
-        title: "End-user billing",
+        title: "Monetization",
         description: "Allocate AI costs downstream with cleaner billing controls for products that need customer-level usage accounting.",
     },
     {

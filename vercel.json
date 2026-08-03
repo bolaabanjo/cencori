@@ -121,6 +121,16 @@
             "source": "/old-blog/:slug",
             "destination": "/new-blog/:slug",
             "permanent": true
+        },
+        {
+            "source": "/docs/platform/end-user-billing",
+            "destination": "/docs/platform/monetization",
+            "permanent": true
+        },
+        {
+            "source": "/docs/guides/end-user-billing-setup",
+            "destination": "/docs/guides/monetization-setup",
+            "permanent": true
         }
     ]
 }

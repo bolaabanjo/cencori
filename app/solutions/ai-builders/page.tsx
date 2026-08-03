@@ -159,7 +159,7 @@ export default function AIBuildersPage() {
                                     <div className="mt-8 grid grid-cols-2 gap-2">
                                         {[
                                             { icon: ApiGatewayIcon, label: "Gateway proxy" },
-                                            { icon: AiUserIcon, label: "End-user billing" },
+                                            { icon: AiUserIcon, label: "Monetization" },
                                             { icon: AiSecurityIcon, label: "Security filters" },
                                             { icon: CodeCircleIcon, label: "Agent compute" },
                                         ].map((item) => (
@@ -292,7 +292,7 @@ export default function AIBuildersPage() {
                                     { hugeicon: AiSecurityIcon, title: "AI Security", desc: "Prompt injection detection, PII scanning, and content moderation on every request. Zero-config, active by default." },
                                     { hugeicon: CodeCircleIcon, title: "Agent Compute", desc: "Serverless code execution for AI agents. Run tools, fetch data, and execute code without managing infrastructure." },
                                     { hugeicon: ActivityIcon, title: "Observability", desc: "Full request/response logging, P50/P90/P99 latency, token usage, and cost tracking. See everything in real time." },
-                                    { hugeicon: BadgeDollarSignIcon, title: "End-User Billing", desc: "Meter token usage, set markup pricing, and collect payments via Stripe Connect. Monetize your AI product from day one." },
+                                    { hugeicon: BadgeDollarSignIcon, title: "Monetization", desc: "Meter token usage, set markup pricing, and collect payments via Stripe Connect. Monetize your AI product from day one." },
                                     { hugeicon: AiUserIcon, title: "Rate Limits & Budgets", desc: "Per-user rate limits and spending caps. Prevent abuse, control costs, and enforce plans without writing billing code." },
                                 ].map((item, i) => (
                                     <Reveal key={item.title} delay={i * 0.05}>

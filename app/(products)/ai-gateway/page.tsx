@@ -80,7 +80,7 @@ const pillars = [
   },
   {
     id: "billing",
-    title: "End-User Billing",
+    title: "Monetization",
     tagline: "Monetize AI usage",
     description: "Meter, limit, and charge your users for AI consumption. Stripe Connect native with markup pricing.",
     icon: CurrencyDollarIcon,
