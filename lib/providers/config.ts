@@ -527,7 +527,7 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://maximoai.co/platform',
         keyPrefix: '',
         models: [
-            { id: 'maximo-atlas-preview', name: 'Maximo Atlas Preview', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Opus-class coding & agent model, free preview until Jul 21, $0.20/$1.00 after', free: true },
+            { id: 'maximo-atlas-preview', name: 'Maximo Atlas Preview', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Opus-class coding & agent model, $0.20/$1.00 per 1M tokens' },
         ],
     },
     {

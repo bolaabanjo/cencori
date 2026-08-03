@@ -13,13 +13,22 @@ const activeRows = [...migration.matchAll(
     /\('([^']+)', '([^']+)',\s*[0-9.]+,\s*[0-9.]+,\s*[0-9.]+,\s*true,/g
 )].map(match => ({ provider: match[1], model: match[2] }));
 
+// TTS/STT rows bill per character or per minute, so their token columns are
+// zero and they carry that note in the migration. The Voice routes pick these
+// models per call, so the voice providers deliberately expose no `models` list
+// in the chat catalog (see SUPPORTED_PROVIDERS). Derive them from the migration
+// so shipping a new voice model does not require editing this test.
+const unitPricedModels = new Set(
+    [...migration.matchAll(
+        /\('([^']+)', '([^']+)',[^\n]*token columns are intentionally zero/g
+    )].map(match => `${match[1]}:${match[2]}`)
+);
+
+// Embeddings are served by the embeddings route rather than the chat catalog.
 const serviceOnlyModels = new Set([
     'openai:text-embedding-3-small',
     'openai:text-embedding-3-large',
     'openai:text-embedding-ada-002',
-    'openai:tts-1',
-    'openai:tts-1-hd',
-    'openai:whisper-1',
     'google:gemini-embedding-001',
 ]);
 
@@ -35,7 +44,9 @@ describe('reviewed managed pricing catalog', () => {
         ));
         const missing = activeRows
             .map(row => `${row.provider}:${row.model}`)
-            .filter(key => !catalog.has(key) && !serviceOnlyModels.has(key));
+            .filter(key => !catalog.has(key)
+                && !serviceOnlyModels.has(key)
+                && !unitPricedModels.has(key));
 
         expect(missing).toEqual([]);
     });

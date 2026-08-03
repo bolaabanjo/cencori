@@ -17,16 +17,13 @@ const EXPLICITLY_FREE_MODELS = new Set([
     'groq:groq/compound-mini',
     'cerebras:gpt-oss-120b',
     'cerebras:zai-glm-4.7',
-    // Contractual Cencori preview.
-    'maximo:maximo-atlas-preview',
+    // Maximo Atlas ran here as a free preview until 2026-07-22. It is now
+    // billed from the model_pricing row deployed in
+    // 20260803_120000_maximo_atlas_paid_pricing.sql.
 ]);
 
 function isExplicitlyFree(provider: string, model: string): boolean {
-    const key = `${provider}:${model}`;
-    if (key === 'maximo:maximo-atlas-preview') {
-        return Date.now() < Date.parse('2026-07-22T00:00:00Z');
-    }
-    return EXPLICITLY_FREE_MODELS.has(key);
+    return EXPLICITLY_FREE_MODELS.has(`${provider}:${model}`);
 }
 
 export function hasStaticPricing(provider: string, model: string): boolean {
