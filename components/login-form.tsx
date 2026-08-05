@@ -26,6 +26,21 @@ function friendlyError(err: unknown): string {
   return "Unexpected error";
 }
 
+/**
+ * Supabase rate-limits /auth/v1/token per *IP*, not per user, so everyone
+ * behind one office NAT shares a single bucket. Raw GoTrue copy ("Request rate
+ * limit reached") reads like the site is broken, when the fix is just to wait.
+ */
+function authErrorMessage(code: string | undefined, message: string): string {
+  if (code === "over_request_rate_limit" || /rate limit/i.test(message)) {
+    return "Too many sign-in attempts from your network. Please wait a minute and try again.";
+  }
+  if (code === "invalid_credentials") {
+    return "That email and password don't match. Check them and try again.";
+  }
+  return message;
+}
+
 type LoginFormProps = React.ComponentProps<"form">;
 
 export function LoginForm({ className, ...props }: LoginFormProps) {
@@ -75,8 +90,8 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     }
   };
 
-  const navigateAfterAuth = (target: string) => {
-    if (/^https?:\/\//i.test(target)) {
+  const navigateAfterAuth = (target: string, options?: { hard?: boolean }) => {
+    if (options?.hard || /^https?:\/\//i.test(target)) {
       window.location.assign(target);
       return;
     }
@@ -105,26 +120,28 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     }
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      // Sign in on the server so the session arrives as a Set-Cookie header.
+      // Cookies written by document.cookie are capped at 7 days by Safari's
+      // ITP; header-set cookies are not. See app/api/auth/login/route.ts.
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, redirect: redirectParam }),
+      });
+      const data = await res.json();
 
-      if (signInError) {
-        setError(signInError.message);
+      if (!res.ok) {
+        setError(authErrorMessage(data?.code, data?.error ?? "Unable to sign in."));
         setLoading(false);
         return;
       }
-      const { navigationTarget } = resolveAuthRedirectTargets(redirectParam, {
-        defaultPath: "/dashboard",
-      });
-      if (data?.session) {
-        navigateAfterAuth(navigationTarget);
-        return;
-      }
 
-      navigateAfterAuth(navigationTarget);
+      // Full navigation, not router.push: the browser client's in-memory auth
+      // state predates the cookies the server just set, and a hard load lets
+      // both the middleware and a fresh client read them.
+      navigateAfterAuth(data.redirectTo, { hard: true });
     } catch (err) {
       setError(friendlyError(err));
-      setLoading(false);
-    } finally {
       setLoading(false);
     }
   }

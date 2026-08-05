@@ -1,14 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Lock } from 'lucide-react';
 
+// Signs in through /api/auth/login for the same reason the main login form
+// does: Set-Cookie sessions aren't subject to Safari's 7-day cap on
+// script-written cookies.
+async function signIn(email: string, password: string): Promise<string | null> {
+    const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, redirect: '/internal' }),
+    });
+    const data = await res.json();
+    return res.ok ? null : (data.error || 'Failed to sign in');
+}
+
 export function InternalLoginForm() {
-    const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -45,33 +55,25 @@ export function InternalLoginForm() {
                 }
 
                 // Account created — sign in immediately
-                const { error: signInError } = await supabase.auth.signInWithPassword({
-                    email: trimmedEmail,
-                    password,
-                });
-
-                if (signInError) {
-                    setError(signInError.message);
+                const signUpSignInError = await signIn(trimmedEmail, password);
+                if (signUpSignInError) {
+                    setError(signUpSignInError);
                     setLoading(false);
                     return;
                 }
 
-                router.refresh();
+                window.location.assign('/internal');
                 return;
             }
 
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email: trimmedEmail,
-                password,
-            });
-
+            const signInError = await signIn(trimmedEmail, password);
             if (signInError) {
-                setError(signInError.message);
+                setError(signInError);
                 setLoading(false);
                 return;
             }
 
-            router.refresh();
+            window.location.assign('/internal');
         } catch {
             setError(isSignUp ? 'Failed to create account' : 'Failed to sign in');
         } finally {

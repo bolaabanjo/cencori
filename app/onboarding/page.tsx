@@ -2,8 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect, Suspense, useMemo, useRef } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { useState, useEffect, Suspense, useRef } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { slugify } from "@/lib/utils";
 import { isReservedSlug } from "@/lib/reserved-slugs";
 import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
@@ -67,15 +67,6 @@ function OnboardingContent() {
   const fullNameInputRef = useRef<HTMLInputElement>(null);
   const orgNameInputRef = useRef<HTMLInputElement>(null);
 
-  const supabase = useMemo(
-    () =>
-      createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
-      ),
-    [],
-  );
-
   useEffect(() => {
     if (preview) {
       setCheckingAuth(false);
@@ -97,7 +88,7 @@ function OnboardingContent() {
       }
       setCheckingAuth(false);
     });
-  }, [supabase, router, preview]);
+  }, [router, preview]);
 
   const focusFullName = () => {
     requestAnimationFrame(() => fullNameInputRef.current?.focus());

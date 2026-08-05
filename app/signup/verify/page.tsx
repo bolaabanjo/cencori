@@ -1,16 +1,14 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
-import { createBrowserClient } from "@supabase/ssr";
 import { Logo } from "@/components/logo";
 
 function VerifyContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const email = searchParams.get("email") ?? "";
   const userId = searchParams.get("userId") ?? "";
   const preview = searchParams.get("preview") === "true";
@@ -103,7 +101,7 @@ function VerifyContent() {
       const res = await fetch("/api/verify/confirm-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, userId, origin: window.location.origin }),
+        body: JSON.stringify({ email, code, userId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -111,21 +109,10 @@ function VerifyContent() {
         return;
       }
       setVerified(true);
-      if (data.token && data.email) {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
-        );
-        const { error: signInError } = await supabase.auth.verifyOtp({
-          email: data.email,
-          token: data.token,
-          type: "magiclink",
-        });
-        if (signInError) {
-          console.error("Auto-login failed:", signInError);
-        }
-      }
-      router.push("/onboarding");
+      // The route signs the user in and returns where to go. Full navigation,
+      // not router.push: the session arrived as Set-Cookie, so a fresh load is
+      // what lets the proxy and a new client both see it.
+      window.location.assign(data.redirectTo ?? "/onboarding");
     } catch {
       setError("Something went wrong");
     } finally {

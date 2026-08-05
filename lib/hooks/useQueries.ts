@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
+import { useOrganizationProject, type Organization, type Project } from "@/lib/contexts/OrganizationProjectContext";
 
 // Query keys for cache management
 export const queryKeys = {
@@ -61,7 +61,9 @@ export function useOrganization(orgSlug: string) {
 
     return useQuery({
         queryKey: queryKeys.orgDetails(orgSlug),
-        queryFn: async () => {
+        // Annotated so the fetched row and `initialData` (which comes from the
+        // context cache) agree on one type.
+        queryFn: async (): Promise<Organization> => {
             const { data, error } = await supabase
                 .from("organizations")
                 .select("id, name, slug, subscription_tier")
@@ -90,7 +92,7 @@ export function useProject(projectSlug: string, orgId?: string) {
 
     return useQuery({
         queryKey: queryKeys.projectDetails(projectSlug),
-        queryFn: async () => {
+        queryFn: async (): Promise<Project> => {
             if (!orgId) throw new Error("Organization ID required");
 
             const { data, error } = await supabase

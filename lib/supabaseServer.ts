@@ -1,4 +1,4 @@
-import { createServerClient as createSSClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient as createSSClient } from "@supabase/ssr";
 import { cookies, headers } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,34 +14,30 @@ export const createServerClient = async () => {
     supabaseKey!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        // getAll/setAll, not get/set/remove. The single-cookie API can only be
+        // handed name "hints", so @supabase/ssr guesses at chunk names and gives
+        // up after 5 — it cannot see stale chunks it didn't guess, and leaves
+        // them behind. getAll sees every cookie, so chunked sessions round-trip
+        // correctly and old chunks actually get cleared.
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set(name, value, {
-              ...options,
-              domain: isProd ? ".cencori.com" : options.domain,
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, {
+                ...options,
+                domain: isProd ? ".cencori.com" : undefined,
+                path: "/",
+                sameSite: "lax",
+                secure: isProd,
+              });
             });
-          } catch (_error) {
-            // The `set` method was called from a Server Component.
+          } catch {
+            // Called from a Server Component, which can't set cookies. The
+            // middleware refreshes the session, so this is safe to swallow.
           }
         },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set(name, "", { 
-              ...options, 
-              domain: isProd ? ".cencori.com" : options.domain,
-              maxAge: -1 
-            });
-          } catch (_error) {
-            // The `remove` method was called from a Server Component.
-          }
-        },
-      },
-      cookieOptions: {
-        domain: isProd ? ".cencori.com" : undefined,
-        path: '/',
       },
     },
   );

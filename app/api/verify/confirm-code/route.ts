@@ -1,9 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 
-export async function POST(req: Request) {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
+
+/**
+ * Confirms the emailed 6-digit code and signs the new user in.
+ *
+ * The OTP used to be handed back to the browser as a raw `token` for the verify
+ * page to redeem with `supabase.auth.verifyOtp(...)`. Two problems with that:
+ * the resulting session cookies were written by `document.cookie`, which Safari
+ * caps at 7 days no matter what maxAge we ask for — so a brand-new signup on
+ * iPhone was already on a one-week timer — and a single-use auth credential was
+ * travelling back down in a JSON body.
+ *
+ * The exchange now happens here and the session leaves as `Set-Cookie`, matching
+ * app/api/auth/login/route.ts and app/auth/callback/route.ts. The token never
+ * leaves the server.
+ */
+export async function POST(req: NextRequest) {
   try {
-    const { email, code, userId, origin } = await req.json();
+    const { email, code, userId } = await req.json();
+    const origin = req.nextUrl.origin;
 
     if (!email || !code) {
       return NextResponse.json({ error: "Email and code are required" }, { status: 400 });
@@ -63,7 +82,7 @@ export async function POST(req: Request) {
       .update({ used_at: new Date().toISOString(), attempts: record.attempts + 1 })
       .eq("id", record.id);
 
-    const baseUrl = origin || "http://localhost:3000";
+    const baseUrl = origin;
 
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
@@ -71,21 +90,58 @@ export async function POST(req: Request) {
       options: { redirectTo: `${baseUrl}/onboarding` },
     });
 
+    // The email is verified either way; only the auto sign-in can fail from
+    // here, so every fallback sends them to /login rather than erroring out.
+    const signInFallback = NextResponse.json({ success: true, redirectTo: "/login" });
+
     if (linkError || !linkData?.properties?.action_link) {
       console.error("Error generating magic link:", linkError);
-      return NextResponse.json({ success: true, loginLink: `${baseUrl}/login` });
+      return signInFallback;
     }
 
-    const actionLink = linkData.properties.action_link;
-    const linkUrl = new URL(actionLink);
+    const linkUrl = new URL(linkData.properties.action_link);
     const token = linkUrl.searchParams.get("token");
 
     if (!token) {
       console.error("No token in magic link");
-      return NextResponse.json({ success: true, loginLink: `${baseUrl}/login` });
+      return signInFallback;
     }
 
-    return NextResponse.json({ success: true, token, email: email.toLowerCase() });
+    // Build the success response first so session cookies attach to it.
+    const isProduction = req.nextUrl.hostname.endsWith("cencori.com");
+    const response = NextResponse.json({ success: true, redirectTo: "/onboarding" });
+
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, {
+              ...options,
+              domain: isProduction ? ".cencori.com" : undefined,
+              sameSite: "lax",
+              secure: isProduction,
+              path: "/",
+            }),
+          );
+        },
+      },
+    });
+
+    const { error: signInError } = await supabase.auth.verifyOtp({
+      email: email.toLowerCase(),
+      token,
+      type: "magiclink",
+    });
+
+    if (signInError) {
+      console.error("Auto-login after verification failed:", signInError);
+      return signInFallback;
+    }
+
+    return response;
   } catch (err) {
     console.error("Confirm verification code error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
