@@ -219,7 +219,10 @@ export async function GET(req: NextRequest) {
     const pricingClient = createAdminClient();
     const { data: pricingRows, error: pricingError } = await pricingClient
         .from('model_pricing')
-        .select('provider, model_name, pricing_expires_at')
+        // select('*') rather than naming next_*: PostgREST errors on an unknown
+        // column, which would 503 the whole catalog if this ships before the
+        // migration that adds them.
+        .select('*')
         .eq('is_active', true);
     if (pricingError) {
         return respond(
@@ -234,9 +237,15 @@ export async function GET(req: NextRequest) {
             pricingError.message,
         );
     }
+    // A row whose promotional rate has lapsed still counts as priced when it
+    // carries the follow-on rate it switches to — that is a scheduled
+    // changeover, not a gap. Without one it drops out, same as before.
     const pricedModels = new Set(
         (pricingRows ?? [])
-            .filter(row => !row.pricing_expires_at || Date.parse(row.pricing_expires_at) > Date.now())
+            .filter(row => !row.pricing_expires_at
+                || Date.parse(row.pricing_expires_at) > Date.now()
+                || (row.next_input_price_per_1k_tokens != null
+                    && row.next_output_price_per_1k_tokens != null))
             .map(row => `${row.provider}:${row.model_name}`)
     );
 

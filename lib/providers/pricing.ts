@@ -72,6 +72,38 @@ export async function getUsageUnitPricingFromDB(
     return { unitPriceUsd, cencoriMarkupPercentage };
 }
 
+type ScheduledPricing = { input: number; output: number; cachedInput: number | undefined };
+
+/**
+ * Resolve the follow-on rate a row switches to at `pricing_expires_at`.
+ *
+ * Returns undefined when the changeover hasn't happened yet, or when no
+ * successor rate is stored — in which case an elapsed expiry still fails
+ * closed. A partially filled successor (input without output, or either one
+ * negative/non-numeric) also returns undefined so we never bill half a rate.
+ */
+function resolveScheduledPricing(
+    row: Record<string, unknown>,
+    pricingExpiresAt: number | null,
+): ScheduledPricing | undefined {
+    if (pricingExpiresAt === null
+        || !Number.isFinite(pricingExpiresAt)
+        || pricingExpiresAt > Date.now()) {
+        return undefined;
+    }
+
+    const rate = (value: unknown): number | undefined => {
+        if (value === null || value === undefined) return undefined;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+    };
+    const input = rate(row.next_input_price_per_1k_tokens);
+    const output = rate(row.next_output_price_per_1k_tokens);
+    if (input === undefined || output === undefined) return undefined;
+
+    return { input, output, cachedInput: rate(row.next_cached_input_price_per_1k_tokens) };
+}
+
 /**
  * Get pricing for a model from the database
  */
@@ -109,12 +141,22 @@ export async function getPricingFromDB(
         throw new PricingUnavailableError(provider, model, error?.message);
     }
 
-    const inputPer1KTokens = Number(data.input_price_per_1k_tokens);
-    const outputPer1KTokens = Number(data.output_price_per_1k_tokens);
     const cencoriMarkupPercentage = Number(data.cencori_markup_percentage);
     const pricingExpiresAt = typeof data.pricing_expires_at === 'string'
         ? Date.parse(data.pricing_expires_at)
         : null;
+
+    // A promotional rate ends on a known date, and the rate that replaces it is
+    // usually known at the same time. When the follow-on rate is stored, the
+    // expiry is a scheduled changeover rather than a deadline: bill the
+    // successor from that instant. Without one we still fail closed, so an
+    // unreviewed promo can never silently keep charging the old price.
+    const scheduled = resolveScheduledPricing(data, pricingExpiresAt);
+    const inputPer1KTokens = scheduled?.input ?? Number(data.input_price_per_1k_tokens);
+    const outputPer1KTokens = scheduled?.output ?? Number(data.output_price_per_1k_tokens);
+    const expiryIsUnresolved = pricingExpiresAt !== null
+        && (!Number.isFinite(pricingExpiresAt) || (pricingExpiresAt <= Date.now() && !scheduled));
+
     if (
         !Number.isFinite(inputPer1KTokens)
         || !Number.isFinite(outputPer1KTokens)
@@ -122,7 +164,7 @@ export async function getPricingFromDB(
         || inputPer1KTokens < 0
         || outputPer1KTokens < 0
         || cencoriMarkupPercentage < 0
-        || (pricingExpiresAt !== null && (!Number.isFinite(pricingExpiresAt) || pricingExpiresAt <= Date.now()))
+        || expiryIsUnresolved
     ) {
         throw new PricingUnavailableError(provider, model, 'stored pricing is invalid');
     }
@@ -154,16 +196,23 @@ export async function getPricingFromDB(
         inputPer1KTokens,
         outputPer1KTokens,
         cencoriMarkupPercentage,
-        cachedInputPer1KTokens: optionalRate(data.cached_input_price_per_1k_tokens),
+        cachedInputPer1KTokens: scheduled
+            ? scheduled.cachedInput
+            : optionalRate(data.cached_input_price_per_1k_tokens),
         longContextThresholdTokens: threshold,
         longContextInputPer1KTokens,
         longContextOutputPer1KTokens,
         longContextCachedInputPer1KTokens: optionalRate(data.long_context_cached_input_price_per_1k_tokens),
-        pricingExpiresAt: typeof data.pricing_expires_at === 'string'
+        // Once the changeover has happened the successor rate has no end date,
+        // so don't keep reporting a deadline that has already passed.
+        pricingExpiresAt: !scheduled && typeof data.pricing_expires_at === 'string'
             ? data.pricing_expires_at
             : undefined,
     };
-    const cacheExpiresAt = pricingExpiresAt === null
+    // Expire the cache exactly at the changeover so the successor rate takes
+    // effect immediately; afterwards fall back to the normal TTL rather than a
+    // timestamp in the past, which would defeat caching entirely.
+    const cacheExpiresAt = pricingExpiresAt === null || scheduled
         ? Date.now() + PRICING_CACHE_TTL_MS
         : Math.min(pricingExpiresAt, Date.now() + PRICING_CACHE_TTL_MS);
     pricingCache.set(cacheKey, { pricing, expiresAt: cacheExpiresAt });
@@ -217,16 +266,21 @@ export async function getProviderPricing(provider: string): Promise<Record<strin
         const expiresAt = typeof row.pricing_expires_at === 'string'
             ? Date.parse(row.pricing_expires_at)
             : null;
-        if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
+        const scheduled = resolveScheduledPricing(row, expiresAt);
+        if (!scheduled
+            && expiresAt !== null
+            && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) {
             continue;
         }
         pricing[row.model_name] = {
-            inputPer1KTokens: parseFloat(row.input_price_per_1k_tokens),
-            outputPer1KTokens: parseFloat(row.output_price_per_1k_tokens),
+            inputPer1KTokens: scheduled?.input ?? parseFloat(row.input_price_per_1k_tokens),
+            outputPer1KTokens: scheduled?.output ?? parseFloat(row.output_price_per_1k_tokens),
             cencoriMarkupPercentage: parseFloat(row.cencori_markup_percentage),
-            cachedInputPer1KTokens: row.cached_input_price_per_1k_tokens == null
-                ? undefined
-                : parseFloat(row.cached_input_price_per_1k_tokens),
+            cachedInputPer1KTokens: scheduled
+                ? scheduled.cachedInput
+                : row.cached_input_price_per_1k_tokens == null
+                    ? undefined
+                    : parseFloat(row.cached_input_price_per_1k_tokens),
             longContextThresholdTokens: row.long_context_threshold_tokens == null
                 ? undefined
                 : Number(row.long_context_threshold_tokens),
@@ -239,7 +293,7 @@ export async function getProviderPricing(provider: string): Promise<Record<strin
             longContextCachedInputPer1KTokens: row.long_context_cached_input_price_per_1k_tokens == null
                 ? undefined
                 : parseFloat(row.long_context_cached_input_price_per_1k_tokens),
-            pricingExpiresAt: row.pricing_expires_at || undefined,
+            pricingExpiresAt: scheduled ? undefined : (row.pricing_expires_at || undefined),
         };
     }
 
