@@ -313,7 +313,7 @@ function OnboardingContent() {
               onChange={(e) => setFullName(e.target.value)}
               disabled={loading || Boolean(provisionedOrganization)}
               required
-              className="bg-zinc-900 text-white placeholder:text-zinc-500 h-10"
+              className="h-10 border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 transition-colors hover:border-white/[0.16] focus-visible:border-white/25 focus-visible:ring-white/[0.06]"
             />
           </div>
 
@@ -328,7 +328,7 @@ function OnboardingContent() {
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
               disabled={loading || Boolean(provisionedOrganization)}
-              className="bg-zinc-900 text-white placeholder:text-zinc-500 h-10"
+              className="h-10 border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 transition-colors hover:border-white/[0.16] focus-visible:border-white/25 focus-visible:ring-white/[0.06]"
             />
           </div>
 
@@ -344,10 +344,10 @@ function OnboardingContent() {
                   onClick={() => handlePlanSelect(p.id)}
                   disabled={loading}
                   aria-pressed={plan === p.id}
-                  className={`relative rounded-lg p-4 text-left transition-all ${
+                  className={`relative rounded-lg border p-4 text-left transition-colors ${
                     plan === p.id
-                      ? "bg-zinc-900 ring-1 ring-blue-500"
-                      : "bg-zinc-900/50 hover:bg-zinc-900/80"
+                      ? "border-blue-500/45 bg-zinc-900"
+                      : "border-white/[0.06] bg-zinc-900/50 hover:border-white/10 hover:bg-zinc-900/80"
                   } disabled:cursor-wait disabled:opacity-60`}
                 >
                   {p.popular && (
