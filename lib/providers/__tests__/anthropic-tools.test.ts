@@ -403,3 +403,57 @@ describe('toAnthropicMessages — system messages', () => {
         expect(system).toBeUndefined();
     });
 });
+
+describe('AnthropicProvider input_schema normalisation', () => {
+    beforeEach(() => {
+        createMock.mockReset();
+        createMock.mockResolvedValue({
+            model: 'claude-opus-5',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+            content: [{ type: 'text', text: 'ok' }],
+        });
+    });
+
+    async function schemaFor(parameters: unknown) {
+        const provider = new AnthropicProvider('test-key');
+        await provider.chat({
+            model: 'claude-opus-5',
+            messages: [{ role: 'user', content: 'hi' }],
+            tools: [{
+                type: 'function',
+                function: { name: 'noop', description: 'n', parameters: parameters as Record<string, unknown> },
+            }],
+        });
+        return createMock.mock.calls[0][0].tools[0].input_schema;
+    }
+
+    it('adds type:object to a bare {} schema, which Anthropic rejects', async () => {
+        // OpenAI accepts `parameters: {}` for a no-argument tool.
+        expect(await schemaFor({})).toEqual({ type: 'object', properties: {} });
+    });
+
+    it('adds type:object to a schema that only declares properties', async () => {
+        expect(await schemaFor({ properties: { a: { type: 'string' } } })).toEqual({
+            type: 'object',
+            properties: { a: { type: 'string' } },
+        });
+    });
+
+    it('preserves required alongside an injected type', async () => {
+        expect(await schemaFor({ properties: { a: { type: 'string' } }, required: ['a'] })).toEqual({
+            type: 'object',
+            properties: { a: { type: 'string' } },
+            required: ['a'],
+        });
+    });
+
+    it('passes a well-formed schema through untouched', async () => {
+        const schema = { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] };
+        expect(await schemaFor(schema)).toEqual(schema);
+    });
+
+    it('falls back for a missing schema', async () => {
+        expect(await schemaFor(undefined)).toEqual({ type: 'object', properties: {} });
+    });
+});

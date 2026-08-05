@@ -40,6 +40,22 @@ function toFinishReason(
     }
 }
 
+/**
+ * Anthropic requires an explicit `type: 'object'` on a tool's input schema.
+ * OpenAI does not — it accepts `parameters: {}`, or a schema with only
+ * `properties`, which is how no-argument tools are usually written. Normalise
+ * rather than forward a schema the API will reject.
+ */
+function toInputSchema(parameters: Record<string, any> | undefined): Anthropic.Tool.InputSchema {
+    if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
+        return { type: 'object', properties: {} };
+    }
+    if (parameters.type !== 'object') {
+        return { ...parameters, type: 'object', properties: parameters.properties ?? {} };
+    }
+    return parameters as Anthropic.Tool.InputSchema;
+}
+
 export class AnthropicProvider extends AIProvider {
     readonly providerName = 'anthropic';
     readonly supportsTools = true;
@@ -74,10 +90,7 @@ export class AnthropicProvider extends AIProvider {
         return request.tools.map(tool => ({
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: (tool.function.parameters ?? {
-                type: 'object',
-                properties: {},
-            }) as Anthropic.Tool.InputSchema,
+            input_schema: toInputSchema(tool.function.parameters),
         }));
     }
 
