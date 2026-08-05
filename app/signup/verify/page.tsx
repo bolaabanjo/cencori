@@ -168,7 +168,7 @@ function VerifyContent() {
 
   if (verified || preview) {
     return (
-      <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6" onClick={fireConfetti}>
+      <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6" onClick={fireConfetti}>
         <div className="w-full max-w-md flex flex-col items-center text-center">
           <div className="flex flex-col items-center gap-6">
             <div className="rounded-full bg-primary/10 p-5">
@@ -204,7 +204,7 @@ function VerifyContent() {
         }
         .shake { animation: shake 0.3s ease-in-out; }
       `}</style>
-      <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6">
+      <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6">
         <div className="w-full max-w-md flex flex-col items-center text-center gap-8">
         <Logo variant="mark" className="h-6" />
         <div className="space-y-2">
@@ -278,7 +278,7 @@ function VerifyContent() {
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<div className="h-dvh flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center">Loading...</div>}>
       <VerifyContent />
     </Suspense>
   );

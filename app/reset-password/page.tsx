@@ -63,7 +63,7 @@ export default function ResetPasswordPage() {
 
   if (session === null) {
     return (
-      <div className="h-dvh flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <p className="text-sm text-muted-foreground">Checking…</p>
       </div>
     );
@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
 
   if (session === false) {
     return (
-      <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6">
+      <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6">
         <div className="w-full max-w-sm flex flex-col items-center text-center gap-4">
           <Logo variant="mark" className="h-6" />
           <h1 className="text-lg font-medium">Invalid or expired link</h1>
@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6">
+    <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6">
       <div className="w-full max-w-sm flex flex-col items-center text-center gap-8">
         <Logo variant="mark" className="h-6" />
 

@@ -4,7 +4,7 @@ import Link from "next/link"
 
 function LoginPageContent() {
   return (
-    <div className="h-dvh overflow-hidden flex flex-col p-4 md:p-6">
+    <div className="min-h-dvh flex flex-col p-4 md:p-6">
       <div className="flex-1 flex items-center justify-center">
         <div className="w-full max-w-sm">
           <LoginForm />
@@ -28,7 +28,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="h-dvh flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-dvh flex items-center justify-center">Loading...</div>}>
       <LoginPageContent />
     </Suspense>
   )
