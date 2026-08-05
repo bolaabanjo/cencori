@@ -26,6 +26,10 @@ const OPENAI_COMPATIBLE_ENV_VARS: Record<string, string[]> = {
     huggingface: ['HUGGINGFACE_API_KEY'],
     zai: ['ZAI_API_KEY'],
     cerebras: ['CEREBRAS_API_KEY'],
+    qwen: ['QWEN_API_KEY'],
+    // Meta has no API of its own — OPENAI_COMPATIBLE_ENDPOINTS points its
+    // models at Together, so it authenticates with the Together key.
+    meta: ['TOGETHER_API_KEY'],
     // Support the historical deployment variable as well as the canonical one.
     maximo: ['MAXIMO_API_KEY', 'MAXIMOAI_API_KEY'],
     // Helix customer key (provisioned via the Launchverse partner secret).
