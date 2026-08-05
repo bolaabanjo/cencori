@@ -29,7 +29,7 @@ export default function PrivacyPolicyPage() {
           <li><strong className="text-white">Communications:</strong> Records of your interactions with our support team, feedback, or other communications.</li>
         </ul>
 
-        <h3 className="text-xl font-semibold mt-4 mb-2">2.2. Information We Collect Automatically</h3>
+        <h3 id="cookies" className="text-xl font-semibold mt-4 mb-2 scroll-mt-24">2.2. Information We Collect Automatically</h3>
         <ul className="list-disc list-inside text-zinc-300 leading-relaxed space-y-2">
           <li><strong className="text-white">Usage Data:</strong> Information about how you access and use the platform, such as IP addresses, device information, browser type, pages visited, features used, and timestamps.</li>
           <li><strong className="text-white">Cookies and Tracking Technologies:</strong> We use cookies and similar technologies to track activity on our platform and hold certain information. This helps us improve your experience and analyze platform usage.</li>
