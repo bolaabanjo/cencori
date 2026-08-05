@@ -89,8 +89,11 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         website: 'https://anthropic.com',
         docsUrl: 'https://docs.anthropic.com',
         keyPrefix: 'sk-ant-',
+        // Kept in sync with Anthropic's GET /v1/models — a model we list but
+        // Anthropic has retired fails upstream no matter what we price it at.
         models: [
             // Claude 5 Series (June-July 2026)
+            { id: 'claude-fable-5', name: 'Claude Fable 5', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Most capable model, for the most demanding reasoning & long-horizon agentic work' },
             { id: 'claude-opus-5', name: 'Claude Opus 5', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'New flagship for complex agentic coding & enterprise work, succeeds Opus 4.8' },
             { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Anthropic\'s most agentic Sonnet, close to Opus-tier capabilities' },
             // Claude 4 Series (2025/2026)
@@ -98,15 +101,8 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Latest flagship, improved reasoning & agentic coding' },
             { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Latest flagship, enhanced reasoning & coding' },
             { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Latest flagship, agentic coding record-breaker' },
-            { id: 'claude-opus-4', name: 'Claude Opus 4', type: ['chat'], contextWindow: 200000, description: 'Most capable Claude model' },
-            { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', type: ['chat'], contextWindow: 200000, description: 'Balanced speed & capability' },
-            { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', type: ['chat'], contextWindow: 200000, description: 'Enhanced coding & agents' },
-            { id: 'claude-opus-4.5', name: 'Claude Opus 4.5', type: ['chat'], contextWindow: 200000, description: 'Latest, most intelligent' },
-            { id: 'claude-haiku-4.5', name: 'Claude Haiku 4.5', type: ['chat'], contextWindow: 200000, description: 'Fastest Claude model' },
-            // Claude 3.5/3.7 Series
-            { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', type: ['reasoning', 'chat'], contextWindow: 200000, description: 'Hybrid reasoning model' },
-            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', type: ['chat'], contextWindow: 200000, description: 'Balance of speed and capability' },
-            { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', type: ['chat'], contextWindow: 200000, description: 'Fast and efficient' },
+            { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', type: ['chat'], contextWindow: 200000, description: 'Enhanced coding & agents' },
+            { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', type: ['chat'], contextWindow: 200000, description: 'Fastest Claude model' },
         ],
     },
     {

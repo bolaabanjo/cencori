@@ -91,6 +91,7 @@ const VISION_UPGRADES: Record<string, string> = {
     'claude-3-haiku-20240307': 'claude-3-5-haiku-latest',
     'claude-3-5-haiku-latest': 'claude-3-5-haiku-latest',
     'claude-haiku-4.5': 'claude-sonnet-4-6',
+    'claude-haiku-4-5': 'claude-sonnet-4-6',
     'gemini-2.0-flash-lite': 'gemini-2.5-flash-lite',
     'gemini-2.0-flash': 'gemini-2.5-flash',
 };

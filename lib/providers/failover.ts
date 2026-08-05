@@ -34,14 +34,14 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'gpt-5.6-luna': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-3-flash-preview' },
     'gpt-5.5': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
     'gpt-5.4': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
-    'gpt-5.4-pro': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
-    'gpt-5.3-chat-latest': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
-    'gpt-5': { 'anthropic': 'claude-opus-4', 'google': 'gemini-3-pro' },
+    'gpt-5.4-pro': { 'anthropic': 'claude-opus-4-6', 'google': 'gemini-3-pro' },
+    'gpt-5.3-chat-latest': { 'anthropic': 'claude-opus-4-6', 'google': 'gemini-3-pro' },
+    'gpt-5': { 'anthropic': 'claude-opus-4-6', 'google': 'gemini-3-pro' },
     'gpt-4o': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash' },
     'gpt-4o-mini': { 'anthropic': 'claude-sonnet-4-6', 'google': 'gemini-2.5-flash-lite' },
     'o3': { 'anthropic': 'claude-opus-5', 'google': 'gemini-3.1-pro-preview' },
-    'o3-mini': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'o1': { 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-pro' },
+    'o3-mini': { 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'o1': { 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-pro' },
 
     // Anthropic models → fallbacks
     'claude-opus-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
@@ -50,44 +50,42 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'claude-opus-4-6': { 'openai': 'gpt-5.4', 'google': 'gemini-3.1-pro-preview' },
     'claude-sonnet-4-6': { 'openai': 'gpt-5.4-mini', 'google': 'gemini-3.5-flash' },
     'claude-sonnet-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
-    'claude-opus-4': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
-    'claude-opus-4.5': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
-    'claude-sonnet-4': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },
-    'claude-sonnet-4.5': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },
-    'claude-haiku-4.5': { 'openai': 'gpt-4o-mini', 'google': 'gemini-2.5-flash-lite' },
-    'claude-3-5-sonnet-20241022': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },
+    'claude-fable-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-opus-4-5': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
+    'claude-sonnet-4-5': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },
+    'claude-haiku-4-5': { 'openai': 'gpt-4o-mini', 'google': 'gemini-2.5-flash-lite' },
 
     // Google models → fallbacks
-    'gemini-3-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4' },
+    'gemini-3-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4-6' },
     'gemini-3.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-3.1-pro-preview': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-5' },
     'gemini-3-flash-preview': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-2.5-pro': { 'openai': 'gpt-5.4', 'anthropic': 'claude-sonnet-4-6' },
     'gemini-2.5-flash': { 'openai': 'gpt-5.4-mini', 'anthropic': 'claude-sonnet-4-6' },
-    'gemini-2.0-flash': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4.5' },
+    'gemini-2.0-flash': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4-5' },
 
     // xAI models → fallbacks
-    'grok-voice-think-fast': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4.5' },
-    'grok-4': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
-    'grok-4.1': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
-    'grok-3': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4' },
+    'grok-voice-think-fast': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
+    'grok-4': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
+    'grok-4.1': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
+    'grok-3': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
 
     // Mistral models → fallbacks
-    'mistral-large-latest': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'codestral-latest': { 'openai': 'gpt-4.1', 'anthropic': 'claude-sonnet-4' },
+    'mistral-large-latest': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'codestral-latest': { 'openai': 'gpt-4.1', 'anthropic': 'claude-sonnet-4-5' },
 
     // Groq models → fallbacks
-    'llama-3.3-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'llama-3.3-70b-specdec': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'llama-3.1-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'mixtral-8x7b-32768': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4.5', 'google': 'gemini-2.5-flash-lite' },
-    'llama3-70b-8192': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
+    'llama-3.3-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'llama-3.3-70b-specdec': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'llama-3.1-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'mixtral-8x7b-32768': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4-5', 'google': 'gemini-2.5-flash-lite' },
+    'llama3-70b-8192': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
 
     // DeepSeek models → fallbacks
-    'deepseek-chat': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4', 'google': 'gemini-2.5-flash' },
-    'deepseek-reasoner': { 'openai': 'o1', 'anthropic': 'claude-opus-4', 'google': 'gemini-3-deep-think' },
-    'deepseek-v4-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4.5', 'google': 'gemini-3.1-pro-preview' },
-    'deepseek-v4-flash': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4.5', 'google': 'gemini-2.5-flash' },
+    'deepseek-chat': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'deepseek-reasoner': { 'openai': 'o1', 'anthropic': 'claude-opus-4-6', 'google': 'gemini-3-deep-think' },
+    'deepseek-v4-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4-5', 'google': 'gemini-3.1-pro-preview' },
+    'deepseek-v4-flash': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
 };
 
 // In-memory cache for DB mappings

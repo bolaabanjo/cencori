@@ -11,6 +11,16 @@ const MODEL_ALIASES: Record<string, string> = {
     'gpt-5.4-thinking': 'gpt-5.4',
     'gpt-5.3-instant': 'gpt-5.3-chat-latest',
     'gpt-5.3': 'gpt-5.3-chat-latest',
+    // Anthropic's own model IDs are hyphenated (`claude-haiku-4-5`). Our
+    // catalog advertised dotted names the API has never accepted, so map them
+    // rather than break every project already sending them.
+    'claude-haiku-4.5': 'claude-haiku-4-5',
+    'claude-sonnet-4.5': 'claude-sonnet-4-5',
+    'claude-opus-4.5': 'claude-opus-4-5',
+    'claude-sonnet-4.6': 'claude-sonnet-4-6',
+    'claude-opus-4.6': 'claude-opus-4-6',
+    'claude-opus-4.7': 'claude-opus-4-7',
+    'claude-opus-4.8': 'claude-opus-4-8',
 };
 
 // Explicit model-to-provider mapping for models whose IDs would route to the wrong provider via prefix matching
