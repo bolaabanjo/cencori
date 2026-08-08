@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "limit": 10,
+  "cases": [
+    { "id": "mdn-fetch", "query": "JavaScript Fetch API abort request", "expectedDomains": ["developer.mozilla.org"] },
+    { "id": "node-streams", "query": "Node.js readable stream backpressure", "expectedDomains": ["nodejs.org"] },
+    { "id": "ts-narrowing", "query": "TypeScript discriminated union narrowing", "expectedDomains": ["typescriptlang.org"] },
+    { "id": "react-effects", "query": "React synchronize external system useEffect", "expectedDomains": ["react.dev"] },
+    { "id": "next-cache", "query": "Next.js revalidate data cache", "expectedDomains": ["nextjs.org"] },
+    { "id": "postgres-index", "query": "PostgreSQL multicolumn index documentation", "expectedDomains": ["postgresql.org"] },
+    { "id": "python-asyncio", "query": "Python asyncio task group", "expectedDomains": ["docs.python.org"] },
+    { "id": "rust-ownership", "query": "Rust ownership borrowing references", "expectedDomains": ["doc.rust-lang.org"] },
+    { "id": "go-context", "query": "Go context cancellation deadline", "expectedDomains": ["go.dev"] },
+    { "id": "github-actions", "query": "GitHub Actions reusable workflows", "expectedDomains": ["docs.github.com"] },
+    { "id": "docker-build", "query": "Docker multi-stage builds", "expectedDomains": ["docs.docker.com"] },
+    { "id": "k8s-probe", "query": "Kubernetes readiness liveness startup probes", "expectedDomains": ["kubernetes.io"] }
+  ]
+}

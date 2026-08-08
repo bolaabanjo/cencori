@@ -10,17 +10,27 @@ const profiles = {
     owned: {
         label: 'com.cencori.web-crawler',
         logName: 'web-crawler',
-        environment: {},
+        environment: { CENCORI_WEB_SEMANTIC_ENABLED: 'true' },
     },
     production: {
         label: 'com.cencori.web-crawler-production',
         logName: 'web-crawler-production',
-        environment: { CENCORI_WEB_STORE: 'supabase' },
+        environment: { CENCORI_WEB_STORE: 'supabase', CENCORI_WEB_SEMANTIC_ENABLED: 'true' },
     },
 };
 const command = process.argv[2];
 const profileName = process.argv[3] || 'owned';
-const profile = profiles[profileName];
+const workerName = process.argv[4] || 'crawler';
+if (!['crawler', 'browser', 'embedding'].includes(workerName)) {
+    process.stderr.write(`Unknown worker type: ${workerName}\nWorker types: crawler, browser, embedding\n`);
+    process.exit(1);
+}
+const baseProfile = profiles[profileName];
+const profile = baseProfile && workerName !== 'crawler' ? {
+    ...baseProfile,
+    label: `${baseProfile.label.replace('web-crawler', `web-${workerName}`)}`,
+    logName: baseProfile.logName.replace('web-crawler', `web-${workerName}`),
+} : baseProfile;
 if (!profile) {
     process.stderr.write(`Unknown worker profile: ${profileName}\n`);
     process.stderr.write('Profiles: owned, production\n');
@@ -28,7 +38,7 @@ if (!profile) {
 }
 const { label } = profile;
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const artifact = path.join(repository, 'dist-workers', 'web-crawler.mjs');
+const artifact = path.join(repository, 'dist-workers', `web-${workerName}.mjs`);
 const nodeExecutable = (() => {
     try {
         return execFileSync('/usr/bin/which', ['node'], { encoding: 'utf8' }).trim() || process.execPath;
@@ -106,7 +116,7 @@ function bootoutIfLoaded() {
 
 async function install() {
     if (!existsSync(artifact)) {
-        throw new Error(`Worker artifact is missing: run npm run build:web-worker first`);
+        throw new Error(`Worker artifact is missing: build the ${workerName} worker first`);
     }
     await mkdir(agentsDirectory, { recursive: true });
     await mkdir(logsDirectory, { recursive: true });
@@ -141,6 +151,6 @@ if (command === 'install') await install();
 else if (command === 'uninstall') await uninstall();
 else if (command === 'status') status();
 else {
-    process.stderr.write('Usage: node scripts/web-crawler-service.mjs <install|status|uninstall> [owned|production]\n');
+    process.stderr.write('Usage: node scripts/web-crawler-service.mjs <install|status|uninstall> [owned|production] [crawler|browser|embedding]\n');
     process.exitCode = 1;
 }

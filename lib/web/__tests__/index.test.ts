@@ -26,8 +26,9 @@ describe('searchWebIndex', () => {
         });
 
         expect(searchDocuments).toHaveBeenCalledWith('project_1', 'agent evidence', expect.objectContaining({
-            limit: 5,
+            limit: 50,
             domain: 'example.com',
+            queryEmbedding: null,
         }));
         expect(results[0]).toMatchObject({
             canonicalUrl: 'https://example.com/page',

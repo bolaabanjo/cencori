@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "sources": [
+    { "key": "cencori", "seed": "https://cencori.com/docs", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 1.0, "maxPages": 500, "maxFrontier": 10000, "maxDepth": 4 },
+    { "key": "mdn", "seed": "https://developer.mozilla.org/en-US/docs/Web", "pathPrefixes": ["/en-US/docs/Web"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 20000, "maxFrontier": 250000, "maxDepth": 5 },
+    { "key": "node", "seed": "https://nodejs.org/docs/latest/api/", "pathPrefixes": ["/docs/latest/api"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 2000, "maxFrontier": 30000, "maxDepth": 4 },
+    { "key": "typescript", "seed": "https://www.typescriptlang.org/docs/", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 2500, "maxFrontier": 40000, "maxDepth": 5 },
+    { "key": "react", "seed": "https://react.dev/reference/react", "pathPrefixes": ["/reference", "/learn"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 3000, "maxFrontier": 40000, "maxDepth": 5 },
+    { "key": "nextjs", "seed": "https://nextjs.org/docs", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.97, "maxPages": 5000, "maxFrontier": 75000, "maxDepth": 5 },
+    { "key": "postgresql", "seed": "https://www.postgresql.org/docs/current/", "pathPrefixes": ["/docs/current"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 8000, "maxFrontier": 100000, "maxDepth": 5 },
+    { "key": "python", "seed": "https://docs.python.org/3/", "pathPrefixes": ["/3"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 12000, "maxFrontier": 150000, "maxDepth": 5 },
+    { "key": "rust", "seed": "https://doc.rust-lang.org/stable/", "pathPrefixes": ["/stable", "/book", "/reference", "/cargo"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 12000, "maxFrontier": 150000, "maxDepth": 5 },
+    { "key": "go", "seed": "https://go.dev/doc/", "pathPrefixes": ["/doc", "/ref"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.98, "maxPages": 4000, "maxFrontier": 60000, "maxDepth": 5 },
+    { "key": "github", "seed": "https://docs.github.com/en", "pathPrefixes": ["/en"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.96, "maxPages": 15000, "maxFrontier": 200000, "maxDepth": 5 },
+    { "key": "docker", "seed": "https://docs.docker.com/", "pathPrefixes": ["/"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.96, "maxPages": 12000, "maxFrontier": 180000, "maxDepth": 5 },
+    { "key": "kubernetes", "seed": "https://kubernetes.io/docs/", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.96, "maxPages": 15000, "maxFrontier": 200000, "maxDepth": 5 },
+    { "key": "cloudflare", "seed": "https://developers.cloudflare.com/", "pathPrefixes": ["/"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.95, "maxPages": 15000, "maxFrontier": 250000, "maxDepth": 5 },
+    { "key": "vercel", "seed": "https://vercel.com/docs", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.95, "maxPages": 8000, "maxFrontier": 120000, "maxDepth": 5 },
+    { "key": "supabase", "seed": "https://supabase.com/docs", "pathPrefixes": ["/docs"], "languages": ["en"], "vertical": "docs", "authorityScore": 0.95, "maxPages": 8000, "maxFrontier": 120000, "maxDepth": 5 }
+  ]
+}

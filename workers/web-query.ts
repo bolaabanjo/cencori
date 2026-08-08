@@ -12,6 +12,7 @@ async function main(): Promise<void> {
             domain: { type: 'string' },
             freshness: { type: 'string' },
             project: { type: 'string', default: '00000000-0000-0000-0000-000000000000' },
+            'owned-compute': { type: 'boolean', default: false },
         },
     });
     const query = positionals.join(' ').trim();
@@ -25,12 +26,21 @@ async function main(): Promise<void> {
     ]);
     const store = createWorkerWebDataStore();
     try {
+        const queryEmbedding = values['owned-compute']
+            ? await (await import('../lib/web/query-compute')).requestOwnedQueryEmbedding(store, values.project!, query)
+            : undefined;
         const results = await searchWebIndex(store, values.project!, query, {
             limit,
             domain: values.domain,
             freshness: values.freshness,
+            queryEmbedding,
         });
-        process.stdout.write(`${JSON.stringify({ query, count: results.length, results }, null, 2)}\n`);
+        process.stdout.write(`${JSON.stringify({
+            query,
+            semanticSource: values['owned-compute'] ? (queryEmbedding ? 'owned-compute' : 'local-fallback') : 'local',
+            count: results.length,
+            results,
+        }, null, 2)}\n`);
     } finally {
         await store.close();
     }

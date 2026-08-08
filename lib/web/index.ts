@@ -2,6 +2,15 @@ import type { ExtractedWebDocument, WebSearchOptions, WebSearchResult } from './
 import { normalizeDomain, parseFreshness } from './url';
 import { WebRuntimeError } from './errors';
 import type { WebDataStore } from './store';
+import { embedWebDocument, embedWebText, webEmbeddingModel } from './embeddings';
+import { deriveWebDocumentSignals, rerankWebCandidates, type HybridSearchCandidate } from './ranking';
+
+export interface WebIndexOptions {
+    authorityScore?: number;
+    noarchive?: boolean;
+    nosnippet?: boolean;
+    metadata?: Record<string, unknown>;
+}
 
 function webDocumentRecord(
     document: ExtractedWebDocument,
@@ -11,9 +20,17 @@ function webDocumentRecord(
         organizationId: string | null;
         projectId: string | null;
         nextCrawlAt?: string | null;
+        indexOptions?: WebIndexOptions;
     },
+    embedding: number[] | null,
 ) {
     const canonical = new URL(document.canonicalUrl);
+    const signals = deriveWebDocumentSignals(document, scope.indexOptions?.authorityScore);
+    const semanticBuckets = embedding ? Array.from({ length: 4 }, (_, bucket) => {
+        let value = 0;
+        for (let bit = 0; bit < 8; bit += 1) if ((embedding[bucket * 8 + bit] ?? -1) >= 0) value |= (1 << bit);
+        return value;
+    }) : [null, null, null, null];
     return {
         collection_id: scope.collectionId,
         visibility: scope.visibility,
@@ -37,11 +54,32 @@ function webDocumentRecord(
         next_crawl_at: scope.nextCrawlAt ?? null,
         links: document.links.slice(0, 2_000),
         evidence_spans: document.evidenceSpans,
-        metadata: document.metadata,
+        metadata: { ...document.metadata, ...scope.indexOptions?.metadata },
+        semantic_embedding: embedding,
+        embedding_model: embedding ? webEmbeddingModel() : null,
+        semantic_bucket_1: semanticBuckets[0],
+        semantic_bucket_2: semanticBuckets[1],
+        semantic_bucket_3: semanticBuckets[2],
+        semantic_bucket_4: semanticBuckets[3],
+        authority_score: signals.authorityScore,
+        quality_score: signals.qualityScore,
+        spam_score: signals.spamScore,
+        noarchive: scope.indexOptions?.noarchive === true,
+        nosnippet: scope.indexOptions?.nosnippet === true,
     };
 }
 
-async function upsertWebDocument(store: WebDataStore, record: ReturnType<typeof webDocumentRecord>): Promise<string> {
+async function createWebDocumentRecord(document: ExtractedWebDocument, scope: Parameters<typeof webDocumentRecord>[1]) {
+    let embedding: number[] | null = null;
+    try {
+        embedding = await embedWebDocument(document.title, document.content);
+    } catch (error) {
+        console.warn('[cencori-web] semantic document embedding failed; indexing lexically', error);
+    }
+    return webDocumentRecord(document, scope, embedding);
+}
+
+async function upsertWebDocument(store: WebDataStore, record: Awaited<ReturnType<typeof createWebDocumentRecord>>): Promise<string> {
     return store.upsertDocument(record);
 }
 
@@ -50,13 +88,15 @@ export async function indexWebDocument(
     organizationId: string,
     projectId: string,
     document: ExtractedWebDocument,
+    options: WebIndexOptions = {},
 ): Promise<string> {
     await store.ensureProjectScope(organizationId, projectId);
-    return upsertWebDocument(store, webDocumentRecord(document, {
+    return upsertWebDocument(store, await createWebDocumentRecord(document, {
         collectionId: `project:${projectId}`,
         visibility: 'project',
         organizationId,
         projectId,
+        indexOptions: options,
     }));
 }
 
@@ -74,13 +114,15 @@ export function nextPublicRecrawlAt(document: ExtractedWebDocument, now = Date.n
 export async function indexPublicWebDocument(
     store: WebDataStore,
     document: ExtractedWebDocument,
+    options: WebIndexOptions = {},
 ): Promise<string> {
-    return upsertWebDocument(store, webDocumentRecord(document, {
+    return upsertWebDocument(store, await createWebDocumentRecord(document, {
         collectionId: 'public',
         visibility: 'public',
         organizationId: null,
         projectId: null,
         nextCrawlAt: nextPublicRecrawlAt(document),
+        indexOptions: options,
     }));
 }
 
@@ -94,6 +136,13 @@ interface SearchRow {
     content_hash?: unknown;
     retrieved_at?: unknown;
     published_at?: unknown;
+    modified_at?: unknown;
+    host?: unknown;
+    lexical_score?: unknown;
+    semantic_score?: unknown;
+    authority_score?: unknown;
+    quality_score?: unknown;
+    spam_score?: unknown;
 }
 
 function asTimestamp(value: unknown): string | null {
@@ -120,9 +169,27 @@ export async function searchWebIndex(
     const limit = Math.min(Math.max(Math.floor(options.limit ?? 10), 1), 50);
     const domain = options.domain ? normalizeDomain(options.domain) : null;
     const freshAfter = parseFreshness(options.freshness);
-    const data = await store.searchDocuments(projectId, normalizedQuery, { limit, domain, freshAfter });
+    const language = typeof options.language === 'string' && options.language.trim()
+        ? options.language.trim().toLowerCase().slice(0, 35)
+        : null;
+    let queryEmbedding: number[] | null = options.queryEmbedding || null;
+    if (!queryEmbedding) {
+        try {
+            queryEmbedding = await embedWebText(normalizedQuery);
+        } catch (error) {
+            console.warn('[cencori-web] semantic query embedding failed; searching lexically', error);
+        }
+    }
+    const candidateLimit = Math.min(Math.max(limit * 8, 50), 250);
+    const data = await store.searchDocuments(projectId, normalizedQuery, {
+        limit: candidateLimit,
+        domain,
+        freshAfter,
+        language,
+        queryEmbedding,
+    });
 
-    return data.flatMap((row: SearchRow) => {
+    const candidates = data.flatMap((row: SearchRow): HybridSearchCandidate[] => {
         if (
             typeof row.id !== 'string'
             || typeof row.title !== 'string'
@@ -131,26 +198,43 @@ export async function searchWebIndex(
             || typeof row.snippet !== 'string'
             || typeof row.content_hash !== 'string'
         ) return [];
-        const score = Number(row.score);
         const retrievedAt = asTimestamp(row.retrieved_at);
         if (!retrievedAt) return [];
         const publishedAt = asTimestamp(row.published_at);
         const snippet = normalizeSnippet(row.snippet);
+        const canonicalUrl = row.canonical_url;
         return [{
             id: row.id,
             title: row.title,
             url: row.url,
-            canonicalUrl: row.canonical_url,
+            canonicalUrl,
+            host: typeof row.host === 'string' ? row.host : new URL(canonicalUrl).hostname,
             snippet,
-            score: Number.isFinite(score) ? score : 0,
             contentHash: row.content_hash,
             retrievedAt,
             publishedAt,
-            evidence: {
-                quote: snippet,
-                contentHash: row.content_hash,
-                retrievedAt,
-            },
-        } satisfies WebSearchResult];
+            modifiedAt: asTimestamp(row.modified_at),
+            lexicalScore: Number(row.lexical_score ?? row.score) || 0,
+            semanticScore: Number(row.semantic_score) || 0,
+            authorityScore: Number(row.authority_score) || 0.5,
+            qualityScore: Number(row.quality_score) || 0.5,
+            spamScore: Number(row.spam_score) || 0,
+        }];
     });
+    return rerankWebCandidates(candidates, limit, { domainConstrained: Boolean(domain) }).map(candidate => ({
+        id: candidate.id,
+        title: candidate.title,
+        url: candidate.url,
+        canonicalUrl: candidate.canonicalUrl,
+        snippet: candidate.snippet,
+        score: candidate.score,
+        contentHash: candidate.contentHash,
+        retrievedAt: candidate.retrievedAt,
+        publishedAt: candidate.publishedAt,
+        evidence: {
+            quote: candidate.snippet,
+            contentHash: candidate.contentHash,
+            retrievedAt: candidate.retrievedAt,
+        },
+    } satisfies WebSearchResult));
 }

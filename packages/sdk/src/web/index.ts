@@ -14,6 +14,7 @@ export const WEB_SEARCH_TOOL = {
                 limit: { type: 'integer', minimum: 1, maximum: 50 },
                 domain: { type: 'string', description: 'Optional hostname to restrict results to.' },
                 freshness: { type: 'string', description: 'Optional ISO timestamp or duration such as 7d.' },
+                language: { type: 'string', description: 'Optional BCP 47 language tag such as en.' },
             },
             required: ['query'],
             additionalProperties: false,
@@ -56,6 +57,7 @@ export interface WebFetchResult {
         cacheControl: string | null;
         etag: string | null;
         lastModified: string | null;
+        xRobotsTag: string | null;
     };
     untrusted: true;
 }
@@ -99,6 +101,8 @@ export interface WebSearchRequest {
     domain?: string;
     /** ISO timestamp or relative duration such as `24h`, `7d`, or `3m`. */
     freshness?: string;
+    /** Optional BCP 47 language tag such as `en` or `en-US`. */
+    language?: string;
 }
 
 export interface WebSearchHit {
@@ -122,7 +126,7 @@ export interface WebSearchResponse {
     query: string;
     results: WebSearchHit[];
     count: number;
-    searchEngine: 'cencori-web-lexical-v1';
+    searchEngine: 'cencori-web-hybrid-v2';
 }
 
 export interface WebCrawlRequest {
@@ -142,6 +146,58 @@ export interface WebCrawlResponse {
     indexed: number;
     failed: number;
     discovered: number;
+}
+
+export type WebBrowserAction =
+    | { type: 'click'; selector: string }
+    | { type: 'type'; selector: string; text: string; clear?: boolean }
+    | { type: 'press'; key: string }
+    | { type: 'select'; selector: string; values: string[] }
+    | { type: 'waitFor'; selector?: string; milliseconds?: number };
+
+export interface WebBrowseRequest {
+    url: string;
+    actions?: WebBrowserAction[];
+    timeoutMs?: number;
+    waitUntil?: 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+    screenshot?: boolean;
+    viewport?: { width: number; height: number };
+}
+
+export interface WebBrowseJob {
+    id: string;
+    url: string;
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    result?: {
+        finalUrl: string;
+        title: string;
+        content: string;
+        contentHash: string;
+        retrievedAt: string;
+        links: WebLink[];
+        evidenceSpans: WebEvidenceSpan[];
+        screenshot: string | null;
+    } | null;
+    error?: string | null;
+    attempts?: number;
+    createdAt: string;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+}
+
+export interface WebTakedownRequest {
+    urls: string[];
+    basis: 'copyright' | 'privacy' | 'legal' | 'robots' | 'other';
+    requesterName: string;
+    requesterEmail: string;
+    requesterOrganization?: string;
+    statement: string;
+}
+
+export interface WebTakedownResponse {
+    id: string;
+    status: 'pending';
+    createdAt: string;
 }
 
 export class WebNamespace {
@@ -165,6 +221,22 @@ export class WebNamespace {
     /** Search the Cencori-owned public corpus plus this project's indexed pages. */
     search(request: WebSearchRequest): Promise<WebSearchResponse> {
         return this.post('/api/v1/web/search', request);
+    }
+
+    /** Queue an isolated JavaScript browser exploration on Cencori-owned workers. */
+    browse(request: WebBrowseRequest): Promise<WebBrowseJob> {
+        return this.post('/api/v1/web/browse', request);
+    }
+
+    /** Poll an isolated browser exploration until it completes or fails. */
+    browserJob(id: string): Promise<WebBrowseJob> {
+        if (!id.trim()) throw new Error('Browser job id is required');
+        return this.get(`/api/v1/web/browse/${encodeURIComponent(id)}`);
+    }
+
+    /** Submit a copyright, privacy, legal, robots, or other removal request. */
+    requestTakedown(request: WebTakedownRequest): Promise<WebTakedownResponse> {
+        return this.post('/api/v1/web/takedown', request);
     }
 
     /** Resolve a Cencori web function call emitted from WEB_SEARCH_TOOL or WEB_FETCH_TOOL. */
@@ -195,6 +267,20 @@ export class WebNamespace {
             ) as Error & { code?: string; details?: unknown };
             error.code = typeof payload.error === 'string' ? payload.error : 'request_failed';
             error.details = payload.details;
+            throw error;
+        }
+        return data as T;
+    }
+
+    private async get<T>(path: string): Promise<T> {
+        const response = await fetch(`${this.config.baseUrl}${path}`, {
+            headers: { 'CENCORI_API_KEY': this.config.apiKey, ...this.config.headers },
+        });
+        const data: unknown = await response.json();
+        if (!response.ok) {
+            const payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+            const error = new Error(typeof payload.message === 'string' ? payload.message : `Web request failed with status ${response.status}`) as Error & { code?: string };
+            error.code = typeof payload.error === 'string' ? payload.error : 'request_failed';
             throw error;
         }
         return data as T;
