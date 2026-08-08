@@ -3,6 +3,7 @@ import { handleCorsPreFlight } from '@/lib/gateway-middleware';
 import { WebRuntimeError } from '@/lib/web/errors';
 import { runWebRoute } from '@/lib/web/http';
 import { searchWebIndex } from '@/lib/web/index';
+import { createWebDataStore } from '@/lib/web/store';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
         if (typeof body.query !== 'string' || !body.query.trim()) {
             throw new WebRuntimeError('invalid_query', 'query is required');
         }
-        const results = await searchWebIndex(ctx.supabase, ctx.projectId, body.query, {
+        const results = await searchWebIndex(createWebDataStore(ctx.supabase), ctx.projectId, body.query, {
             limit: typeof body.limit === 'number' ? body.limit : undefined,
             domain: typeof body.domain === 'string' ? body.domain : undefined,
             freshness: typeof body.freshness === 'string' ? body.freshness : undefined,

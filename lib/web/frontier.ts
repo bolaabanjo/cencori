@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type { GatewayContext } from '@/lib/gateway-middleware';
 import { extractWebDocument } from './html';
 import { fetchWebResource } from './fetch';
 import { indexPublicWebDocument, indexWebDocument } from './index';
@@ -13,8 +12,9 @@ import type {
     WebFrontierWorkerResult,
 } from './types';
 import { normalizeWebUrl } from './url';
+import type { WebDataStore } from './store';
 
-type SupabaseClient = GatewayContext['supabase'];
+type SupabaseClient = WebDataStore;
 
 interface FrontierEntryInput {
     url: string;
@@ -59,6 +59,13 @@ function asNumber(value: unknown): number {
     return Number.isFinite(number) ? number : 0;
 }
 
+function asTimestamp(value: unknown): string | null {
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value !== 'string') return null;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
+}
+
 function mapJob(row: Record<string, unknown>): WebCrawlJob {
     return {
         id: String(row.id),
@@ -81,9 +88,9 @@ function mapJob(row: Record<string, unknown>): WebCrawlJob {
         pagesFailed: asNumber(row.pages_failed),
         pagesSkipped: asNumber(row.pages_skipped),
         lastError: typeof row.last_error === 'string' ? row.last_error : null,
-        createdAt: String(row.created_at),
-        startedAt: typeof row.started_at === 'string' ? row.started_at : null,
-        finishedAt: typeof row.finished_at === 'string' ? row.finished_at : null,
+        createdAt: asTimestamp(row.created_at) || '',
+        startedAt: asTimestamp(row.started_at),
+        finishedAt: asTimestamp(row.finished_at),
     };
 }
 
@@ -95,21 +102,12 @@ export async function enqueueFrontierEntries(
     let inserted = 0;
     for (let start = 0; start < entries.length; start += 500) {
         const chunk = entries.slice(start, start + 500);
-        const { data, error } = await supabase.rpc('enqueue_web_crawl_urls', {
-            p_job_id: jobId,
-            p_entries: chunk,
-        });
-        if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
-        const count = asNumber(data);
+        const count = await supabase.enqueueCrawlUrls(jobId, chunk);
         inserted += count;
         if (count < chunk.length) {
             // Either duplicates were ignored or the durable frontier reached its
             // configured ceiling. Continuing is safe but usually wasted work.
-            const { data: job } = await supabase
-                .from('web_crawl_jobs')
-                .select('pages_discovered,max_frontier')
-                .eq('id', jobId)
-                .maybeSingle();
+            const job = await supabase.getCrawlJobBudget(jobId);
             if (job && asNumber(job.pages_discovered) >= asNumber(job.max_frontier)) break;
         }
     }
@@ -142,24 +140,21 @@ export async function createPublicCrawlJob(
     const maxAttempts = Math.min(Math.max(Math.floor(options.maxAttempts ?? 3), 1), 10);
     const priority = Math.min(Math.max(Math.floor(options.priority ?? 0), -100), 100);
 
-    const { data, error } = await supabase
-        .from('web_crawl_jobs')
-        .insert({
-            collection_id: 'public',
-            visibility: 'public',
-            seeds,
-            allowed_origins: allowedOrigins,
-            same_origin: options.sameOrigin !== false,
-            max_pages: maxPages,
-            max_frontier: maxFrontier,
-            max_depth: maxDepth,
-            max_attempts: maxAttempts,
-            priority,
-            metadata: options.metadata || {},
-        })
-        .select('*')
-        .single();
-    if (error || !data) throw new WebRuntimeError('frontier_unavailable', error?.message || 'Crawl job could not be created', 503);
+    const data = await supabase.createCrawlJob({
+        collection_id: 'public',
+        visibility: 'public',
+        organization_id: null,
+        project_id: null,
+        seeds,
+        allowed_origins: allowedOrigins,
+        same_origin: options.sameOrigin !== false,
+        max_pages: maxPages,
+        max_frontier: maxFrontier,
+        max_depth: maxDepth,
+        max_attempts: maxAttempts,
+        priority,
+        metadata: options.metadata || {},
+    });
 
     const seedEntries: FrontierEntryInput[] = [];
     for (const seed of seeds) {
@@ -188,45 +183,29 @@ export async function createPublicCrawlJob(
     try {
         await enqueueFrontierEntries(supabase, String(data.id), seedEntries);
     } catch (enqueueError) {
-        await supabase
-            .from('web_crawl_jobs')
-            .update({ status: 'failed', last_error: enqueueError instanceof Error ? enqueueError.message : 'Seed enqueue failed' })
-            .eq('id', data.id);
+        await supabase.failCrawlJob(
+            String(data.id),
+            enqueueError instanceof Error ? enqueueError.message : 'Seed enqueue failed',
+        );
         throw enqueueError;
     }
 
-    const { data: refreshed, error: refreshError } = await supabase
-        .from('web_crawl_jobs')
-        .select('*')
-        .eq('id', data.id)
-        .single();
-    if (refreshError || !refreshed) throw new WebRuntimeError('frontier_unavailable', refreshError?.message || 'Crawl job could not be loaded', 503);
-    return mapJob(refreshed as Record<string, unknown>);
+    const refreshed = await supabase.getCrawlJob(String(data.id));
+    if (!refreshed) throw new WebRuntimeError('frontier_unavailable', 'Crawl job could not be loaded', 503);
+    return mapJob(refreshed);
 }
 
 export async function getPublicCrawlJob(supabase: SupabaseClient, jobId: string): Promise<WebCrawlJob | null> {
-    const { data, error } = await supabase
-        .from('web_crawl_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .eq('visibility', 'public')
-        .maybeSingle();
-    if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
-    return data ? mapJob(data as Record<string, unknown>) : null;
+    const data = await supabase.getCrawlJob(jobId);
+    return data && data.visibility === 'public' ? mapJob(data) : null;
 }
 
 export async function listPublicCrawlJobs(
     supabase: SupabaseClient,
     limit = 50,
 ): Promise<WebCrawlJob[]> {
-    const { data, error } = await supabase
-        .from('web_crawl_jobs')
-        .select('*')
-        .eq('visibility', 'public')
-        .order('created_at', { ascending: false })
-        .limit(Math.min(Math.max(limit, 1), 100));
-    if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
-    return (data || []).map(row => mapJob(row as Record<string, unknown>));
+    const data = await supabase.listPublicCrawlJobs(Math.min(Math.max(limit, 1), 100));
+    return data.map(mapJob);
 }
 
 async function claimFrontierBatch(
@@ -234,13 +213,8 @@ async function claimFrontierBatch(
     workerId: string,
     limit: number,
 ): Promise<ClaimedFrontierItem[]> {
-    const { data, error } = await supabase.rpc('claim_web_crawl_batch', {
-        p_worker_id: workerId,
-        p_limit: Math.min(Math.max(limit, 1), 25),
-        p_lease_seconds: 90,
-    });
-    if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
-    return (Array.isArray(data) ? data : []).map(row => ({
+    const data = await supabase.claimCrawlBatch(workerId, Math.min(Math.max(limit, 1), 25), 90);
+    return data.map(row => ({
         jobId: String(row.job_id),
         frontierId: asNumber(row.frontier_id),
         url: String(row.url),
@@ -274,18 +248,18 @@ async function completeFrontierItem(
     },
 ): Promise<void> {
     const retryDelay = Math.min(30 * 2 ** Math.max(item.attempts - 1, 0), 3_600);
-    const { data, error } = await supabase.rpc('complete_web_crawl_item', {
-        p_job_id: item.jobId,
-        p_frontier_id: item.frontierId,
-        p_worker_id: workerId,
-        p_status: result.status,
-        p_document_id: result.documentId || null,
-        p_error: result.error || null,
-        p_retry: result.retry === true,
-        p_retry_delay_seconds: retryDelay,
+    const completed = await supabase.completeCrawlItem({
+        jobId: item.jobId,
+        frontierId: item.frontierId,
+        workerId,
+        status: result.status,
+        documentId: result.documentId || null,
+        error: result.error || null,
+        retry: result.retry === true,
+        retryDelaySeconds: retryDelay,
     });
-    if (error || data !== true) {
-        throw new WebRuntimeError('frontier_unavailable', error?.message || 'Crawl item lease could not be completed', 503);
+    if (!completed) {
+        throw new WebRuntimeError('frontier_unavailable', 'Crawl item lease could not be completed', 503);
     }
 }
 
@@ -426,15 +400,7 @@ export async function scheduleDuePublicRecrawls(
     limit = 100,
 ): Promise<WebCrawlJob | null> {
     const boundedLimit = Math.min(Math.max(limit, 1), 1_000);
-    const { data, error } = await supabase
-        .from('web_documents')
-        .select('id,canonical_url')
-        .eq('visibility', 'public')
-        .not('next_crawl_at', 'is', null)
-        .lte('next_crawl_at', new Date().toISOString())
-        .order('next_crawl_at', { ascending: true })
-        .limit(boundedLimit);
-    if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
+    const data = await supabase.getDuePublicDocuments(boundedLimit);
     if (!data || data.length === 0) return null;
 
     const job = await createPublicCrawlJob(supabase, {
@@ -445,10 +411,10 @@ export async function scheduleDuePublicRecrawls(
         priority: 10,
         metadata: { type: 'scheduled_recrawl' },
     });
-    await supabase
-        .from('web_documents')
-        .update({ next_crawl_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
-        .in('id', data.map(row => row.id));
+    await supabase.reserveDocuments(
+        data.map(row => row.id),
+        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    );
     return job;
 }
 
@@ -495,11 +461,7 @@ export async function processWebFrontier(
             result.discovered += outcome.discovered;
         }
 
-        const { error } = await supabase.rpc('release_web_crawl_job', {
-            p_job_id: jobId,
-            p_worker_id: workerId,
-        });
-        if (error) throw new WebRuntimeError('frontier_unavailable', error.message, 503);
+        await supabase.releaseCrawlJob(jobId, workerId);
     }
 
     result.elapsedMs = Date.now() - startedAt;

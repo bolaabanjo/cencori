@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { searchWebIndex } from '@/lib/web/index';
+import { createWebDataStore } from '@/lib/web/store';
 
 // ── File Indexing (for file_search uploads) ──
 
@@ -118,7 +119,7 @@ async function performWebSearch(
     projectId: string,
 ): Promise<Array<{ title: string; url: string; snippet: string }>> {
     const numResults = contextSize === 'low' ? 3 : contextSize === 'medium' ? 8 : 15;
-    const results = await searchWebIndex(createAdminClient(), projectId, query, { limit: numResults });
+    const results = await searchWebIndex(createWebDataStore(createAdminClient()), projectId, query, { limit: numResults });
     return results.map(result => ({
         title: result.title,
         url: result.canonicalUrl,
