@@ -12,10 +12,11 @@ import {
     registerMemoryTools,
     registerMultimodalTools,
     registerSessionsTools,
+    registerWebTools,
 } from './tools.js';
 
 const SERVER_NAME = 'cencori';
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.7.0';
 
 export function createServer(config: McpConfig): McpServer {
     const server = new McpServer(
@@ -51,6 +52,7 @@ export function createServer(config: McpConfig): McpServer {
         if (features.agents) registerAgentsTools(server, client, capabilities);
         if (features.memory) registerMemoryTools(server, client, capabilities);
         if (features.sessions) registerSessionsTools(server, client, capabilities);
+        if (features.web) registerWebTools(server, client, capabilities);
         if (features.governance) registerGovernanceTools(server, client, capabilities);
 
         if (features.multimodal && capabilities.write) {

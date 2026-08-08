@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Building Cencori Web</title>
+  <desc id="desc">A dark systems diagram showing PostgreSQL leases coordinating crawl, embedding, and browser workers.</desc>
+  <rect width="1600" height="900" fill="#080909"/>
+  <g fill="none" stroke="#242b27" stroke-width="2"><path d="M0 130h1600M0 770h1600"/><path d="M120 0v900M1480 0v900"/></g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="92" y="88" font-size="24" letter-spacing="4" fill="#edf2ee">CENCORI / WEB / ARCHITECTURE</text>
+    <text x="1240" y="86" font-size="18" fill="#92f7b1">LEASED WORK</text>
+    <g stroke="#46544b" stroke-width="3" fill="none">
+      <path d="M440 294h230"/><path d="M930 294h230"/><path d="M800 390v120"/><path d="M440 606h230"/><path d="M930 606h230"/>
+    </g>
+    <g fill="#92f7b1"><path d="M660 286l18 8-18 8z"/><path d="M1150 286l18 8-18 8z"/><path d="M792 500l8 18 8-18z"/><path d="M660 598l18 8-18 8z"/><path d="M1150 598l18 8-18 8z"/></g>
+    <g font-size="20">
+      <rect x="120" y="230" width="320" height="128" rx="4" fill="#111512" stroke="#344139"/>
+      <text x="148" y="279" fill="#8e9c93">01 / CLAIM</text><text x="148" y="322" fill="#edf2ee">FRONTIER WORKER</text>
+      <rect x="680" y="230" width="240" height="160" rx="80" fill="#121813" stroke="#92f7b1" stroke-width="3"/>
+      <text x="800" y="292" text-anchor="middle" fill="#8e9c93">DURABLE</text><text x="800" y="328" text-anchor="middle" fill="#edf2ee">POSTGRESQL</text><text x="800" y="358" text-anchor="middle" fill="#92f7b1">LEASES</text>
+      <rect x="1160" y="230" width="320" height="128" rx="4" fill="#111512" stroke="#344139"/>
+      <text x="1188" y="279" fill="#8e9c93">02 / FETCH</text><text x="1188" y="322" fill="#edf2ee">CRAWL WORKER</text>
+      <rect x="120" y="542" width="320" height="128" rx="4" fill="#111512" stroke="#344139"/>
+      <text x="148" y="591" fill="#8e9c93">03 / VECTOR</text><text x="148" y="634" fill="#edf2ee">EMBED WORKER</text>
+      <rect x="680" y="518" width="240" height="176" rx="4" fill="#111512" stroke="#344139"/>
+      <text x="800" y="578" text-anchor="middle" fill="#8e9c93">INDEX</text><text x="800" y="618" text-anchor="middle" fill="#edf2ee">EVIDENCE</text><text x="800" y="650" text-anchor="middle" fill="#92f7b1">+ RANKING</text>
+      <rect x="1160" y="542" width="320" height="128" rx="4" fill="#111512" stroke="#344139"/>
+      <text x="1188" y="591" fill="#8e9c93">04 / RENDER</text><text x="1188" y="634" fill="#edf2ee">BROWSER WORKER</text>
+    </g>
+    <text x="92" y="830" font-size="18" fill="#8e9c93">M4 PRO TODAY  →  LINUX WORKERS  →  CENCORI HARDWARE</text>
+  </g>
+</svg>

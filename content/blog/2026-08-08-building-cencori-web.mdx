@@ -1,0 +1,136 @@
+---
+title: "Building Cencori Web: From Frontier Leases to Citation Evidence"
+slug: "building-cencori-web"
+date: "2026-08-08"
+excerpt: "Inside the architecture of Cencori's owned web stack: durable crawl leases, hybrid retrieval, local embeddings, isolated browsers, evidence provenance, and a path from one M4 Pro to Cencori hardware."
+coverImage: "/blog/images/covers/cencori-web-architecture.svg"
+authors: ["bola"]
+tags: ["Cencori Web", "Engineering", "Infrastructure", "Search"]
+category: "engineering"
+published: true
+---
+
+The first production machine behind Cencori Web is a MacBook Pro with an M4 Pro.
+
+That is not a shortcut hidden behind a serverless cron. It is a deliberate property of the architecture: workers are ordinary long-running processes, durable coordination lives in PostgreSQL, and no crawl belongs to the lifetime of one machine.
+
+The same worker can run on a laptop today, a rack server tomorrow, and Cencori-owned compute later. The database—not the host—holds the truth.
+
+## The control loop
+
+The crawler's core loop is intentionally plain:
+
+```text
+claim due frontier rows
+        ↓
+fetch with host policy and network safety
+        ↓
+extract, canonicalize, and discover links
+        ↓
+index document and ranking signals
+        ↓
+complete the lease or schedule a retry
+        ↓
+claim again
+```
+
+PostgreSQL rows carry lease ownership and expiry. A worker claims a bounded batch, processes it, and acknowledges completion. If the worker crashes, loses power, or the laptop sleeps, the lease expires and another loop can reclaim the work.
+
+There is no Vercel Cron dependency and no assumption that a serverless request remains alive long enough to crawl the web. The hosted application owns authentication and query APIs; durable workers own continuous crawl, embeddings, and browser execution.
+
+## Why leases matter
+
+A crawler has to survive partial progress as a normal condition.
+
+The network fails. DNS fails temporarily. A host slows down. A process restarts after a package update. A machine goes offline between fetching a page and acknowledging it.
+
+Leases make those failures recoverable without inventing a bespoke distributed system:
+
+- A claim has a bounded lifetime.
+- Successful work is acknowledged atomically.
+- Transient failures receive delayed retries.
+- Permanent policy failures become skips instead of hot loops.
+- Multiple workers can claim different rows without duplicating ownership.
+
+This is also what makes the hardware migration boring. Start a worker on the new machine, let it claim work, then stop the old worker. No corpus export is required because frontier state and documents are already durable.
+
+## Discovery before indexing
+
+The public corpus begins with sources that agents disproportionately need: official documentation, release notes, research, technical sites, company pages, and public knowledge sources.
+
+Each crawl can discover URLs from conventional sitemaps, `robots.txt` sitemap declarations, and same-origin links. URLs are normalized before entering the frontier. Canonical metadata and duplicate detection prevent superficial URL variations from becoming separate documents.
+
+We do not measure success by raw page count. A smaller, fresh, high-authority technical corpus can answer an agent's query better than an enormous archive of duplicate, stale, and search-optimized pages.
+
+## Hybrid retrieval without a hosted embedding API
+
+Cencori Web V2 combines several signals:
+
+1. PostgreSQL lexical retrieval generates high-recall candidates.
+2. A local MiniLM model embeds queries and documents on Cencori-owned workers.
+3. Exact cosine similarity reranks a bounded locality bucket.
+4. Authority, freshness, document quality, and spam signals adjust the score.
+5. Domain diversity prevents one host from swallowing the result page.
+
+Query embeddings use the same lease pattern as crawling. The API writes a short-lived query job, an owned worker computes the vector, and the API reads the result. Query text is cleared when work completes, and the transient job is removed after it is consumed.
+
+That design is not the final word in ranking. A learned cross-encoder can be added later for difficult queries. But the public contract—query in, evidence-bearing ranked results out—does not need to change when the ranking system does.
+
+## Evidence is part of the index
+
+Most search APIs return a title, URL, and snippet. Cencori Web carries more because an agent's answer needs to be inspectable.
+
+Extraction produces normalized text and evidence spans with exact character offsets. Search results retain a quote, content hash, retrieval timestamp, canonical URL, and publication time when available.
+
+The hash matters when a page changes. The timestamp matters when freshness affects the claim. The quote matters when a user wants to inspect the support without rereading an entire page.
+
+Long term, immutable snapshot storage can preserve the exact retrieved representation. The current provenance fields establish the contract that snapshot layer will strengthen.
+
+## Static retrieval and browser execution are separate systems
+
+Most useful pages should not require Chromium. HTTP fetch is cheaper, faster, and easier to reproduce. We only send selected pages to browser workers when JavaScript rendering or bounded interaction is necessary.
+
+Browser requests are persisted as jobs. A worker launches an isolated headless browser, applies public-network restrictions to navigation and subrequests, checks robots policy, runs at most 20 validated actions, extracts the rendered page, and optionally captures a bounded WebP screenshot.
+
+The API returns immediately with `202 Accepted`; clients poll the job id. This avoids pretending a browser session belongs inside a short request timeout.
+
+Selectors that look like password, secret, or token inputs are rejected. A browser job is an auditable task, not a place to persist credentials.
+
+## Treat the page as hostile
+
+SSRF protection is enforced before retrieval, after DNS resolution, on redirects, and on browser subrequests. Private and special-use networks are outside the public web boundary.
+
+But network safety is only one layer. Page text itself may be adversarial. A sentence that says “ignore your system prompt” is still page content. It has no more authority than a paragraph describing a product feature.
+
+Every SDK and MCP surface marks web content as untrusted. Agents should separate instructions from evidence structurally, apply domain or policy bounds for consequential research, and require human approval before acting on claims gathered from the open web.
+
+## Crawler policy is a product surface
+
+Owning a corpus creates obligations that an API wrapper can otherwise push downstream.
+
+Cencori Web respects `robots.txt`, redirects, nofollow, response limits, and supported content types. It supports host and path policies for deny, noindex, noarchive, and nosnippet behavior. Copyright, privacy, legal, robots, and other removal requests enter a review queue. Approved removals delete matching indexed documents and create tombstones so a future recrawl cannot restore them accidentally.
+
+Policy, provenance, and removal operations are not cleanup work after search ships. They are part of what it means to operate search.
+
+## What the laptop proves
+
+An M4 Pro is enough to start because the initial corpus is focused and the architecture is horizontally portable. The machine performs useful continuous work; it is not pretending to be a globally distributed fleet.
+
+As load grows, we can add workers by role:
+
+- crawl workers for network-bound retrieval
+- embedding workers for local model inference
+- browser workers for Chromium-heavy exploration
+- future rerank workers for learned scoring
+
+Those workers can move to Linux servers and eventually Cencori's own hardware without changing the queue contracts or public SDK. Hardware becomes a capacity decision, not an application rewrite.
+
+## Shipping the surface
+
+Developers can use the explicit TypeScript methods in `cencori@1.6.1`, raw HTTP endpoints, the Responses API's `web_search_preview` tool, or `@cencori/mcp@0.7.0`.
+
+The same system serves all four surfaces. That is important: MCP is not wrapping a different search vendor, and Responses is not quietly taking a separate dependency. There is one Cencori Web data plane underneath them.
+
+We will keep expanding the corpus and publishing search-quality evaluations as it grows. The objective is not to claim that a young index has already indexed everything. It is to build the durable web substrate agents can depend on—and to own the path that makes it better.
+
+[Read the API reference →](/docs/api/web) · [Configure the MCP server →](/docs/integrations/mcp)

@@ -3,6 +3,7 @@ export { registerGatewayTools } from './tools/gateway.js';
 export { registerAgentsTools } from './tools/agents.js';
 export { registerMemoryTools } from './tools/memory.js';
 export { registerSessionsTools } from './tools/sessions.js';
+export { registerWebTools } from './tools/web.js';
 export { registerGovernanceTools } from './tools/governance.js';
 export { registerMultimodalTools } from './tools/multimodal.js';
 export { registerAudioTools } from './tools/audio.js';

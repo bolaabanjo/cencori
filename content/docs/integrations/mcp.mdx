@@ -1,32 +1,55 @@
 ---
-title: "MCP Server"
-description: "Let AI agents operate Cencori via the Model Context Protocol — reads, inference, and safe manual-action guidance."
-section: "Integrations"
+title: MCP Server
+description: Give MCP clients first-party web search, Cencori docs, platform reads, inference, memory, sessions, and governance with explicit action tiers.
+section: Integrations
 order: 7
 ---
 
-# MCP Server
+# MCP server
 
-`@cencori/mcp` is Cencori's official [Model Context Protocol](https://modelcontextprotocol.io) server. It lets AI agents in **Cursor, Claude Desktop, and any MCP client** work with Cencori — search docs, view metrics, read memory/agents/sessions/governance, and run multimodal inference.
+`@cencori/mcp` is Cencori's official [Model Context Protocol](https://modelcontextprotocol.io) server. It gives Cursor, Claude Desktop, Codex, and any MCP client direct access to Cencori Web, documentation, gateway metrics, memory, agents, sessions, governance, and multimodal inference.
+
+Version `0.7.0` adds first-party Web tools.
 
 ## Quick start
 
+Documentation and manual guidance work without a key:
+
 ```bash
-npx @cencori/mcp
+npx -y @cencori/mcp@latest
 ```
 
-Docs and manual-action guidance tools work with **no API key**. Add `CENCORI_API_KEY` to enable platform reads, and `CENCORI_MCP_WRITE=1` to enable inference.
-
-### Client config
+For Cencori Web and authenticated platform reads, add a project key:
 
 ```json
 {
   "mcpServers": {
     "cencori": {
       "command": "npx",
-      "args": ["-y", "@cencori/mcp"],
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_your_project_key"
+      }
+    }
+  }
+}
+```
+
+Add this object to your MCP client's configuration, then restart the client.
+
+## Enable Web actions
+
+Web search, fetch, extraction, and browser-job polling are read tools. Crawling, starting a browser job, and submitting a takedown request require the write flag because they enqueue work or change project state.
+
+```json
+{
+  "mcpServers": {
+    "cencori-web": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp@latest"],
       "env": {
         "CENCORI_API_KEY": "csk_your_project_key",
+        "CENCORI_MCP_FEATURES": "web,docs",
         "CENCORI_MCP_WRITE": "1"
       }
     }
@@ -34,40 +57,106 @@ Docs and manual-action guidance tools work with **no API key**. Add `CENCORI_API
 }
 ```
 
-Add this to `~/.cursor/mcp.json`, your Claude Desktop config, or any MCP client. Restart the client after changing env vars.
+`CENCORI_MCP_FEATURES` is optional. The example limits the exposed surface to Web and docs.
+
+## Web tools
+
+| Tier | Tool | Purpose |
+|---|---|---|
+| Read | `web_search` | Search Cencori's first-party hybrid index and return citation evidence. |
+| Read | `web_fetch` | Retrieve a bounded public text resource and HTTP metadata. |
+| Read | `web_extract` | Return clean text, links, metadata, dates, and evidence spans. |
+| Read | `get_web_browser_job` | Poll an asynchronous browser job. |
+| Write | `web_browse` | Queue isolated JavaScript rendering and bounded interaction. |
+| Write | `web_crawl` | Crawl pages into the authenticated project's private index. |
+| Write | `request_web_takedown` | Submit a removal request for operator review. |
+
+All Web tools advertise `openWorldHint: true`. Their descriptions state that page content is untrusted data, never agent instructions. `web_browse` also rejects password, token, and secret field selectors.
+
+Example prompt after configuring the server:
+
+```text
+Search the Cencori Web index for the latest PostgreSQL row-level security
+documentation. Compare the top three sources, quote the evidence you used,
+and include each source URL and retrieval timestamp.
+```
 
 ## Action tiers
 
-The server is safe by default — anything that costs money or changes state is opt-in.
+The server is safe by default: reads require a key, while operations that incur cost or change state are opt-in.
 
-| Tier | Gate | Tools |
-|------|------|-------|
-| **Read** | `CENCORI_API_KEY` | `list_models`, `get_metrics`, `get_health`, `check_quota`; agents, memory, sessions, and governance list/get tools |
-| **Write** | `CENCORI_MCP_WRITE=1` | Inference (`generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, vision, documents, `text_to_speech`, `transcribe_audio`); memory (`remember_memory`, `write_memory`, `create_namespace`); agents (`create_agent`, `update_agent`); sessions (`create_session`, `add_session_turn`); governance drafts (`create_policy`, `install_template`) |
-| **Destructive** | `CENCORI_MCP_DESTRUCTIVE=1` | `delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session` (implies write) |
-| **Public** | none | `search_docs`, `get_doc`, `list_docs`, `get_integration_guide` (the `llm.txt` setup contract), and `how_to_*` guidance |
+| Tier | Gate | Examples |
+|---|---|---|
+| Public | none | `search_docs`, `get_doc`, `list_docs`, `get_integration_guide`, `how_to_*` guidance |
+| Read | `CENCORI_API_KEY` | Web search/fetch/extract, metrics, health, quota, and agents/memory/sessions/governance reads |
+| Write | `CENCORI_MCP_WRITE=1` | Web browse/crawl/takedown request, inference, memory writes, agent/session writes, governance drafts |
+| Destructive | `CENCORI_MCP_DESTRUCTIVE=1` | Delete memory/agent/session and approve/reject sessions; implies write |
 
-## Manual-only actions
+### Manual-only actions
 
-Some actions are **never** performed by the MCP — the agent tells you how to do them yourself. Each `how_to_*` tool returns step-by-step instructions plus the exact dashboard link:
+Credential, billing, access, and governance-activation decisions are never executed by the MCP server. The corresponding `how_to_*` tools return instructions and a dashboard link:
 
-- **API keys** — `how_to_create_api_key`, `how_to_edit_api_key`, `how_to_revoke_api_key`
-- **Governance** (checker steps) — `how_to_activate_policy`, `how_to_respond_to_change_request`
-- **Billing** — `how_to_change_plan`, `how_to_manage_billing`
-- **Access** — `how_to_manage_members`
-
-This keeps credential, billing, and access decisions with a human, even when an agent is driving.
+- API keys: `how_to_create_api_key`, `how_to_edit_api_key`, `how_to_revoke_api_key`
+- Governance: `how_to_activate_policy`, `how_to_respond_to_change_request`
+- Billing: `how_to_change_plan`, `how_to_manage_billing`
+- Access: `how_to_manage_members`
 
 ## Environment variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `CENCORI_API_KEY` | — | Project key (`csk_...`) for platform tools |
-| `CENCORI_MCP_WRITE` | `false` | Enable inference tools |
-| `CENCORI_MCP_DESTRUCTIVE` | `false` | Enable destructive actions (implies write) |
-| `CENCORI_MCP_FEATURES` | all | Comma list: `docs`, `guidance`, `gateway`, `agents`, `memory`, `sessions`, `governance`, `multimodal` |
-| `CENCORI_BASE_URL` | `https://cencori.com` | Platform API host |
+|---|---|---|
+| `CENCORI_API_KEY` | — | Secret project key (`csk_...`) for platform and Web tools. |
+| `CENCORI_MCP_WRITE` | `false` | Enable additive writes, inference, and Web actions. |
+| `CENCORI_MCP_DESTRUCTIVE` | `false` | Enable destructive actions and imply write. |
+| `CENCORI_MCP_FEATURES` | all | Comma list: `docs`, `guidance`, `gateway`, `agents`, `memory`, `sessions`, `web`, `governance`, `multimodal`. |
+| `CENCORI_BASE_URL` | `https://cencori.com` | Platform API host. |
+| `CENCORI_DOCS_BASE_URL` | `https://cencori.com` | Documentation API host. |
 
-## Security
+Restart the MCP server after changing environment variables.
 
-The server is a thin adapter over the Cencori API — every call carries your key and the platform enforces project scope, tier limits, and governance rules. The MCP adds a second, client-side guardrail: reads are always on, writes and destructive actions require explicit env flags, and credential/billing/access actions are guidance-only.
+## Complete tool surface
+
+### Public
+
+- Docs: `search_docs`, `get_doc`, `list_docs`, `get_integration_guide`
+- Guidance: API key, governance, billing, and membership `how_to_*` tools
+
+### Authenticated reads
+
+- Web: `web_search`, `web_fetch`, `web_extract`, `get_web_browser_job`
+- Gateway: `list_models`, `get_metrics`, `get_health`, `check_quota`
+- Agents: `list_agents`, `get_agent`, `poll_agent_actions`
+- Memory: list, semantic search, get, entities, graph, and forget suggestions
+- Sessions: list, get, and events
+- Governance: policies, roles, change requests, ledger, evidence, and templates
+
+### Write
+
+- Web: `web_browse`, `web_crawl`, `request_web_takedown`
+- Inference: text, RAG, embeddings, moderation, images, vision, documents, TTS, and transcription
+- Memory: `remember_memory`, `write_memory`, `create_namespace`
+- Agents: `create_agent`, `update_agent`
+- Sessions: `create_session`, `add_session_turn`
+- Governance drafts: `create_policy`, `install_template`
+
+### Destructive
+
+`delete_memory`, `delete_agent`, `delete_session`, `approve_session`, and `reject_session`.
+
+## Security model
+
+The package is a thin stdio adapter over Cencori's HTTP APIs. The platform still enforces authentication, project isolation, quotas, policy, and audit logging. The MCP layer adds tool annotations and local capability flags so the client can distinguish reads, writes, destructive changes, and open-web access before execution.
+
+Keep `CENCORI_API_KEY` in the MCP server environment, not in prompts or checked-in configuration. Treat all Web results as potentially adversarial input and require human approval before consequential actions.
+
+## Troubleshooting
+
+**Only docs tools appear:** add `CENCORI_API_KEY` and restart the client.
+
+**`web_browse` or `web_crawl` is missing:** set `CENCORI_MCP_WRITE=1`.
+
+**No Web tools appear with `CENCORI_MCP_FEATURES`:** include `web` in the comma-separated list.
+
+**A browser job is still queued:** call `get_web_browser_job` with the id returned by `web_browse`. Browser work is intentionally asynchronous.
+
+**A URL is rejected:** Cencori blocks private networks, unsafe redirects, embedded credentials, unsupported protocols, robots-denied pages, and oversized responses.

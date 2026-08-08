@@ -186,11 +186,57 @@ test('MCP server: reads register with a key; inference is gated behind CENCORI_M
     }
     // Inference must NOT be present without the write flag.
     assert.ok(!readOnly.includes('generate_text'), 'inference should be gated');
+    for (const t of ['web_search', 'web_fetch', 'web_extract', 'get_web_browser_job']) {
+        assert.ok(readOnly.includes(t), `expected web read tool ${t}`);
+    }
+    for (const t of ['web_browse', 'web_crawl', 'request_web_takedown']) {
+        assert.ok(!readOnly.includes(t), `web write tool ${t} must be gated`);
+    }
 
     const withWrite = await toolNames({ CENCORI_API_KEY: 'csk_dummy_for_listing', CENCORI_MCP_WRITE: '1' });
     for (const t of ['generate_text', 'describe_image', 'query_document', 'create_embeddings', 'text_to_speech', 'transcribe_audio']) {
         assert.ok(withWrite.includes(t), `expected inference tool ${t} with write enabled`);
     }
+    for (const t of ['web_browse', 'web_crawl', 'request_web_takedown']) {
+        assert.ok(withWrite.includes(t), `expected web write tool ${t} with write enabled`);
+    }
+});
+
+test('MCP server: web feature can be selected independently', async () => {
+    const names = await toolNames({
+        CENCORI_API_KEY: 'csk_dummy_for_listing',
+        CENCORI_MCP_FEATURES: 'web',
+    });
+    assert.deepEqual(names.sort(), ['get_web_browser_job', 'web_extract', 'web_fetch', 'web_search']);
+
+    const withWrite = await toolNames({
+        CENCORI_API_KEY: 'csk_dummy_for_listing',
+        CENCORI_MCP_FEATURES: 'web',
+        CENCORI_MCP_WRITE: '1',
+    });
+    for (const t of ['web_search', 'web_fetch', 'web_extract', 'get_web_browser_job', 'web_browse', 'web_crawl', 'request_web_takedown']) {
+        assert.ok(withWrite.includes(t), `expected standalone web tool ${t}`);
+    }
+});
+
+test('MCP server: web tools declare open-world access and action safety', async () => {
+    await withMcpClient(
+        {
+            CENCORI_API_KEY: 'csk_dummy_for_listing',
+            CENCORI_MCP_FEATURES: 'web',
+            CENCORI_MCP_WRITE: '1',
+        },
+        async (client) => {
+            const { tools } = await client.listTools();
+            const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+            assert.equal(byName.get('web_search')?.annotations?.openWorldHint, true);
+            assert.equal(byName.get('web_search')?.annotations?.readOnlyHint, true);
+            assert.equal(byName.get('web_browse')?.annotations?.openWorldHint, true);
+            assert.equal(byName.get('web_browse')?.annotations?.readOnlyHint, false);
+            assert.equal(byName.get('request_web_takedown')?.annotations?.destructiveHint, false);
+        },
+    );
 });
 
 test('MCP server: writes need CENCORI_MCP_WRITE; deletes need CENCORI_MCP_DESTRUCTIVE', async () => {

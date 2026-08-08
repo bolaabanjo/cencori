@@ -1,0 +1,157 @@
+---
+title: "Introducing Cencori Web: First-Party Search for Agents"
+slug: "introducing-cencori-web"
+date: "2026-08-08"
+excerpt: "Search, fetch, extract, crawl, and browse the web through infrastructure Cencori owns—complete with evidence, citations, project indexes, and no third-party search API dependency."
+coverImage: "/blog/images/covers/cencori-web.svg"
+authors: ["bola"]
+tags: ["Cencori Web", "Agents", "Search", "Product"]
+category: "product"
+published: true
+---
+
+Agents need eyes.
+
+They need to find a page they have never seen, tell whether it is current, read what it actually says, follow the useful links, and show a user the evidence behind an answer. For most AI products, that ability is rented from a search API, a scraping API, a hosted browser, or all three.
+
+Today we are releasing **Cencori Web**, a first-party web intelligence layer built for agents.
+
+```ts
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({
+  apiKey: process.env.CENCORI_API_KEY,
+});
+
+const results = await cencori.web.search({
+  query: 'latest PostgreSQL row-level security documentation',
+  freshness: '30d',
+  limit: 10,
+});
+```
+
+That query does not go to Tavily, Brave, Serper, Exa, or another hosted search provider. It goes to Cencori's own corpus, retrieval system, ranking pipeline, and workers.
+
+We should not rent our eyes.
+
+## More than a search endpoint
+
+“Web search” usually hides several different jobs. We made them explicit:
+
+- **Search** finds and ranks evidence across the shared Cencori corpus and your private project index.
+- **Fetch** retrieves a bounded public text resource with deterministic metadata.
+- **Extract** turns a page into clean text, links, timestamps, and citation spans.
+- **Crawl** adds a bounded site or documentation set to your project's private index.
+- **Browse** renders JavaScript and performs a small set of isolated interactions.
+- **Evidence** binds a quote to its URL, retrieval time, and content hash.
+
+Agents need all six. Search without retrieval leaves them guessing from snippets. Retrieval without search assumes they already know the URL. Browsing without evidence makes the final answer difficult to inspect.
+
+The SDK exposes each primitive directly:
+
+```ts
+const page = await cencori.web.fetch({ url });
+const document = await cencori.web.extract({ url });
+
+await cencori.web.crawl({
+  seeds: ['https://docs.example.com'],
+  maxPages: 25,
+  maxDepth: 2,
+});
+
+const browserJob = await cencori.web.browse({
+  url: 'https://example.com/app',
+  actions: [{ type: 'waitFor', selector: 'main' }],
+});
+```
+
+## Built for evidence, not blue links
+
+A consumer search page can leave verification to the person looking at it. An agent may turn a result into a recommendation, a code change, or an action. That requires a stronger contract.
+
+Cencori Web results carry:
+
+```json
+{
+  "canonicalUrl": "https://example.com/reference",
+  "title": "API reference",
+  "snippet": "...",
+  "contentHash": "...",
+  "retrievedAt": "2026-08-08T12:00:00.000Z",
+  "evidence": {
+    "quote": "...",
+    "contentHash": "...",
+    "retrievedAt": "2026-08-08T12:00:00.000Z"
+  }
+}
+```
+
+The URL tells a user where the claim came from. The quote shows what supported it. The timestamp says when Cencori saw it. The content hash identifies the retrieved version.
+
+Pages change. Evidence should not become hand-waving when they do.
+
+## One index for the public web, another for your project
+
+Cencori operates a continuously refreshed public corpus focused first on high-value sources for machines: documentation, technical sites, research, release notes, company sites, and public knowledge sources.
+
+Your project can also crawl its own pages. Those documents are scoped to that project and become searchable alongside the shared corpus for authenticated requests.
+
+That creates a useful pattern for product teams: broad discovery from the public index, plus exact retrieval from the sources your product depends on.
+
+We are not attempting to mirror the entire internet on day one. The corpus will expand where agent workloads demonstrate value, and ranking quality will be measured against real queries rather than page count.
+
+## Search when you can, browse when you must
+
+Indexed search is fast, broad, and reusable. Browser exploration is slower and more expensive, but necessary for JavaScript-rendered pages or bounded interactions.
+
+Cencori Web keeps them separate. Search first. Select the few pages that need live exploration. Then queue an isolated browser job and poll for the result.
+
+Browser jobs support click, type, press, select, and wait actions. They enforce limits on actions, time, viewport, page size, screenshots, redirects, and network destinations. Password and secret-field interactions are rejected because browser inputs are persisted.
+
+This is web exploration as a controlled runtime primitive—not a remote desktop with an agent holding the mouse indefinitely.
+
+## The web is data, never authority
+
+A page can contain a prompt injection disguised as documentation, a system message, or an instruction to leak secrets. That text has no authority over the agent.
+
+Cencori marks retrieved content as untrusted. Fetching and browsing reject private-network destinations and unsafe redirects. Robots rules are enforced. MCP tools advertise that they reach the open world. Product developers should still keep the final boundary explicit: web content may provide evidence, but it cannot grant itself permissions or rewrite the agent's instructions.
+
+## Available through SDK, HTTP, Responses, and MCP
+
+Cencori Web is available in `cencori@1.6.1` and later:
+
+```bash
+npm install cencori@latest
+```
+
+It is also the search layer behind the Responses API's built-in `web_search_preview` tool:
+
+```ts
+const response = await cencori.ai.responses({
+  model: 'gpt-5.4',
+  input: 'Research the latest PostgreSQL release and cite your sources.',
+  tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
+});
+```
+
+And `@cencori/mcp@0.7.0` exposes `web_search`, `web_fetch`, `web_extract`, browser-job polling, crawling, browsing, and takedown requests to MCP clients.
+
+```bash
+npx -y @cencori/mcp@latest
+```
+
+## Control includes responsibility
+
+Owning the path from crawl to answer means owning the difficult operational parts too.
+
+Cencori Web includes robots enforcement, nofollow handling, canonicalization, deduplication, public-network restrictions, bounded resource use, removal requests, and tombstones that prevent approved removals from reappearing on the next crawl. Operator policies can deny indexing or enforce noindex, noarchive, and nosnippet behavior by host and path.
+
+The work continues: broader corpus coverage, stronger evaluation sets, better learned ranking, immutable evidence snapshots, and more sophisticated distributed politeness. Those layers can improve without changing the public API applications use today.
+
+## The perception layer
+
+Compute lets an agent execute. Memory lets it persist. The gateway lets it reach models safely. Web lets it observe the world outside its existing context.
+
+That makes Cencori Web more than another feature on an API checklist. It is the perception layer of the Cencori runtime.
+
+[Read the Web docs →](/docs/api/web) · [Build a research agent →](/docs/guides/build-a-web-research-agent)

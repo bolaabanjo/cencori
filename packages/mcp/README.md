@@ -1,190 +1,150 @@
 # @cencori/mcp
 
-**MCP server for Cencori — docs, gateway, memory, agents, sessions, governance, and multimodal inference for AI agents.**
+Official MCP server for Cencori: first-party web search, documentation, gateway, memory, agents, sessions, governance, and multimodal inference.
 
-Expose Cencori documentation and authenticated platform operations to AI clients (Cursor, Claude Desktop, etc.) via the [Model Context Protocol](https://modelcontextprotocol.io).
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-
----
-
-## What this package does
-
-`@cencori/mcp` is a **thin stdio adapter**. It does not embed business logic — each MCP tool maps to an existing Cencori HTTP endpoint, and the platform enforces its own auth, tier gating, and governance rules.
-
-Tools are organized into **action tiers**:
-
-| Tier | Gate | What |
-|------|------|------|
-| **Read** | API key present | metrics, health, quota, list/get across memory, sessions, agents, governance |
-| **Write** (inference) | `CENCORI_MCP_WRITE=1` | run models: chat, RAG, embeddings, vision, documents, images, moderation |
-| **Destructive** | `CENCORI_MCP_DESTRUCTIVE=1` | *(Phase 2+)* delete / approve / reject |
-| **Manual (never executed)** | — guidance only | API keys, governance activation, billing, member/access changes → `how_to_*` tools return steps + a dashboard link |
-
-Reads are safe by default. Anything that costs money or changes state is opt-in. Security-sensitive actions (API keys, billing, access, policy activation) are **never** performed by the MCP — it only tells the user how to do them.
-
----
+It is a thin stdio adapter over Cencori's public HTTP APIs. The platform enforces authentication, project isolation, quota, policy, and audit logging; the MCP server adds capability flags and tool annotations for reads, writes, destructive changes, and open-web access.
 
 ## Quick start
 
 ```bash
-npx @cencori/mcp
+npx -y @cencori/mcp@latest
 ```
 
-Docs + `how_to_*` guidance tools work with **no API key**. Add `CENCORI_API_KEY` for reads; add `CENCORI_MCP_WRITE=1` to enable inference.
-
----
-
-## Tools
-
-### Public — no API key
-
-| Tool | Description |
-|------|-------------|
-| `search_docs` / `get_doc` / `list_docs` | Search / fetch / list Cencori documentation |
-| `get_integration_guide` | Fetch the full `llm.txt` integration contract — the authoritative "how to set up Cencori in a codebase" guide |
-| `how_to_create_api_key`, `how_to_edit_api_key`, `how_to_revoke_api_key` | Guidance: API-key lifecycle (manual) |
-| `how_to_activate_policy`, `how_to_respond_to_change_request` | Guidance: governance checker steps (manual) |
-| `how_to_change_plan`, `how_to_manage_billing` | Guidance: billing / plan / credits (manual) |
-| `how_to_manage_members` | Guidance: members / roles / SSO (manual) |
-
-### Read — requires `CENCORI_API_KEY`
-
-| Area | Tools |
-|------|-------|
-| Gateway | `list_models`, `get_metrics`, `get_health`, `check_quota` |
-| Agents | `list_agents`, `get_agent`, `poll_agent_actions` |
-| Memory | `list_memories`, `search_memory`, `get_memory`, `list_memory_entities`, `get_memory_graph`, `get_forget_suggestions` |
-| Sessions | `list_sessions`, `get_session`, `get_session_events` |
-| Governance | `list_policies`, `list_roles`, `list_change_requests`, `get_governance_ledger`, `get_governance_evidence`, `list_governance_templates` |
-
-### Write — requires `CENCORI_MCP_WRITE=1`
-
-- **Inference:** `generate_text`, `generate_rag`, `create_embeddings`, `moderate_content`, `generate_image`, `describe_image`, `ocr_image`, `classify_image`, `extract_document`, `summarize_document`, `query_document`, `text_to_speech`, `transcribe_audio`.
-- **Memory:** `remember_memory`, `write_memory`, `create_namespace`.
-- **Agents:** `create_agent`, `update_agent`.
-- **Sessions:** `create_session`, `add_session_turn`.
-- **Governance (draft only):** `create_policy`, `install_template`. Policies are created as **drafts** — activation stays a manual human step (`how_to_activate_policy`).
-
-### Destructive — requires `CENCORI_MCP_DESTRUCTIVE=1` (implies write)
-
-`delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session`. All carry `destructiveHint` so clients can confirm.
-
-> Roadmap: audio (TTS/STT) once binary/multipart transport lands.
-
----
-
-## Cursor / Claude Desktop config
-
-### Docs + guidance only (zero setup)
-
-```json
-{
-  "mcpServers": {
-    "cencori": { "command": "npx", "args": ["-y", "@cencori/mcp"] }
-  }
-}
-```
-
-### Reads across the platform
+Docs and `how_to_*` guidance work without an API key. Add a project key for Web and platform reads:
 
 ```json
 {
   "mcpServers": {
     "cencori": {
       "command": "npx",
-      "args": ["-y", "@cencori/mcp"],
-      "env": { "CENCORI_API_KEY": "csk_..." }
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_..."
+      }
     }
   }
 }
 ```
 
-### Reads + inference
+Enable operations that enqueue work, incur inference cost, or change state:
+
+```json
+{
+  "CENCORI_API_KEY": "csk_...",
+  "CENCORI_MCP_WRITE": "1"
+}
+```
+
+## Cencori Web tools
+
+Version 0.7.0 adds first-party Web access. Search uses Cencori's own crawler, corpus, embeddings, and ranking pipeline—not a third-party search API.
+
+| Tier | Tools |
+|---|---|
+| Read | `web_search`, `web_fetch`, `web_extract`, `get_web_browser_job` |
+| Write | `web_browse`, `web_crawl`, `request_web_takedown` |
+
+Web tools carry `openWorldHint: true`. Returned page content is untrusted data, never instructions. Browser jobs are asynchronous; call `get_web_browser_job` with the id from `web_browse`.
+
+To expose only Web and docs:
 
 ```json
 {
   "mcpServers": {
-    "cencori": {
+    "cencori-web": {
       "command": "npx",
-      "args": ["-y", "@cencori/mcp"],
-      "env": { "CENCORI_API_KEY": "csk_...", "CENCORI_MCP_WRITE": "1" }
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_...",
+        "CENCORI_MCP_FEATURES": "web,docs",
+        "CENCORI_MCP_WRITE": "1"
+      }
     }
   }
 }
 ```
 
-See [`mcp.example.json`](./mcp.example.json) for a copy-paste template.
+## Action tiers
 
----
+| Tier | Gate | Surface |
+|---|---|---|
+| Public | none | docs search/fetch/list, `llm.txt`, and manual `how_to_*` guidance |
+| Read | `CENCORI_API_KEY` | Web reads, metrics, health, quota, agents, memory, sessions, governance |
+| Write | `CENCORI_MCP_WRITE=1` | Web actions, inference, memory/agent/session writes, governance drafts |
+| Destructive | `CENCORI_MCP_DESTRUCTIVE=1` | delete and approve/reject tools; implies write |
+
+Credential, billing, access, and governance-activation decisions are never executed. Their `how_to_*` tools only return instructions and dashboard links.
+
+## Tool surface
+
+Public:
+
+- `search_docs`, `get_doc`, `list_docs`, `get_integration_guide`
+- API key, governance, billing, and membership `how_to_*` tools
+
+Authenticated reads:
+
+- Web: search, fetch, extract, and browser-job polling
+- Gateway: models, metrics, health, and quota
+- Agents, memory, sessions, and governance list/get/search tools
+
+Write:
+
+- Web browse, project crawl, and takedown request
+- Text/RAG/embedding/moderation/image/vision/document/audio inference
+- Memory, agent, session, and governance-draft creation/update tools
+
+Destructive:
+
+- `delete_memory`, `delete_agent`, `delete_session`, `approve_session`, `reject_session`
 
 ## Environment variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `CENCORI_DOCS_BASE_URL` | No | `https://cencori.com` | Host for docs API (`/api/docs/*`) |
-| `CENCORI_BASE_URL` | No | `https://cencori.com` | Host for platform API (`/api/v1/*`, `/api/ai/*`) |
-| `CENCORI_API_KEY` | For platform tools | — | Project API key (`csk_...`). **Must be spelled `CENCORI_API_KEY`** |
-| `CENCORI_MCP_WRITE` | No | `false` | Enable inference (and, later, additive writes) |
-| `CENCORI_MCP_DESTRUCTIVE` | No | `false` | Enable destructive actions (implies `WRITE`). No effect until Phase 2 |
-| `CENCORI_MCP_FEATURES` | No | all enabled | Comma list: `docs`, `guidance`, `gateway`, `agents`, `memory`, `sessions`, `governance`, `multimodal` |
+| Variable | Default | Description |
+|---|---|---|
+| `CENCORI_API_KEY` | — | Secret project key for authenticated tools. |
+| `CENCORI_MCP_WRITE` | `false` | Enable additive writes, inference, and Web actions. |
+| `CENCORI_MCP_DESTRUCTIVE` | `false` | Enable destructive tools; implies write. |
+| `CENCORI_MCP_FEATURES` | all | `docs,guidance,gateway,agents,memory,sessions,web,governance,multimodal` |
+| `CENCORI_BASE_URL` | `https://cencori.com` | Platform API host. |
+| `CENCORI_DOCS_BASE_URL` | `https://cencori.com` | Documentation API host. |
 
-### Behavior
-
-| `CENCORI_API_KEY` | Flag | Registered |
-|-------------------|------|-----------|
-| unset | — | docs + `how_to_*` guidance only |
-| set | — | guidance + all **reads** |
-| set | `CENCORI_MCP_WRITE=1` | + **writes** (inference, memory, agents, sessions) |
-| set | `CENCORI_MCP_DESTRUCTIVE=1` | + **destructive** (delete/approve/reject); implies write |
-
-Restart the MCP server after changing env vars.
-
----
+Restart the client after changing environment variables.
 
 ## Development
 
 ```bash
 cd packages/mcp
 npm install
-npm run build   # tsup → dist/index.js (stdio entry)
-npm start       # run server on stdio
-npm test        # build + integration tests
-```
-
-### Package layout
-
-```
-src/
-├── index.ts          # stdio entrypoint
-├── server.ts         # McpServer wiring + tiered registration
-├── config.ts         # env parsing + capability flags
-├── client.ts         # PlatformClient (Bearer → /api/*, get/post/patch/del)
-├── http.ts           # shared fetch timeout + error body parsing
-├── tools.ts          # barrel exports
-├── docs/client.ts    # DocsClient (fetch → /api/docs/*)
-└── tools/
-    ├── shared.ts     # annotation tiers + jsonResult()
-    ├── docs.ts, gateway.ts, agents.ts
-    ├── memory.ts, sessions.ts, governance.ts
-    ├── multimodal.ts # inference (Write-tier)
-    └── guidance.ts   # how_to_* manual-only guidance
-test/
-└── integration.test.mjs
-```
-
-### Build notes
-
-- **Shebang:** Added by `tsup.config.ts` banner. Do not add `#!/usr/bin/env node` to `src/index.ts`.
-- **Logging:** `console.error()` only — stdout is JSON-RPC.
-- **Auth:** `Authorization: Bearer <key>` works for both `/api/v1/*` and `/api/ai/*` (gateway accepts it alongside `CENCORI_API_KEY`).
-
----
-
-## Testing
-
-```bash
+npm run build
 npm test
 ```
 
-Runs HTTP + MCP-stdio tests. Tool-composition/tiering tests run offline (no key). Set `CENCORI_API_KEY` to also run authenticated read tests.
+Package layout:
+
+```text
+src/
+├── index.ts
+├── server.ts
+├── config.ts
+├── client.ts
+├── docs/client.ts
+└── tools/
+    ├── web.ts
+    ├── docs.ts
+    ├── gateway.ts
+    ├── agents.ts
+    ├── memory.ts
+    ├── sessions.ts
+    ├── governance.ts
+    ├── multimodal.ts
+    ├── audio.ts
+    ├── guidance.ts
+    └── shared.ts
+```
+
+- stdout is reserved for JSON-RPC; operational logging must use stderr.
+- The built artifact receives its shebang from `tsup.config.ts`.
+- `Authorization: Bearer <key>` is used for Cencori API calls.
+
+Full documentation: https://cencori.com/docs/integrations/mcp

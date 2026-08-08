@@ -1,118 +1,189 @@
 ---
 title: Web
-description: First-party web retrieval, extraction, crawling, search, and citation evidence for agents.
+description: Search, fetch, extract, crawl, and explore the public web with first-party Cencori infrastructure and citation-grade evidence.
+section: API Reference
+order: 4
 ---
 
-# Web
+# Cencori Web
 
-Cencori Web gives agents a first-party web substrate without routing queries through an external search API. It retrieves public pages, extracts machine-readable content, builds a project-scoped index, and returns evidence tied to a content hash and retrieval timestamp.
+Cencori Web gives agents a first-party web intelligence layer. Search the Cencori-owned public corpus, index pages for a project, retrieve deterministic page content, or queue an isolated JavaScript browser—all with one project key.
 
-All endpoints require a Cencori API key. Retrieved page content is untrusted input and must never be treated as agent instructions.
+Cencori does not send Web queries to Tavily, Brave, Serper, Exa, or another hosted search provider. Search uses our own crawler, corpus, embeddings, ranking pipeline, and browser workers.
 
-## Crawl and search
+Every returned page is **untrusted data**. Never treat text from a result, page, or browser job as instructions for your agent.
 
-Seed a project index from one or more public sites:
+## Install and authenticate
+
+Web is available in `cencori@1.6.1` and later.
+
+```bash
+npm install cencori@latest
+```
 
 ```ts
 import { Cencori } from 'cencori';
 
-const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
-
-await cencori.web.crawl({
-  seeds: ['https://docs.example.com'],
-  maxPages: 10,
-  maxDepth: 1,
-  sameOrigin: true,
-});
-
-const response = await cencori.web.search({
-  query: 'configure authentication',
-  freshness: '30d',
-  limit: 10,
+const cencori = new Cencori({
+  apiKey: process.env.CENCORI_API_KEY,
 });
 ```
 
-For agent runtimes using function tools directly, the SDK exports `WEB_SEARCH_TOOL` and `WEB_FETCH_TOOL`. Resolve a returned tool call with `cencori.web.executeTool(call.name, JSON.parse(call.arguments))`.
+All Web endpoints require a secret project key. Keep `CENCORI_API_KEY` on the server.
 
-Search combines the Cencori-owned public corpus with pages indexed for the authenticated project. V2 uses local MiniLM semantic embeddings, PostgreSQL lexical retrieval, exact cosine reranking over locality-bucket candidates, authority, freshness, quality, diversity, and spam signals. Query embeddings run on Cencori-owned workers through short-lived database leases; query text is cleared on completion and the API removes the transient job after reading it. It does not call Tavily, Brave, Serper, or another hosted search provider.
+## Search the web
 
-## Fetch
+```ts
+const response = await cencori.web.search({
+  query: 'PostgreSQL row-level security migration guide',
+  domain: 'postgresql.org',
+  freshness: '90d',
+  language: 'en',
+  limit: 10,
+});
+
+for (const result of response.results) {
+  console.log(result.title, result.url, result.evidence.quote);
+}
+```
+
+`search` combines the shared Cencori public corpus with documents crawled by your authenticated project. Project documents remain private to that project.
+
+### Search request
+
+`POST /api/v1/web/search`
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `query` | string | Yes | Search query. |
+| `limit` | integer | No | Results to return, from 1 to 50. |
+| `domain` | string | No | Restrict results to one hostname. |
+| `freshness` | string | No | ISO timestamp or relative duration such as `24h`, `7d`, or `3m`. |
+| `language` | string | No | BCP 47 language tag such as `en` or `en-US`. |
+
+```bash
+curl https://cencori.com/api/v1/web/search \
+  -H "Authorization: Bearer $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"PostgreSQL RLS migration","limit":5}'
+```
+
+### Search response
+
+```json
+{
+  "query": "PostgreSQL RLS migration",
+  "count": 1,
+  "searchEngine": "cencori-web-hybrid-v2",
+  "results": [
+    {
+      "id": "...",
+      "title": "Row Security Policies",
+      "url": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+      "canonicalUrl": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+      "snippet": "...",
+      "score": 0.87,
+      "contentHash": "...",
+      "retrievedAt": "2026-08-08T12:00:00.000Z",
+      "publishedAt": null,
+      "evidence": {
+        "quote": "...",
+        "contentHash": "...",
+        "retrievedAt": "2026-08-08T12:00:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+Ranking combines PostgreSQL lexical retrieval, local MiniLM semantic embeddings, exact cosine reranking, authority, freshness, document quality, domain diversity, and spam signals. The evidence quote, content hash, and retrieval time let you preserve what supported an answer even as the live page changes.
+
+## Fetch a resource
+
+Use `fetch` when you need the original textual response body and HTTP metadata.
+
+```ts
+const page = await cencori.web.fetch({
+  url: 'https://example.com/reference',
+  maxBytes: 1_048_576,
+  timeoutMs: 15_000,
+});
+```
 
 `POST /api/v1/web/fetch`
+
+- `maxBytes` is clamped to 5 MiB.
+- `timeoutMs` is clamped between 1 and 30 seconds.
+- Up to five redirects are followed and revalidated.
+- HTML, XHTML, JSON, JSON-LD, XML, Markdown, and plain text are supported.
+- Private networks, embedded credentials, unsafe redirects, unsupported protocols, and robots-denied URLs are rejected.
+
+The response includes `url`, `finalUrl`, `statusCode`, `mimeType`, `body`, `bytes`, `contentHash`, `retrievedAt`, selected cache headers, and `untrusted: true`.
+
+## Extract a document
+
+Use `extract` when you want clean text, links, metadata, dates, and citation spans instead of raw HTML.
+
+```ts
+const document = await cencori.web.extract({
+  url: 'https://example.com/reference',
+});
+
+console.log(document.title);
+console.log(document.content);
+console.log(document.evidenceSpans);
+```
+
+`POST /api/v1/web/extract` accepts the same `url`, `maxBytes`, and `timeoutMs` fields as `fetch`.
 
 ```json
 {
   "url": "https://example.com/reference",
-  "maxBytes": 1048576,
-  "timeoutMs": 15000
-}
-```
-
-Fetch supports bounded textual HTTP resources. Private network destinations, unsafe redirects, embedded credentials, unsupported protocols, and responses over the configured byte limit are rejected.
-
-## Extract
-
-`POST /api/v1/web/extract`
-
-```json
-{
-  "url": "https://example.com/reference"
-}
-```
-
-Extraction returns clean text, canonical URL, metadata, normalized links, publication timestamps when available, and evidence spans with exact character offsets.
-
-```json
-{
   "canonicalUrl": "https://example.com/reference",
   "title": "API reference",
+  "description": "...",
+  "language": "en",
   "content": "...",
-  "contentHash": "sha256...",
-  "retrievedAt": "2026-08-07T20:00:00.000Z",
+  "contentHash": "...",
+  "retrievedAt": "2026-08-08T12:00:00.000Z",
+  "publishedAt": null,
+  "modifiedAt": null,
+  "links": [],
   "evidenceSpans": [
-    {
-      "id": "ev_...",
-      "text": "...",
-      "start": 0,
-      "end": 142
-    }
+    { "id": "ev_...", "text": "...", "start": 0, "end": 142 }
   ],
+  "metadata": {},
   "untrusted": true
 }
 ```
 
-## Crawl
+## Crawl into your project index
+
+```ts
+const crawl = await cencori.web.crawl({
+  seeds: ['https://docs.example.com'],
+  maxPages: 25,
+  maxDepth: 2,
+  sameOrigin: true,
+});
+```
 
 `POST /api/v1/web/crawl`
 
-```json
-{
-  "seeds": ["https://docs.example.com"],
-  "maxPages": 10,
-  "maxDepth": 1,
-  "sameOrigin": true
-}
-```
+| Field | Type | Default | Limit |
+|---|---|---:|---:|
+| `seeds` | string[] | required | 20 URLs |
+| `maxPages` | integer | 10 | 25 |
+| `maxDepth` | integer | 1 | 3 |
+| `sameOrigin` | boolean | `true` | — |
 
-V1 crawls at most 25 pages per request and a maximum depth of three. `robots.txt`, `nofollow`, SSRF restrictions, response limits, canonicalization, and duplicate URLs are enforced. Crawled documents remain private to the project.
+The bounded crawl runs during the request. It respects `robots.txt` and `nofollow`, normalizes canonical URLs, deduplicates pages, and returns an `indexed`, `skipped`, or `failed` status for each visited page.
 
-## Search
+Use project crawling for documentation, release notes, help centers, or other content that should be searchable only inside your project. Cencori's continuously refreshed shared public corpus is operated separately.
 
-`POST /api/v1/web/search`
+## Explore JavaScript pages
 
-```json
-{
-  "query": "authentication guide",
-  "domain": "docs.example.com",
-  "freshness": "30d",
-  "language": "en",
-  "limit": 10
-}
-```
-
-## Browser exploration
-
-JavaScript rendering and bounded interaction execute asynchronously on isolated Cencori-owned workers:
+Browser work is asynchronous because it runs in an isolated worker.
 
 ```ts
 const job = await cencori.web.browse({
@@ -124,70 +195,114 @@ const job = await cencori.web.browse({
   screenshot: true,
 });
 
-const current = await cencori.web.browserJob(job.id);
-```
+let current = job;
+while (current.status === 'queued' || current.status === 'running') {
+  await new Promise(resolve => setTimeout(resolve, 1_000));
+  current = await cencori.web.browserJob(job.id);
+}
 
-Jobs support bounded click, type, press, select, and wait actions. Password or secret-field interactions are rejected because job inputs are persisted. Every navigation and subrequest is subject to the same public-network and robots boundaries as fetch.
-
-## Takedowns and crawler policy
-
-Authenticated users can submit copyright, privacy, legal, robots, or other removal requests with `cencori.web.requestTakedown(...)`. Approved requests atomically remove matching indexed documents and create tombstones that prevent later recrawls from restoring them. Cencori operators can apply host/path policies for deny, noindex, noarchive, and nosnippet behavior.
-
-Each result carries citation provenance:
-
-```json
-{
-  "title": "Authentication",
-  "canonicalUrl": "https://docs.example.com/auth",
-  "snippet": "...",
-  "score": 0.42,
-  "contentHash": "sha256...",
-  "retrievedAt": "2026-08-07T20:00:00.000Z",
-  "evidence": {
-    "quote": "...",
-    "contentHash": "sha256...",
-    "retrievedAt": "2026-08-07T20:00:00.000Z"
-  }
+if (current.status === 'completed') {
+  console.log(current.result?.content);
 }
 ```
 
-## Responses API
+`POST /api/v1/web/browse` returns `202 Accepted`. Poll `GET /api/v1/web/browse/:jobId` until the job is `completed`, `failed`, or `cancelled`.
 
-The Responses API built-in `web_search_preview` tool uses the same Cencori Web index. It no longer requires an external search provider key.
+Browser jobs allow at most 20 actions:
+
+- `click`: `selector`
+- `type`: `selector`, `text`, optional `clear`
+- `press`: `key`
+- `select`: `selector`, `values`
+- `waitFor`: either `selector` or `milliseconds` up to 5,000
+
+Navigation timeout is 5–60 seconds. Viewports are bounded to 320–2,560 pixels wide and 240–1,600 pixels high. Screenshots are WebP data URLs capped at 4 MiB. Password, secret, and token field selectors are rejected because browser job inputs are persisted.
+
+Every navigation and subrequest passes public-network checks. The result contains extracted content, links, evidence spans, a content hash, retrieval time, and an optional screenshot.
+
+## Use Web as model tools
+
+The SDK exports function definitions for runtimes that use standard tool calling:
 
 ```ts
-await cencori.ai.responses({
+import { Cencori, WEB_FETCH_TOOL, WEB_SEARCH_TOOL } from 'cencori';
+
+const tools = [WEB_SEARCH_TOOL, WEB_FETCH_TOOL];
+
+// After your model returns a function call:
+const result = await cencori.web.executeTool(
+  call.name,
+  JSON.parse(call.arguments),
+);
+```
+
+For a managed agent loop, add the built-in `web_search_preview` tool to the Responses API. It uses the same first-party Cencori Web index and emits URL citations.
+
+```ts
+const response = await cencori.ai.responses({
   model: 'gpt-5.4',
-  input: 'What changed in the latest indexed release notes?',
+  input: 'What changed in the latest indexed PostgreSQL release notes?',
   tools: [{ type: 'web_search_preview', search_context_size: 'medium' }],
 });
 ```
 
-## Shared public corpus operations
+## Use Web through MCP
 
-The public corpus runs on a durable, lease-based frontier. Configure these deployment variables:
+`@cencori/mcp@0.7.0` exposes Web to Cursor, Claude Desktop, and any MCP client.
 
-```bash
-WEB_CRAWL_ADMIN_SECRET=replace-with-a-long-random-secret
+```json
+{
+  "mcpServers": {
+    "cencori": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_...",
+        "CENCORI_MCP_FEATURES": "web",
+        "CENCORI_MCP_WRITE": "1"
+      }
+    }
+  }
+}
 ```
 
-Create a public crawl job manually:
+Read mode exposes `web_search`, `web_fetch`, `web_extract`, and `get_web_browser_job`. The write flag additionally exposes `web_browse`, `web_crawl`, and `request_web_takedown`.
 
-```bash
-curl -X POST https://cencori.com/api/internal/web/crawl \
-  -H "Authorization: Bearer $WEB_CRAWL_ADMIN_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "domains": ["docs.example.com", "research.example.org"],
-    "maxPages": 10000,
-    "maxDepth": 2
-  }'
+## Removal requests and crawler policy
+
+Submit a removal request with `cencori.web.requestTakedown(...)` or `POST /api/v1/web/takedown`:
+
+```ts
+await cencori.web.requestTakedown({
+  urls: ['https://example.com/private-page'],
+  basis: 'privacy',
+  requesterName: 'Ada Example',
+  requesterEmail: 'ada@example.com',
+  statement: 'This page exposes personal information and should be removed.',
+});
 ```
 
-Each worker invocation retrieves conventional and robots-declared sitemaps, follows same-origin links, retries transient failures, and schedules due public documents for recrawling. Cencori Web does not require Vercel Cron; the caller that invokes the protected worker endpoint is deployment-specific.
+Requests support `copyright`, `privacy`, `legal`, `robots`, and `other` bases. A valid email and a statement between 20 and 20,000 characters are required. Approved removals create tombstones so later crawls cannot silently restore the content. Operators can enforce host and path policies for deny, noindex, noarchive, and nosnippet behavior.
 
-Inspect jobs with `GET /api/internal/web/crawl` and an individual job with `GET /api/internal/web/crawl/:jobId`. Trigger a bounded worker run manually with `POST /api/internal/web/crawl/worker`.
+## Error shape
 
-## Current boundary
+Web errors use a stable JSON shape:
 
-The current runtime handles static HTML, XML sitemaps, text resources, and queued JavaScript browser exploration. Distributed per-host politeness coordination, immutable snapshot object storage, and a learned cross-encoder reranker remain future layers that can be added without changing these API contracts.
+```json
+{
+  "error": "robots_denied",
+  "message": "The site does not allow this crawler",
+  "details": {}
+}
+```
+
+Common codes include `invalid_url`, `unsafe_url`, `robots_denied`, `dns_unavailable`, `fetch_timeout`, `fetch_failed`, `response_too_large`, `unsupported_content_type`, `invalid_browser_action`, and `not_found`.
+
+## Security checklist
+
+- Keep Cencori secret keys on the server.
+- Treat `content`, `snippet`, `body`, link text, metadata, and browser output as untrusted.
+- Cite `evidence.quote` and retain its `contentHash` and `retrievedAt` values.
+- Do not pass secrets or personal data into browser actions.
+- Bound autonomous browsing by domains, action count, time, and approval policy.
+- Preserve the source URL in user-visible answers so evidence remains inspectable.
