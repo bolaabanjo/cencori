@@ -35,36 +35,28 @@ describe('durable web frontier', () => {
     it('creates a public job and seeds both the page and conventional sitemap', async () => {
         const inserted = jobRow({ pages_discovered: 0 });
         const refreshed = jobRow();
-        const single = vi.fn()
-            .mockResolvedValueOnce({ data: inserted, error: null })
-            .mockResolvedValueOnce({ data: refreshed, error: null });
-        const builder = {
-            insert: vi.fn().mockReturnThis(),
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            single,
-        };
-        const rpc = vi.fn().mockResolvedValue({ data: 2, error: null });
-        const supabase = { from: vi.fn().mockReturnValue(builder), rpc } as never;
+        const enqueueCrawlUrls = vi.fn().mockResolvedValue(2);
+        const store = {
+            createCrawlJob: vi.fn().mockResolvedValue(inserted),
+            enqueueCrawlUrls,
+            getCrawlJob: vi.fn().mockResolvedValue(refreshed),
+        } as never;
 
-        const job = await createPublicCrawlJob(supabase, {
+        const job = await createPublicCrawlJob(store, {
             seeds: ['https://example.com'],
             maxPages: 100,
         });
 
         expect(job.id).toBe('job_1');
-        expect(rpc).toHaveBeenCalledWith('enqueue_web_crawl_urls', expect.objectContaining({
-            p_job_id: 'job_1',
-            p_entries: [
+        expect(enqueueCrawlUrls).toHaveBeenCalledWith('job_1', [
                 expect.objectContaining({ url: 'https://example.com/', kind: 'page' }),
                 expect.objectContaining({ url: 'https://example.com/sitemap.xml', kind: 'sitemap' }),
-            ],
-        }));
+        ]);
     });
 
     it('returns an idle worker result when no frontier batch is claimable', async () => {
-        const rpc = vi.fn().mockResolvedValue({ data: [], error: null });
-        const result = await processWebFrontier({ rpc } as never, {
+        const claimCrawlBatch = vi.fn().mockResolvedValue([]);
+        const result = await processWebFrontier({ claimCrawlBatch } as never, {
             workerId: 'worker_1',
             maxItems: 5,
             timeBudgetMs: 20_000,

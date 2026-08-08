@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { authorizeWebCrawlAdmin } from '@/lib/web/internal-auth';
 import { createPublicCrawlJob, listPublicCrawlJobs } from '@/lib/web/frontier';
 import { WebRuntimeError } from '@/lib/web/errors';
+import { createWebDataStore } from '@/lib/web/store';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     }
     try {
         const limit = Number(new URL(req.url).searchParams.get('limit') || 50);
-        return NextResponse.json({ jobs: await listPublicCrawlJobs(createAdminClient(), limit) });
+        return NextResponse.json({ jobs: await listPublicCrawlJobs(createWebDataStore(createAdminClient()), limit) });
     } catch (error) {
         return errorResponse(error);
     }
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
             seeds.push(`https://${value}/`);
         }
 
-        const job = await createPublicCrawlJob(createAdminClient(), {
+        const job = await createPublicCrawlJob(createWebDataStore(createAdminClient()), {
             seeds,
             maxPages: typeof body.maxPages === 'number' ? body.maxPages : undefined,
             maxFrontier: typeof body.maxFrontier === 'number' ? body.maxFrontier : undefined,

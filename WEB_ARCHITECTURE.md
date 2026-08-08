@@ -25,6 +25,8 @@ Page content is hostile data. Retrieval rejects local, private, reserved, creden
 
 ## Storage boundary
 
+Cencori Web uses a domain-level data-store interface with a direct `pg` implementation. `CENCORI_WEB_DATABASE_URL` points the worker and API data path at vanilla Cencori-owned PostgreSQL. The Supabase adapter is a temporary fallback for deployments that have not moved the Web database yet; Supabase is not required by the crawler schema, leasing functions, index, or ranking path.
+
 `web_documents.collection_id` makes corpus ownership explicit:
 
 - `public` is Cencori's shared corpus and can only be populated by internal service-role jobs.
@@ -47,13 +49,12 @@ Discovery sources include:
 
 Frontier and page budgets are separate so large sitemaps cannot bypass the document limit. Retries use exponential delay, hard failures become terminal, and exhausting a page budget closes the unclaimed frontier tail.
 
-Worker execution is deliberately platform-neutral. A protected invocation of `POST /api/internal/web/crawl/worker` schedules due recrawls, claims a bounded batch, processes it, and exits. The durable database frontier does not assume Vercel Cron, Cencori Compute, or any particular scheduler.
+Worker execution is deliberately platform-neutral. The standalone Node worker runs a continuous claim loop, schedules recrawls, backs off while idle, and shuts down cleanly on process signals. The protected `POST /api/internal/web/crawl/worker` remains available for bounded operator runs. Native macOS `launchd` supervisors keep both PostgreSQL and the worker alive without Vercel Cron, Cencori Compute, or a hosted scheduler.
 
 ## Next layers
 
-1. A standalone continuously running worker process owned by Cencori.
-2. Per-host distributed politeness budgets and adaptive crawl-delay enforcement.
-3. An isolated browser pool for JavaScript pages, screenshots, and interaction.
-4. Content chunking, dense retrieval, learned reranking, authority, diversity, and spam signals.
-5. Snapshot/object storage for immutable raw responses and citation replay.
-6. Vertical indexes for code, documentation, research, news, and company intelligence.
+1. Per-host distributed politeness budgets and adaptive crawl-delay enforcement.
+2. An isolated browser pool for JavaScript pages, screenshots, and interaction.
+3. Content chunking, dense retrieval, learned reranking, authority, diversity, and spam signals.
+4. Snapshot/object storage for immutable raw responses and citation replay.
+5. Vertical indexes for code, documentation, research, news, and company intelligence.

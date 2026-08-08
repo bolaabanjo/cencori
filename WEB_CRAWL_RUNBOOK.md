@@ -6,6 +6,42 @@
 2. Set `WEB_CRAWL_ADMIN_SECRET` to a long random secret.
 3. Deploy the API and seed the initial corpus explicitly.
 
+## Owned PostgreSQL on macOS
+
+Cencori Web can run against vanilla PostgreSQL without Supabase. With Homebrew PostgreSQL installed:
+
+```bash
+brew services start postgresql@14
+createdb cencori_web
+psql -v ON_ERROR_STOP=1 -d cencori_web -f database/web/bootstrap.sql
+```
+
+If Homebrew Services is unavailable, install Cencori's native per-user supervisor after the database has been initialized:
+
+```bash
+npm run web:db:install
+npm run web:db:status
+```
+
+`web:db:uninstall` stops the service but deliberately preserves the PostgreSQL data directory.
+
+Create an ignored `.env.web.local` file used only by the crawler tools:
+
+```bash
+CENCORI_WEB_DATABASE_URL=postgresql://localhost/cencori_web
+CENCORI_WEB_DATABASE_POOL_SIZE=10
+```
+
+`CENCORI_WEB_STORE` can explicitly select `postgres` or `supabase`; its default is `auto`. The explicit selector allows two workers built from the same artifact to run side by side even when `.env.web.local` configures owned PostgreSQL.
+
+When `CENCORI_WEB_DATABASE_URL` is set, the worker, seed command, authenticated search route, project crawl route, and internal crawl APIs use the direct PostgreSQL store. Supabase remains only in the existing request authentication/control-plane path. When it is unset, Web temporarily falls back to the existing Supabase database for a reversible migration.
+
+Run the local application with the owned Web database environment:
+
+```bash
+npm run dev:web
+```
+
 There is no Vercel Cron dependency. The standalone crawler claims work directly from PostgreSQL and runs on any Node 20+ machine.
 
 ## Run continuously on a Mac or Linux host
@@ -36,10 +72,25 @@ npm run web:worker:install
 npm run web:worker:status
 ```
 
+The default `owned` profile uses `CENCORI_WEB_DATABASE_URL` from `.env.web.local`. During the temporary production fallback, install a second worker that explicitly targets the Supabase corpus:
+
+```bash
+npm run web:worker:production:install
+npm run web:worker:production:status
+```
+
+The services are independent:
+
+- `com.cencori.web-crawler` writes to owned PostgreSQL.
+- `com.cencori.web-crawler-production` writes to the temporary Supabase production corpus.
+
+The production profile stores only `CENCORI_WEB_STORE=supabase` in its plist. It reads the existing Supabase credentials from `.env.local`; no credentials are copied into the service definition.
+
 The generated service contains no credentials. It starts the repository's built worker, which loads secrets from `.env.local`, and writes logs under `~/Library/Logs/Cencori/`. To stop and remove it:
 
 ```bash
 npm run web:worker:uninstall
+npm run web:worker:production:uninstall
 ```
 
 The process handles `SIGINT` and `SIGTERM`, stops claiming new batches, and emits JSON-line logs suitable for a local terminal, `launchd`, systemd, or a container log collector. For a single diagnostic pass:
@@ -61,6 +112,14 @@ caffeinate -i npm run web:worker
 `caffeinate` is not a reliable closed-lid server mode. For continuous crawling with the lid closed, use Apple's supported clamshell setup or move the same worker artifact to an always-on Mac, Linux server, or Cencori-owned host.
 
 ## Seed the public corpus
+
+From a trusted crawler host with the Supabase service-role environment:
+
+```bash
+npm run web:seed -- --max-pages=250 --max-frontier=5000 --max-depth=2 https://docs.example.com/
+```
+
+This is the preferred path for the standalone worker deployment. Alternatively, use the protected internal API:
 
 ```bash
 curl -X POST "$CENCORI_ORIGIN/api/internal/web/crawl" \
@@ -109,3 +168,9 @@ Workers use job and frontier leases. A terminated process does not require manua
 ## Search verification
 
 After `pagesIndexed` increases, any authenticated project can search the shared corpus through `/api/v1/web/search` or `cencori.web.search(...)`. Public results are combined with that project's private crawl collection.
+
+The trusted-host query command tests the owned index directly:
+
+```bash
+npm run web:query -- --domain=cencori.com --limit=5 "AI gateway"
+```

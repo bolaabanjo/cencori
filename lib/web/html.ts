@@ -96,6 +96,18 @@ function parseDate(value: string | null): string | null {
     return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
+function comparablePath(pathname: string): string {
+    const normalized = pathname.replace(/\/{2,}/g, '/').replace(/\/$/, '');
+    return normalized || '/';
+}
+
+function canonicalMatchesFetchedPage(candidate: string, finalUrl: string): boolean {
+    const canonical = new URL(candidate);
+    const fetched = new URL(finalUrl);
+    return canonical.origin === fetched.origin
+        && comparablePath(canonical.pathname) === comparablePath(fetched.pathname);
+}
+
 function buildEvidenceSpans(blocks: string[]): { content: string; spans: WebEvidenceSpan[] } {
     let content = '';
     const spans: WebEvidenceSpan[] = [];
@@ -135,13 +147,21 @@ function extractHtml(resource: FetchedWebResource): ExtractedWebDocument {
         element.tagName === 'link'
         && (attr(element, 'rel') || '').toLowerCase().split(/\s+/).includes('canonical')
     );
-    let canonicalUrl = resource.finalUrl;
+    let canonicalUrl = normalizeWebUrl(resource.finalUrl);
+    let declaredCanonicalUrl: string | null = null;
     const canonicalHref = canonicalElement ? attr(canonicalElement, 'href') : null;
     if (canonicalHref) {
         try {
-            canonicalUrl = normalizeWebUrl(canonicalHref, resource.finalUrl);
+            declaredCanonicalUrl = normalizeWebUrl(canonicalHref, resource.finalUrl);
+            // A page may remove tracking parameters through its canonical URL,
+            // but a cross-path canonical is not safe as a storage identity. A
+            // broken site-wide canonical would otherwise collapse the corpus
+            // into one row. Preserve it as metadata for later dedup analysis.
+            if (canonicalMatchesFetchedPage(declaredCanonicalUrl, resource.finalUrl)) {
+                canonicalUrl = declaredCanonicalUrl;
+            }
         } catch {
-            canonicalUrl = resource.finalUrl;
+            declaredCanonicalUrl = null;
         }
     }
 
@@ -181,6 +201,11 @@ function extractHtml(resource: FetchedWebResource): ExtractedWebDocument {
     const publishedAt = DATE_META_KEYS.map(key => parseDate(metadata.get(key) || null)).find(Boolean) || null;
     const modifiedAt = MODIFIED_META_KEYS.map(key => parseDate(metadata.get(key) || null)).find(Boolean) || null;
 
+    const extractedMetadata = Object.fromEntries([...metadata.entries()].slice(0, 100));
+    if (declaredCanonicalUrl && declaredCanonicalUrl !== canonicalUrl) {
+        extractedMetadata.declaredCanonicalUrl = declaredCanonicalUrl;
+    }
+
     return {
         url: resource.url,
         canonicalUrl,
@@ -196,7 +221,7 @@ function extractHtml(resource: FetchedWebResource): ExtractedWebDocument {
         modifiedAt,
         links,
         evidenceSpans: spans,
-        metadata: Object.fromEntries([...metadata.entries()].slice(0, 100)),
+        metadata: extractedMetadata,
     };
 }
 

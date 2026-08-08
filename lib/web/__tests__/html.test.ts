@@ -69,4 +69,20 @@ describe('extractWebDocument', () => {
         expect(result.links).toEqual([]);
         expect(result.canonicalUrl).toBe('https://example.com/docs');
     });
+
+    it('does not let a broken cross-path canonical collapse distinct pages', () => {
+        const result = extractWebDocument(resource(`
+            <!doctype html>
+            <html>
+              <head>
+                <title>Documentation page</title>
+                <link rel="canonical" href="/">
+              </head>
+              <body><main><p>This documentation page contains independently indexable content.</p></main></body>
+            </html>
+        `));
+
+        expect(result.canonicalUrl).toBe('https://example.com/docs');
+        expect(result.metadata.declaredCanonicalUrl).toBe('https://example.com/');
+    });
 });

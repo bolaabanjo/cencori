@@ -6,33 +6,28 @@ import { nextPublicRecrawlAt, searchWebIndex } from '@/lib/web/index';
 
 describe('searchWebIndex', () => {
     it('scopes the RPC to the project and returns evidence provenance', async () => {
-        const rpc = vi.fn().mockResolvedValue({
-            data: [{
+        const searchDocuments = vi.fn().mockResolvedValue([{
                 id: 'doc_1',
                 title: 'Cencori Web',
                 url: 'https://example.com/page',
                 canonical_url: 'https://example.com/page',
-                snippet: ' Evidence   agents can inspect. ',
+                snippet: ' <b>Evidence</b>   agents can inspect. ',
                 score: 0.75,
                 content_hash: 'hash_1',
                 retrieved_at: '2026-08-07T12:00:00.000Z',
                 published_at: '2026-08-01T12:00:00.000Z',
-            }],
-            error: null,
-        });
-        const supabase = { rpc } as never;
+            }]);
+        const store = { searchDocuments } as never;
 
-        const results = await searchWebIndex(supabase, 'project_1', 'agent evidence', {
+        const results = await searchWebIndex(store, 'project_1', 'agent evidence', {
             limit: 5,
             domain: 'https://Example.com/docs',
             freshness: '7d',
         });
 
-        expect(rpc).toHaveBeenCalledWith('search_cencori_web', expect.objectContaining({
-            p_project_id: 'project_1',
-            p_query: 'agent evidence',
-            p_limit: 5,
-            p_domain: 'example.com',
+        expect(searchDocuments).toHaveBeenCalledWith('project_1', 'agent evidence', expect.objectContaining({
+            limit: 5,
+            domain: 'example.com',
         }));
         expect(results[0]).toMatchObject({
             canonicalUrl: 'https://example.com/page',

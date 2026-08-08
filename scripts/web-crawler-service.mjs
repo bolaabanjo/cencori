@@ -6,7 +6,27 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-const label = 'com.cencori.web-crawler';
+const profiles = {
+    owned: {
+        label: 'com.cencori.web-crawler',
+        logName: 'web-crawler',
+        environment: {},
+    },
+    production: {
+        label: 'com.cencori.web-crawler-production',
+        logName: 'web-crawler-production',
+        environment: { CENCORI_WEB_STORE: 'supabase' },
+    },
+};
+const command = process.argv[2];
+const profileName = process.argv[3] || 'owned';
+const profile = profiles[profileName];
+if (!profile) {
+    process.stderr.write(`Unknown worker profile: ${profileName}\n`);
+    process.stderr.write('Profiles: owned, production\n');
+    process.exit(1);
+}
+const { label } = profile;
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const artifact = path.join(repository, 'dist-workers', 'web-crawler.mjs');
 const nodeExecutable = (() => {
@@ -32,6 +52,12 @@ function xml(value) {
 }
 
 function plist() {
+    const environmentEntries = Object.entries(profile.environment)
+        .map(([key, value]) => `        <key>${xml(key)}</key>\n        <string>${xml(value)}</string>`)
+        .join('\n');
+    const environmentBlock = environmentEntries
+        ? `    <key>EnvironmentVariables</key>\n    <dict>\n${environmentEntries}\n    </dict>\n`
+        : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -45,7 +71,7 @@ function plist() {
     </array>
     <key>WorkingDirectory</key>
     <string>${xml(repository)}</string>
-    <key>RunAtLoad</key>
+${environmentBlock}    <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
@@ -58,9 +84,9 @@ function plist() {
     <key>LowPriorityIO</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>${xml(path.join(logsDirectory, 'web-crawler.log'))}</string>
+    <string>${xml(path.join(logsDirectory, `${profile.logName}.log`))}</string>
     <key>StandardErrorPath</key>
-    <string>${xml(path.join(logsDirectory, 'web-crawler.error.log'))}</string>
+    <string>${xml(path.join(logsDirectory, `${profile.logName}.error.log`))}</string>
 </dict>
 </plist>
 `;
@@ -89,7 +115,6 @@ async function install() {
     bootoutIfLoaded();
     await rename(temporaryPath, plistPath);
     launchctl('bootstrap', launchDomain, plistPath);
-    launchctl('kickstart', '-k', serviceTarget);
     process.stdout.write(`Installed and started ${label}\nLogs: ${logsDirectory}\n`);
 }
 
@@ -112,11 +137,10 @@ function status() {
     }
 }
 
-const command = process.argv[2];
 if (command === 'install') await install();
 else if (command === 'uninstall') await uninstall();
 else if (command === 'status') status();
 else {
-    process.stderr.write('Usage: node scripts/web-crawler-service.mjs <install|status|uninstall>\n');
+    process.stderr.write('Usage: node scripts/web-crawler-service.mjs <install|status|uninstall> [owned|production]\n');
     process.exitCode = 1;
 }

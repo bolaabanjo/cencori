@@ -5,6 +5,7 @@ import { indexWebDocument } from './index';
 import type { WebCrawlOptions, WebCrawlResult } from './types';
 import { normalizeWebUrl } from './url';
 import { WebRuntimeError } from './errors';
+import { createWebDataStore } from './store';
 
 interface QueuedUrl {
     url: string;
@@ -32,6 +33,7 @@ export async function crawlWeb(
     const queued = new Set(seedUrls);
     const visited = new Set<string>();
     const pages: WebCrawlResult['pages'] = [];
+    const store = createWebDataStore(ctx.supabase);
 
     while (queue.length > 0 && visited.size < maxPages) {
         const next = queue.shift()!;
@@ -46,7 +48,7 @@ export async function crawlWeb(
                 continue;
             }
             const documentId = await indexWebDocument(
-                ctx.supabase,
+                store,
                 ctx.organizationId,
                 ctx.projectId,
                 document,
