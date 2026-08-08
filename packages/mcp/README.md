@@ -37,7 +37,7 @@ Enable operations that enqueue work, incur inference cost, or change state:
 
 ## Cencori Web tools
 
-Version 0.7.0 adds first-party Web access. Search uses Cencori's own crawler, corpus, embeddings, and ranking pipeline—not a third-party search API.
+Version 0.7.1 includes first-party Web access. Search uses Cencori's own crawler, corpus, embeddings, and ranking pipeline—not a third-party search API.
 
 | Tier | Tools |
 |---|---|

@@ -48,7 +48,7 @@ Use one of these integration paths:
 
 Current minimum versions for Cencori Web:
 - TypeScript SDK: `cencori@1.6.1`
-- MCP server: `@cencori/mcp@0.7.0`
+- MCP server: `@cencori/mcp@0.7.1`
 
 ## Setup Decision
 
@@ -1043,7 +1043,7 @@ It requires Anthropic provider access; use `llama-3.1-8b-instant` for a free fir
 
 ## MCP Server (for AI agents)
 
-Cencori ships an official Model Context Protocol server, `@cencori/mcp`. Version `0.7.0` adds first-party Web tools alongside docs and authenticated platform operations.
+Cencori ships an official Model Context Protocol server, `@cencori/mcp`. Version `0.7.1` includes first-party Web tools alongside docs and authenticated platform operations.
 
 Run it: `npx -y @cencori/mcp@latest`. Docs and manual-action guidance tools work with no key; set `CENCORI_API_KEY` for Web and platform reads; set `CENCORI_MCP_WRITE=1` to enable inference, Web actions, and additive writes.
 

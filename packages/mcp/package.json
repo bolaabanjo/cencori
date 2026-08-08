@@ -1,6 +1,6 @@
 {
     "name": "@cencori/mcp",
-    "version": "0.7.0",
+    "version": "0.7.1",
     "description": "MCP server for Cencori — first-party web search, docs, gateway, memory, agents, sessions, governance, and multimodal inference.",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
