@@ -27,6 +27,7 @@ export interface FetchedWebResource {
         cacheControl: string | null;
         etag: string | null;
         lastModified: string | null;
+        xRobotsTag: string | null;
     };
 }
 
@@ -52,6 +53,9 @@ export interface WebSearchOptions {
     limit?: number;
     domain?: string;
     freshness?: string | Date;
+    language?: string;
+    /** Internal precomputed query embedding from Cencori-owned query compute. */
+    queryEmbedding?: number[] | null;
 }
 
 export interface WebSearchResult {
@@ -141,4 +145,35 @@ export interface WebFrontierWorkerResult {
     discovered: number;
     jobs: string[];
     elapsedMs: number;
+}
+
+export type WebBrowserAction =
+    | { type: 'click'; selector: string }
+    | { type: 'type'; selector: string; text: string; clear?: boolean }
+    | { type: 'press'; key: string }
+    | { type: 'select'; selector: string; values: string[] }
+    | { type: 'waitFor'; selector?: string; milliseconds?: number };
+
+export interface WebBrowserOptions {
+    actions?: WebBrowserAction[];
+    timeoutMs?: number;
+    waitUntil?: 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+    screenshot?: boolean;
+    viewport?: { width: number; height: number };
+}
+
+export type WebBrowserJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface WebBrowserJob {
+    id: string;
+    url: string;
+    actions: WebBrowserAction[];
+    options: Omit<WebBrowserOptions, 'actions'>;
+    status: WebBrowserJobStatus;
+    result: Record<string, unknown> | null;
+    error: string | null;
+    attempts: number;
+    createdAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
 }

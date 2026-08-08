@@ -39,7 +39,7 @@ export async function runWebRoute(
         const result = await operation(body as Record<string, unknown>, ctx);
         await logGatewayRequest(ctx, {
             endpoint,
-            model: 'cencori-web-lexical-v1',
+            model: 'cencori-web-v2',
             provider: 'cencori',
             status: 'success',
             metadata: result.metadata,
@@ -53,7 +53,7 @@ export async function runWebRoute(
         console.error(`[Cencori Web] ${endpoint} failed:`, error);
         await logGatewayRequest(ctx, {
             endpoint,
-            model: 'cencori-web-lexical-v1',
+            model: 'cencori-web-v2',
             provider: 'cencori',
             status: 'error',
             errorMessage: runtimeError.message,

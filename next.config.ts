@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import { createMDX } from "fumadocs-mdx/next";
 
 const nextConfig: NextConfig = {
+  // Transformers.js includes native ONNX binaries and runtime model loading.
+  // Keep it out of Turbopack's module graph; API routes load it in Node only.
+  serverExternalPackages: ["@huggingface/transformers", "onnxruntime-node"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
     staleTimes: {

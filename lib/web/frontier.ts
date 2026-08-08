@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { normalizeWebUrl } from './url';
 import type { WebDataStore } from './store';
+import { documentPolicyDecision, mapDomainPolicies, prefetchPolicyDecision, type WebDomainPolicy } from './policy';
 
 type SupabaseClient = WebDataStore;
 
@@ -52,6 +53,14 @@ interface ItemOutcome {
     skipped: number;
     retried: number;
     discovered: number;
+}
+
+interface CrawlJobRules {
+    pathPrefixes: string[];
+    languages: string[];
+    authorityScore: number;
+    metadata: Record<string, unknown>;
+    domainPolicies: Map<string, WebDomainPolicy[]>;
 }
 
 function asNumber(value: unknown): number {
@@ -290,17 +299,70 @@ function frontierEntry(
     };
 }
 
+function stringList(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function pageAllowedByJob(url: string, rules: CrawlJobRules): boolean {
+    if (rules.pathPrefixes.length === 0) return true;
+    return rules.pathPrefixes.some(prefix => new URL(url).pathname.startsWith(prefix));
+}
+
+function languageAllowed(language: string | null, rules: CrawlJobRules): boolean {
+    if (rules.languages.length === 0 || !language) return true;
+    const normalized = language.toLowerCase();
+    return rules.languages.some(allowed => normalized === allowed || normalized.startsWith(`${allowed}-`));
+}
+
+async function loadCrawlJobRules(store: WebDataStore, jobId: string): Promise<CrawlJobRules> {
+    const row = await store.getCrawlJob(jobId);
+    const metadata = row?.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+    return {
+        pathPrefixes: stringList(metadata.pathPrefixes),
+        languages: stringList(metadata.languages).map(language => language.toLowerCase()),
+        authorityScore: Math.min(Math.max(Number(metadata.authorityScore) || 0.5, 0), 1),
+        metadata,
+        domainPolicies: new Map(),
+    };
+}
+
+async function domainPolicies(store: WebDataStore, url: string, rules: CrawlJobRules): Promise<WebDomainPolicy[]> {
+    const host = new URL(url).hostname.toLowerCase();
+    const cached = rules.domainPolicies.get(host);
+    if (cached) return cached;
+    const policies = mapDomainPolicies(await store.getDomainPolicies(host));
+    rules.domainPolicies.set(host, policies);
+    return policies;
+}
+
 async function processFrontierItem(
     supabase: SupabaseClient,
     workerId: string,
     item: ClaimedFrontierItem,
+    rules: CrawlJobRules,
 ): Promise<ItemOutcome> {
     let discovered = 0;
     try {
+        if (item.kind === 'page' && !pageAllowedByJob(item.url, rules)) {
+            await completeFrontierItem(supabase, workerId, item, { status: 'skipped', error: 'outside configured corpus path' });
+            return { indexed: 0, failed: 0, skipped: 1, retried: 0, discovered: 0 };
+        }
+        if (await supabase.isDocumentTombstoned(normalizeWebUrl(item.url))) {
+            await completeFrontierItem(supabase, workerId, item, { status: 'skipped', error: 'document is tombstoned' });
+            return { indexed: 0, failed: 0, skipped: 1, retried: 0, discovered: 0 };
+        }
+        const baseDecision = prefetchPolicyDecision(item.url, await domainPolicies(supabase, item.url, rules));
+        if (!baseDecision.fetch) {
+            await completeFrontierItem(supabase, workerId, item, { status: 'skipped', error: baseDecision.reasons.join('; ') });
+            return { indexed: 0, failed: 0, skipped: 1, retried: 0, discovered: 0 };
+        }
         const resource = await fetchWebResource(item.url, { timeoutMs: 8_000 });
         if (item.kind === 'sitemap' || looksLikeSitemap(item.url, resource.mimeType, resource.body)) {
             const entries = parseSitemap(resource.body, resource.finalUrl, item.maxFrontier)
-                .filter(entry => entry.kind !== 'sitemap' || item.depth < 5)
+                .filter(entry => (entry.kind !== 'sitemap' || item.depth < 5)
+                    && (entry.kind === 'sitemap' || pageAllowedByJob(entry.url, rules)))
                 .map(entry => frontierEntry(
                     entry.url,
                     entry.kind,
@@ -314,6 +376,11 @@ async function processFrontierItem(
         }
 
         const document = extractWebDocument(resource);
+        const policy = documentPolicyDecision(document, resource, baseDecision);
+        if (!languageAllowed(document.language, rules)) {
+            await completeFrontierItem(supabase, workerId, item, { status: 'skipped', error: 'outside configured corpus language' });
+            return { indexed: 0, failed: 0, skipped: 1, retried: 0, discovered: 0 };
+        }
         if (document.content.length < 20) {
             await completeFrontierItem(supabase, workerId, item, {
                 status: 'skipped',
@@ -322,18 +389,31 @@ async function processFrontierItem(
             return { indexed: 0, failed: 0, skipped: 1, retried: 0, discovered };
         }
 
-        const documentId = item.visibility === 'public'
-            ? await indexPublicWebDocument(supabase, document)
+        let documentId: string | null = null;
+        if (!policy.index) await supabase.deleteDocument(document.canonicalUrl);
+        if (policy.index) documentId = item.visibility === 'public'
+            ? await indexPublicWebDocument(supabase, document, {
+                authorityScore: rules.authorityScore,
+                noarchive: !policy.archive,
+                nosnippet: !policy.snippet,
+                metadata: { corpus: rules.metadata, policyReasons: policy.reasons },
+            })
             : item.organizationId && item.projectId
-                ? await indexWebDocument(supabase, item.organizationId, item.projectId, document)
+                ? await indexWebDocument(supabase, item.organizationId, item.projectId, document, {
+                    authorityScore: rules.authorityScore,
+                    noarchive: !policy.archive,
+                    nosnippet: !policy.snippet,
+                    metadata: { corpus: rules.metadata, policyReasons: policy.reasons },
+                })
                 : null;
-        if (!documentId) throw new WebRuntimeError('invalid_crawl_scope', 'Project crawl scope is incomplete', 500);
+        if (policy.index && !documentId) throw new WebRuntimeError('invalid_crawl_scope', 'Project crawl scope is incomplete', 500);
 
         const expansion: FrontierEntryInput[] = [];
-        if (item.depth < item.maxDepth) {
+        if (policy.follow && item.depth < item.maxDepth) {
             for (const link of document.links) {
                 if (link.rel.includes('nofollow')) continue;
                 try {
+                    if (!pageAllowedByJob(link.url, rules)) continue;
                     expansion.push(frontierEntry(link.url, 'page', item.depth + 1, item.url));
                 } catch {
                     // The extraction layer already filters malformed links, but
@@ -352,8 +432,10 @@ async function processFrontierItem(
             }
         }
         discovered += await enqueueFrontierEntries(supabase, item.jobId, expansion);
-        await completeFrontierItem(supabase, workerId, item, { status: 'completed', documentId });
-        return { indexed: 1, failed: 0, skipped: 0, retried: 0, discovered };
+        await completeFrontierItem(supabase, workerId, item, policy.index
+            ? { status: 'completed', documentId: documentId || undefined }
+            : { status: 'skipped', error: policy.reasons.join('; ') || 'indexing disallowed' });
+        return { indexed: policy.index ? 1 : 0, failed: 0, skipped: policy.index ? 0 : 1, retried: 0, discovered };
     } catch (error) {
         const retry = isRetryable(error) && item.attempts < item.maxAttempts;
         const skipped = error instanceof WebRuntimeError && !isRetryable(error);
@@ -377,6 +459,10 @@ async function processBatchWithOriginPoliteness(
     workerId: string,
     items: ClaimedFrontierItem[],
 ): Promise<ItemOutcome[]> {
+    const rulesByJob = new Map<string, CrawlJobRules>();
+    for (const item of items) {
+        if (!rulesByJob.has(item.jobId)) rulesByJob.set(item.jobId, await loadCrawlJobRules(supabase, item.jobId));
+    }
     const groups = new Map<string, ClaimedFrontierItem[]>();
     for (const item of items) {
         const group = groups.get(item.origin) || [];
@@ -388,7 +474,7 @@ async function processBatchWithOriginPoliteness(
         const outcomes: ItemOutcome[] = [];
         for (let index = 0; index < group.length; index += 1) {
             if (index > 0) await new Promise(resolve => setTimeout(resolve, 250));
-            outcomes.push(await processFrontierItem(supabase, workerId, group[index]));
+            outcomes.push(await processFrontierItem(supabase, workerId, group[index], rulesByJob.get(group[index].jobId)!));
         }
         return outcomes;
     }));

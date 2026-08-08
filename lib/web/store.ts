@@ -17,6 +17,8 @@ export interface WebSearchStoreOptions {
     limit: number;
     domain: string | null;
     freshAfter: string | null;
+    language: string | null;
+    queryEmbedding: number[] | null;
 }
 
 export interface WebDataStore {
@@ -46,6 +48,26 @@ export interface WebDataStore {
     getDuePublicDocuments(limit: number): Promise<Array<{ id: string; canonical_url: string }>>;
     reserveDocuments(ids: string[], nextCrawlAt: string): Promise<void>;
     getFrontierStatusCounts(jobId: string): Promise<Record<string, number>>;
+    getDomainPolicies(host: string): Promise<WebStoreRow[]>;
+    isDocumentTombstoned(canonicalUrl: string): Promise<boolean>;
+    createDomainPolicy(record: WebStoreRow): Promise<WebStoreRow>;
+    deleteDomainPolicy(id: string): Promise<void>;
+    createTakedownRequest(record: WebStoreRow): Promise<WebStoreRow>;
+    listTakedownRequests(limit: number): Promise<WebStoreRow[]>;
+    getTakedownRequest(id: string): Promise<WebStoreRow | null>;
+    decideTakedownRequest(id: string, record: WebStoreRow): Promise<WebStoreRow>;
+    tombstoneDocuments(urls: string[], reason: string, requestId: string): Promise<void>;
+    deleteDocument(canonicalUrl: string): Promise<void>;
+    deleteDocumentsByPolicy(host: string, pathPrefix: string): Promise<void>;
+    createBrowserJob(record: WebStoreRow): Promise<WebStoreRow>;
+    getBrowserJob(id: string, projectId?: string): Promise<WebStoreRow | null>;
+    claimBrowserJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null>;
+    completeBrowserJob(args: { id: string; workerId: string; status: 'completed' | 'failed'; result: WebStoreRow | null; error: string | null; retry: boolean }): Promise<boolean>;
+    createEmbeddingJob(projectId: string, query: string, model: string): Promise<WebStoreRow>;
+    getEmbeddingJob(id: string, projectId: string): Promise<WebStoreRow | null>;
+    deleteEmbeddingJob(id: string, projectId: string): Promise<void>;
+    claimEmbeddingJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null>;
+    completeEmbeddingJob(id: string, workerId: string, embedding: number[] | null, error: string | null): Promise<boolean>;
 }
 
 function storeError(error: unknown): WebRuntimeError {
@@ -75,13 +97,26 @@ export class SupabaseWebDataStore implements WebDataStore {
     }
 
     async searchDocuments(projectId: string, query: string, options: WebSearchStoreOptions): Promise<WebStoreRow[]> {
-        const { data, error } = await this.client.rpc('search_cencori_web', {
+        const { data, error } = await this.client.rpc('search_cencori_web_v2', {
             p_project_id: projectId,
             p_query: query,
             p_limit: options.limit,
             p_domain: options.domain,
             p_fresh_after: options.freshAfter,
+            p_language: options.language,
+            p_query_embedding: options.queryEmbedding,
         });
+        if (error && /search_cencori_web_v2|schema cache|PGRST202/i.test(error.message)) {
+            const fallback = await this.client.rpc('search_cencori_web', {
+                p_project_id: projectId,
+                p_query: query,
+                p_limit: options.limit,
+                p_domain: options.domain,
+                p_fresh_after: options.freshAfter,
+            });
+            if (fallback.error) throw storeError(fallback.error.message);
+            return Array.isArray(fallback.data) ? fallback.data as WebStoreRow[] : [];
+        }
         if (error) throw storeError(error.message);
         return Array.isArray(data) ? data as WebStoreRow[] : [];
     }
@@ -179,6 +214,139 @@ export class SupabaseWebDataStore implements WebDataStore {
         }
         return counts;
     }
+
+    async getDomainPolicies(host: string): Promise<WebStoreRow[]> {
+        const { data, error } = await this.client.from('web_domain_policies').select('*').eq('host', host)
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('path_prefix', { ascending: false });
+        if (error) throw storeError(error.message);
+        return (data || []) as WebStoreRow[];
+    }
+
+    async isDocumentTombstoned(canonicalUrl: string): Promise<boolean> {
+        const { data, error } = await this.client.from('web_document_tombstones').select('canonical_url')
+            .eq('canonical_url', canonicalUrl).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).maybeSingle();
+        if (error) throw storeError(error.message);
+        return Boolean(data);
+    }
+
+    async createDomainPolicy(record: WebStoreRow): Promise<WebStoreRow> {
+        const { data, error } = await this.client.from('web_domain_policies').upsert(record, {
+            onConflict: 'host,path_prefix,action',
+        }).select('*').single();
+        if (error || !data) throw storeError(error?.message || 'Policy could not be created');
+        return data as WebStoreRow;
+    }
+
+    async deleteDomainPolicy(id: string): Promise<void> {
+        const { error } = await this.client.from('web_domain_policies').delete().eq('id', id);
+        if (error) throw storeError(error.message);
+    }
+
+    async createTakedownRequest(record: WebStoreRow): Promise<WebStoreRow> {
+        const { data, error } = await this.client.from('web_takedown_requests').insert(record).select('*').single();
+        if (error || !data) throw storeError(error?.message || 'Takedown request could not be created');
+        return data as WebStoreRow;
+    }
+
+    async listTakedownRequests(limit: number): Promise<WebStoreRow[]> {
+        const { data, error } = await this.client.from('web_takedown_requests').select('*')
+            .order('created_at', { ascending: false }).limit(limit);
+        if (error) throw storeError(error.message);
+        return (data || []) as WebStoreRow[];
+    }
+
+    async getTakedownRequest(id: string): Promise<WebStoreRow | null> {
+        const { data, error } = await this.client.from('web_takedown_requests').select('*').eq('id', id).maybeSingle();
+        if (error) throw storeError(error.message);
+        return data as WebStoreRow | null;
+    }
+
+    async decideTakedownRequest(id: string, record: WebStoreRow): Promise<WebStoreRow> {
+        const { data, error } = await this.client.rpc('decide_web_takedown', {
+            p_request_id: id, p_status: record.status, p_reason: record.decision_reason, p_decided_by: record.decided_by,
+        });
+        const decided = Array.isArray(data) ? data[0] : null;
+        if (error || !decided) throw storeError(error?.message || 'Pending takedown request was not found');
+        return decided as WebStoreRow;
+    }
+
+    async tombstoneDocuments(urls: string[], reason: string, requestId: string): Promise<void> {
+        const records = urls.map(canonicalUrl => ({ canonical_url: canonicalUrl, host: new URL(canonicalUrl).hostname, reason, source_request_id: requestId }));
+        const { error: tombstoneError } = await this.client.from('web_document_tombstones').upsert(records, { onConflict: 'canonical_url' });
+        if (tombstoneError) throw storeError(tombstoneError.message);
+        const { error: deleteError } = await this.client.from('web_documents').delete().in('canonical_url', urls);
+        if (deleteError) throw storeError(deleteError.message);
+    }
+
+    async deleteDocument(canonicalUrl: string): Promise<void> {
+        const { error } = await this.client.from('web_documents').delete().eq('canonical_url', canonicalUrl);
+        if (error) throw storeError(error.message);
+    }
+
+    async deleteDocumentsByPolicy(host: string, pathPrefix: string): Promise<void> {
+        const { error } = await this.client.from('web_documents').delete().eq('host', host).like('path', `${pathPrefix}%`);
+        if (error) throw storeError(error.message);
+    }
+
+    async createBrowserJob(record: WebStoreRow): Promise<WebStoreRow> {
+        const { data, error } = await this.client.from('web_browser_jobs').insert(record).select('*').single();
+        if (error || !data) throw storeError(error?.message || 'Browser job could not be created');
+        return data as WebStoreRow;
+    }
+
+    async getBrowserJob(id: string, projectId?: string): Promise<WebStoreRow | null> {
+        let query = this.client.from('web_browser_jobs').select('*').eq('id', id);
+        if (projectId) query = query.eq('project_id', projectId);
+        const { data, error } = await query.maybeSingle();
+        if (error) throw storeError(error.message);
+        return data as WebStoreRow | null;
+    }
+
+    async claimBrowserJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null> {
+        const { data, error } = await this.client.rpc('claim_web_browser_job', { p_worker_id: workerId, p_lease_seconds: leaseSeconds });
+        if (error) throw storeError(error.message);
+        return Array.isArray(data) ? data[0] as WebStoreRow || null : null;
+    }
+
+    async completeBrowserJob(args: Parameters<WebDataStore['completeBrowserJob']>[0]): Promise<boolean> {
+        const { data, error } = await this.client.rpc('complete_web_browser_job', {
+            p_job_id: args.id, p_worker_id: args.workerId, p_status: args.status,
+            p_result: args.result, p_error: args.error, p_retry: args.retry,
+        });
+        if (error) throw storeError(error.message);
+        return data === true;
+    }
+
+    async createEmbeddingJob(projectId: string, query: string, model: string): Promise<WebStoreRow> {
+        const { data, error } = await this.client.from('web_embedding_jobs').insert({ project_id: projectId, query, model }).select('id,status,created_at').single();
+        if (error || !data) throw storeError(error?.message || 'Embedding job could not be created');
+        return data as WebStoreRow;
+    }
+
+    async getEmbeddingJob(id: string, projectId: string): Promise<WebStoreRow | null> {
+        const { data, error } = await this.client.from('web_embedding_jobs').select('id,status,embedding,error').eq('id', id).eq('project_id', projectId).maybeSingle();
+        if (error) throw storeError(error.message);
+        return data as WebStoreRow | null;
+    }
+
+    async deleteEmbeddingJob(id: string, projectId: string): Promise<void> {
+        const { error } = await this.client.from('web_embedding_jobs').delete().eq('id', id).eq('project_id', projectId);
+        if (error) throw storeError(error.message);
+    }
+
+    async claimEmbeddingJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null> {
+        const { data, error } = await this.client.rpc('claim_web_embedding_job', { p_worker_id: workerId, p_lease_seconds: leaseSeconds });
+        if (error) throw storeError(error.message);
+        return Array.isArray(data) ? data[0] as WebStoreRow || null : null;
+    }
+
+    async completeEmbeddingJob(id: string, workerId: string, embedding: number[] | null, errorMessage: string | null): Promise<boolean> {
+        const { data, error } = await this.client.rpc('complete_web_embedding_job', {
+            p_job_id: id, p_worker_id: workerId, p_embedding: embedding, p_error: errorMessage,
+        });
+        if (error) throw storeError(error.message);
+        return data === true;
+    }
 }
 
 export class PostgresWebDataStore implements WebDataStore {
@@ -226,6 +394,8 @@ export class PostgresWebDataStore implements WebDataStore {
             'collection_id', 'visibility', 'organization_id', 'project_id', 'url', 'canonical_url', 'host', 'path',
             'title', 'description', 'language', 'content', 'content_hash', 'mime_type', 'status_code', 'published_at',
             'modified_at', 'retrieved_at', 'indexed_at', 'next_crawl_at', 'links', 'evidence_spans', 'metadata',
+            'semantic_embedding', 'embedding_model', 'authority_score', 'quality_score', 'spam_score', 'noarchive', 'nosnippet',
+            'semantic_bucket_1', 'semantic_bucket_2', 'semantic_bucket_3', 'semantic_bucket_4',
         ];
         const jsonColumns = new Set(['links', 'evidence_spans', 'metadata']);
         const values = columns.map(column => jsonColumns.has(column) ? JSON.stringify(record[column]) : record[column]);
@@ -243,8 +413,8 @@ export class PostgresWebDataStore implements WebDataStore {
 
     async searchDocuments(projectId: string, query: string, options: WebSearchStoreOptions): Promise<WebStoreRow[]> {
         return this.rows(
-            'SELECT * FROM public.search_cencori_web($1::uuid, $2::text, $3::integer, $4::text, $5::timestamptz)',
-            [projectId, query, options.limit, options.domain, options.freshAfter],
+            'SELECT * FROM public.search_cencori_web_v2($1::uuid, $2::text, $3::real[], $4::integer, $5::text, $6::timestamptz, $7::text)',
+            [projectId, query, options.queryEmbedding, options.limit, options.domain, options.freshAfter, options.language],
         );
     }
 
@@ -316,6 +486,114 @@ export class PostgresWebDataStore implements WebDataStore {
     async getFrontierStatusCounts(jobId: string): Promise<Record<string, number>> {
         const rows = await this.rows('SELECT kind, status, count(*)::integer AS count FROM public.web_crawl_frontier WHERE job_id = $1 GROUP BY kind, status', [jobId]);
         return Object.fromEntries(rows.map(row => [`${String(row.kind)}_${String(row.status)}`, Number(row.count)]));
+    }
+
+    async getDomainPolicies(host: string): Promise<WebStoreRow[]> {
+        return this.rows(`SELECT * FROM public.web_domain_policies WHERE host = $1 AND (expires_at IS NULL OR expires_at > now()) ORDER BY length(path_prefix) DESC`, [host]);
+    }
+
+    async isDocumentTombstoned(canonicalUrl: string): Promise<boolean> {
+        const row = (await this.rows(`SELECT 1 FROM public.web_document_tombstones WHERE canonical_url = $1 AND (expires_at IS NULL OR expires_at > now())`, [canonicalUrl]))[0];
+        return Boolean(row);
+    }
+
+    async createDomainPolicy(record: WebStoreRow): Promise<WebStoreRow> {
+        const rows = await this.rows(`INSERT INTO public.web_domain_policies (host, path_prefix, action, reason, source, jurisdiction, expires_at, created_by)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (host,path_prefix,action) DO UPDATE SET reason=EXCLUDED.reason, source=EXCLUDED.source,
+            jurisdiction=EXCLUDED.jurisdiction, expires_at=EXCLUDED.expires_at, updated_at=now() RETURNING *`,
+        [record.host, record.path_prefix, record.action, record.reason, record.source, record.jurisdiction, record.expires_at, record.created_by]);
+        return rows[0];
+    }
+
+    async deleteDomainPolicy(id: string): Promise<void> { await this.rows('DELETE FROM public.web_domain_policies WHERE id=$1', [id]); }
+
+    async createTakedownRequest(record: WebStoreRow): Promise<WebStoreRow> {
+        const rows = await this.rows(`INSERT INTO public.web_takedown_requests (requester_name,requester_email,requester_organization,urls,basis,statement)
+            VALUES ($1,$2,$3,$4::jsonb,$5,$6) RETURNING *`, [record.requester_name, record.requester_email, record.requester_organization, JSON.stringify(record.urls), record.basis, record.statement]);
+        return rows[0];
+    }
+
+    async listTakedownRequests(limit: number): Promise<WebStoreRow[]> {
+        return this.rows('SELECT * FROM public.web_takedown_requests ORDER BY created_at DESC LIMIT $1', [limit]);
+    }
+
+    async getTakedownRequest(id: string): Promise<WebStoreRow | null> {
+        return (await this.rows('SELECT * FROM public.web_takedown_requests WHERE id=$1', [id]))[0] || null;
+    }
+
+    async decideTakedownRequest(id: string, record: WebStoreRow): Promise<WebStoreRow> {
+        const rows = await this.rows('SELECT * FROM public.decide_web_takedown($1,$2,$3,$4)', [id, record.status, record.decision_reason, record.decided_by]);
+        if (!rows[0]) throw storeError('Takedown request was not found');
+        return rows[0];
+    }
+
+    async tombstoneDocuments(urls: string[], reason: string, requestId: string): Promise<void> {
+        const client = await this.pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const canonicalUrl of urls) {
+                await client.query(`INSERT INTO public.web_document_tombstones (canonical_url,host,reason,source_request_id) VALUES ($1,$2,$3,$4)
+                    ON CONFLICT (canonical_url) DO UPDATE SET reason=EXCLUDED.reason,source_request_id=EXCLUDED.source_request_id,created_at=now()`,
+                [canonicalUrl, new URL(canonicalUrl).hostname, reason, requestId]);
+            }
+            await client.query('DELETE FROM public.web_documents WHERE canonical_url = ANY($1::text[])', [urls]);
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw storeError(error);
+        } finally { client.release(); }
+    }
+
+    async deleteDocument(canonicalUrl: string): Promise<void> {
+        await this.rows('DELETE FROM public.web_documents WHERE canonical_url=$1', [canonicalUrl]);
+    }
+
+    async deleteDocumentsByPolicy(host: string, pathPrefix: string): Promise<void> {
+        await this.rows('DELETE FROM public.web_documents WHERE host=$1 AND left(path, length($2))=$2', [host, pathPrefix]);
+    }
+
+    async createBrowserJob(record: WebStoreRow): Promise<WebStoreRow> {
+        const rows = await this.rows(`INSERT INTO public.web_browser_jobs (organization_id,project_id,url,actions,options) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb) RETURNING *`,
+            [record.organization_id, record.project_id, record.url, JSON.stringify(record.actions), JSON.stringify(record.options)]);
+        return rows[0];
+    }
+
+    async getBrowserJob(id: string, projectId?: string): Promise<WebStoreRow | null> {
+        const rows = projectId
+            ? await this.rows('SELECT * FROM public.web_browser_jobs WHERE id=$1 AND project_id=$2', [id, projectId])
+            : await this.rows('SELECT * FROM public.web_browser_jobs WHERE id=$1', [id]);
+        return rows[0] || null;
+    }
+
+    async claimBrowserJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null> {
+        return (await this.rows('SELECT * FROM public.claim_web_browser_job($1,$2)', [workerId, leaseSeconds]))[0] || null;
+    }
+
+    async completeBrowserJob(args: Parameters<WebDataStore['completeBrowserJob']>[0]): Promise<boolean> {
+        const rows = await this.rows('SELECT public.complete_web_browser_job($1,$2,$3,$4::jsonb,$5,$6) AS completed',
+            [args.id, args.workerId, args.status, args.result ? JSON.stringify(args.result) : null, args.error, args.retry]);
+        return rows[0]?.completed === true;
+    }
+
+    async createEmbeddingJob(projectId: string, query: string, model: string): Promise<WebStoreRow> {
+        return (await this.rows(`INSERT INTO public.web_embedding_jobs(project_id,query,model) VALUES ($1,$2,$3) RETURNING id,status,created_at`, [projectId, query, model]))[0];
+    }
+
+    async getEmbeddingJob(id: string, projectId: string): Promise<WebStoreRow | null> {
+        return (await this.rows('SELECT id,status,embedding,error FROM public.web_embedding_jobs WHERE id=$1 AND project_id=$2', [id, projectId]))[0] || null;
+    }
+
+    async deleteEmbeddingJob(id: string, projectId: string): Promise<void> {
+        await this.rows('DELETE FROM public.web_embedding_jobs WHERE id=$1 AND project_id=$2', [id, projectId]);
+    }
+
+    async claimEmbeddingJob(workerId: string, leaseSeconds: number): Promise<WebStoreRow | null> {
+        return (await this.rows('SELECT * FROM public.claim_web_embedding_job($1,$2)', [workerId, leaseSeconds]))[0] || null;
+    }
+
+    async completeEmbeddingJob(id: string, workerId: string, embedding: number[] | null, errorMessage: string | null): Promise<boolean> {
+        const rows = await this.rows('SELECT public.complete_web_embedding_job($1,$2,$3::real[],$4) AS completed', [id, workerId, embedding, errorMessage]);
+        return rows[0]?.completed === true;
     }
 }
 

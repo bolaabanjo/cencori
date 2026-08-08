@@ -31,6 +31,7 @@ docs/company/VOLUME_7_AGENT_KNOWLEDGE_BASE.md
 # production
 /build
 /dist-workers
+/.cencori-web/
 
 # misc
 .DS_Store

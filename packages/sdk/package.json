@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "cencori",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Cencori - The unified infrastructure layer for AI applications. One SDK for AI Gateway, Compute, Workflow, and Storage.",
     "main": "dist/index.js",
     "module": "dist/index.mjs",

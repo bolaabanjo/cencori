@@ -66,6 +66,8 @@ async function main(): Promise<void> {
             log: entry => process.stdout.write(`${JSON.stringify(entry)}\n`),
         });
     } finally {
+        const { disposeWebEmbeddingPipeline } = await import('../lib/web/embeddings');
+        await disposeWebEmbeddingPipeline();
         await store.close();
     }
 }

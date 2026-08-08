@@ -77,6 +77,7 @@ export async function fetchWebResource(
                 cacheControl: response.headers.get('cache-control'),
                 etag: response.headers.get('etag'),
                 lastModified: response.headers.get('last-modified'),
+                xRobotsTag: response.headers.get('x-robots-tag'),
             },
         };
     } catch (error) {

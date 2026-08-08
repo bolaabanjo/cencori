@@ -34,7 +34,7 @@ const response = await cencori.web.search({
 
 For agent runtimes using function tools directly, the SDK exports `WEB_SEARCH_TOOL` and `WEB_FETCH_TOOL`. Resolve a returned tool call with `cencori.web.executeTool(call.name, JSON.parse(call.arguments))`.
 
-Search combines the Cencori-owned public corpus with pages indexed for the authenticated project. V1 ranking uses weighted PostgreSQL full-text retrieval plus a freshness signal. It does not call Tavily, Brave, Serper, or another hosted search provider.
+Search combines the Cencori-owned public corpus with pages indexed for the authenticated project. V2 uses local MiniLM semantic embeddings, PostgreSQL lexical retrieval, exact cosine reranking over locality-bucket candidates, authority, freshness, quality, diversity, and spam signals. Query embeddings run on Cencori-owned workers through short-lived database leases; query text is cleared on completion and the API removes the transient job after reading it. It does not call Tavily, Brave, Serper, or another hosted search provider.
 
 ## Fetch
 
@@ -105,9 +105,33 @@ V1 crawls at most 25 pages per request and a maximum depth of three. `robots.txt
   "query": "authentication guide",
   "domain": "docs.example.com",
   "freshness": "30d",
+  "language": "en",
   "limit": 10
 }
 ```
+
+## Browser exploration
+
+JavaScript rendering and bounded interaction execute asynchronously on isolated Cencori-owned workers:
+
+```ts
+const job = await cencori.web.browse({
+  url: 'https://example.com/app',
+  actions: [
+    { type: 'click', selector: '[data-testid="documentation"]' },
+    { type: 'waitFor', selector: 'main' },
+  ],
+  screenshot: true,
+});
+
+const current = await cencori.web.browserJob(job.id);
+```
+
+Jobs support bounded click, type, press, select, and wait actions. Password or secret-field interactions are rejected because job inputs are persisted. Every navigation and subrequest is subject to the same public-network and robots boundaries as fetch.
+
+## Takedowns and crawler policy
+
+Authenticated users can submit copyright, privacy, legal, robots, or other removal requests with `cencori.web.requestTakedown(...)`. Approved requests atomically remove matching indexed documents and create tombstones that prevent later recrawls from restoring them. Cencori operators can apply host/path policies for deny, noindex, noarchive, and nosnippet behavior.
 
 Each result carries citation provenance:
 
@@ -166,4 +190,4 @@ Inspect jobs with `GET /api/internal/web/crawl` and an individual job with `GET 
 
 ## Current boundary
 
-The current runtime handles static HTML, XML sitemaps, and text resources. JavaScript browser rendering, distributed per-host politeness coordination, snapshot object storage, and learned reranking remain separate layers that can be added without changing these API contracts.
+The current runtime handles static HTML, XML sitemaps, text resources, and queued JavaScript browser exploration. Distributed per-host politeness coordination, immutable snapshot object storage, and a learned cross-encoder reranker remain future layers that can be added without changing these API contracts.

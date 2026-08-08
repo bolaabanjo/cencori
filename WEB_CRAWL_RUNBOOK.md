@@ -2,7 +2,7 @@
 
 ## Deployment
 
-1. Apply `supabase/migrations/20260808_000000_web_crawl_frontier.sql` after the Cencori Web base migration.
+1. Apply `supabase/migrations/20260808_000000_web_crawl_frontier.sql` and `supabase/migrations/20260808_120000_web_intelligence_v2.sql` after the Cencori Web base migration.
 2. Set `WEB_CRAWL_ADMIN_SECRET` to a long random secret.
 3. Deploy the API and seed the initial corpus explicitly.
 
@@ -44,6 +44,12 @@ npm run dev:web
 
 There is no Vercel Cron dependency. The standalone crawler claims work directly from PostgreSQL and runs on any Node 20+ machine.
 
+Install the pinned local semantic model once on each worker host:
+
+```bash
+npm run web:model:install
+```
+
 ## Run continuously on a Mac or Linux host
 
 The worker loads `.env.local` and `.env`, so ensure these values are available:
@@ -70,6 +76,10 @@ On macOS, install it as a per-user `launchd` service:
 ```bash
 npm run web:worker:install
 npm run web:worker:status
+npm run web:browser:install
+npm run web:browser:status
+npm run web:embedding:install
+npm run web:embedding:status
 ```
 
 The default `owned` profile uses `CENCORI_WEB_DATABASE_URL` from `.env.web.local`. During the temporary production fallback, install a second worker that explicitly targets the Supabase corpus:
@@ -83,6 +93,10 @@ The services are independent:
 
 - `com.cencori.web-crawler` writes to owned PostgreSQL.
 - `com.cencori.web-crawler-production` writes to the temporary Supabase production corpus.
+- `com.cencori.web-browser` executes owned-database browser jobs.
+- `com.cencori.web-browser-production` executes temporary Supabase production browser jobs.
+- `com.cencori.web-embedding` serves short-lived query embeddings from owned PostgreSQL.
+- `com.cencori.web-embedding-production` serves production query embeddings through the temporary Supabase queue.
 
 The production profile stores only `CENCORI_WEB_STORE=supabase` in its plist. It reads the existing Supabase credentials from `.env.local`; no credentials are copied into the service definition.
 
@@ -112,6 +126,13 @@ caffeinate -i npm run web:worker
 `caffeinate` is not a reliable closed-lid server mode. For continuous crawling with the lid closed, use Apple's supported clamshell setup or move the same worker artifact to an always-on Mac, Linux server, or Cencori-owned host.
 
 ## Seed the public corpus
+
+Preview or enqueue the curated first-party corpus manifest:
+
+```bash
+npm run web:corpus:plan
+npm run web:corpus:seed
+```
 
 From a trusted crawler host with the Supabase service-role environment:
 
@@ -173,4 +194,11 @@ The trusted-host query command tests the owned index directly:
 
 ```bash
 npm run web:query -- --domain=cencori.com --limit=5 "AI gateway"
+```
+
+Run the repeatable quality suite after enough of the manifest has completed:
+
+```bash
+npm run web:eval
+npm run web:eval -- --minimum-mrr=0.70
 ```

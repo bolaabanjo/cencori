@@ -166,6 +166,11 @@ export {
     type WebSearchResponse,
     type WebCrawlRequest,
     type WebCrawlResponse,
+    type WebBrowserAction,
+    type WebBrowseRequest,
+    type WebBrowseJob,
+    type WebTakedownRequest,
+    type WebTakedownResponse,
 } from './web';
 
 // Default export for convenience
