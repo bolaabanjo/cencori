@@ -124,7 +124,7 @@ export const metadata: Metadata = {
       "The moment you ship AI to real users, things get real fast. Cencori gives you security, visibility, and cost control — automatically, from your first request.",
     images: [
       {
-        url: "/og.png",
+        url: "/og-v2.jpg",
         width: 1200,
         height: 630,
         alt: "Cencori — The AI cloud infrastructure.",
@@ -140,7 +140,7 @@ export const metadata: Metadata = {
     title: "Cencori | The AI cloud infrastructure.",
     description:
       "The moment you ship AI to real users, things get real fast. Cencori gives you security, visibility, and cost control — automatically, from your first request.",
-    images: ["/og.png"],
+    images: ["/og-v2.jpg"],
   },
 
   // Canonical and alternates
