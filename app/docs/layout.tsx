@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: {
     images: [
       {
-        url: "/docs/og/v1/introduction.jpg",
+        url: "/docs/og/v1/introduction.jpg?v=2",
         width: 1200,
         height: 630,
         alt: "Cencori Documentation",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/docs/og/v1/introduction.jpg"],
+    images: ["/docs/og/v1/introduction.jpg?v=2"],
   },
 };
 

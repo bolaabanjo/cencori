@@ -24,7 +24,7 @@ export async function generateMetadata(
 
   const { title, description } = page.data;
   const docPath = page.url.replace(/^\/docs\/?/, "") || "introduction";
-  const socialImage = `/docs/og/v1/${docPath}.jpg`;
+  const socialImage = `/docs/og/v1/${docPath}.jpg?v=2`;
 
   return {
     title,

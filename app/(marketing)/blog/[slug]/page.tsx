@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 
 import { getPostBySlug, getAllPosts, parseMDX, extractToc } from "@/lib/blog";
 import { PostView } from "@/components/blog/PostView";
-import { buildOgImageUrl } from "@/lib/og";
 
 interface BlogPostPageProps {
     params: Promise<{
@@ -23,21 +22,11 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 
     if (!post) return { title: "Post Not Found" };
 
-    const authorName = post.authorDetails[0]?.name || "";
-    const formattedDate = post.date
-        ? new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-        : "";
-
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cencori.com';
 
     const ogImage = post.coverImage
         ? `${baseUrl}${post.coverImage.startsWith('/') ? '' : '/'}${post.coverImage}`
-        : buildOgImageUrl({
-              title: post.title,
-              type: "blog",
-              author: authorName,
-              date: formattedDate,
-          });
+        : `${baseUrl}/blog/og/v1/${post.slug}.jpg`;
 
     return {
         title: post.title,

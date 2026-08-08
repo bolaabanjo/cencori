@@ -12,18 +12,11 @@ const nextConfig: NextConfig = {
       static: 300,
     },
   },
-  async redirects() {
-    return [
-      // Docs landing → first page (no index.mdx at the docs root yet)
-      { source: "/docs", destination: "/docs/introduction", permanent: false },
-      // NOTE: legacy /dashboard/organizations/* redirects live in proxy.ts
-      // now (see rewriteLegacyOrganizationsPath). Keeping them here would
-      // create a double-hop because config-level redirects run before the
-      // proxy, and they only knew about the intermediate URL shape.
-    ];
-  },
   async rewrites() {
     return [
+      // Serve the docs landing page directly so social crawlers receive the
+      // introduction metadata without needing to follow a redirect.
+      { source: "/docs", destination: "/docs/introduction" },
       // Most agents probe /llms.txt (llmstxt.org convention); our file lives at
       // /llm.txt. Serve the same content at /llms.txt with a 200 (a rewrite, not
       // a redirect, so fetchers that don't follow 3xx still get the guide).
