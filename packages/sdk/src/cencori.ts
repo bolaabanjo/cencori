@@ -38,6 +38,7 @@ import { StorageNamespace } from './storage';
 import { MemoryClient } from './memory';
 import { ChatNamespace } from './chat';
 import { TelemetryClient } from './telemetry';
+import { WebNamespace } from './web';
 import { fetchWithRetry } from './utils';
 import {
     CencoriError,
@@ -214,6 +215,15 @@ export class Cencori {
     readonly telemetry: TelemetryClient;
 
     /**
+     * Web - First-party retrieval, extraction, crawling, and search.
+     *
+     * @example
+     * await cencori.web.crawl({ seeds: ['https://docs.example.com'], maxPages: 10 });
+     * const results = await cencori.web.search({ query: 'authentication guide' });
+     */
+    readonly web: WebNamespace;
+
+    /**
      * Create a new Cencori client
      * 
      * @param config - Configuration options
@@ -255,6 +265,7 @@ export class Cencori {
         this.memory = new MemoryClient(this.config);
         this.sessions = new SessionsNamespace(this.config);
         this.telemetry = new TelemetryClient(this.config);
+        this.web = new WebNamespace(this.config);
     }
 
     /**
@@ -353,4 +364,3 @@ export type { StorageNamespace } from './storage';
 export type { MemoryClient } from './memory';
 export type { SessionsNamespace, Session, SessionEvent, CreateSessionParams, TurnParams, PaginatedResponse, SessionListParams } from './sessions';
 export type { TelemetryClient, WebTelemetryPayload } from './telemetry';
-

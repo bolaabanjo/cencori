@@ -1,11 +1,16 @@
 /**
  * @vitest-environment node
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     assertSafeOutboundUrl,
     isPrivateOrReservedAddress,
+    safeOutboundFetch,
 } from '@/lib/security/outbound-url';
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 describe('outbound URL security', () => {
     it.each([
@@ -31,5 +36,25 @@ describe('outbound URL security', () => {
         'https://user:password@example.com/',
     ])('rejects unsafe destination %s', async value => {
         await expect(assertSafeOutboundUrl(value)).rejects.toThrow();
+    });
+
+    it('revalidates and exposes every redirect before following it', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(null, {
+                status: 302,
+                headers: { location: 'https://93.184.216.35/final' },
+            }))
+            .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const onRedirect = vi.fn();
+
+        const response = await safeOutboundFetch('https://93.184.216.34/start', {}, {
+            maxRedirects: 1,
+            onRedirect,
+        });
+
+        expect(response.status).toBe(200);
+        expect(onRedirect).toHaveBeenCalledWith(new URL('https://93.184.216.35/final'), 302);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 });

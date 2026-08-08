@@ -66,6 +66,11 @@
             "types": "./dist/telemetry/index.d.ts",
             "import": "./dist/telemetry/index.mjs",
             "require": "./dist/telemetry/index.js"
+        },
+        "./web": {
+            "types": "./dist/web/index.d.ts",
+            "import": "./dist/web/index.mjs",
+            "require": "./dist/web/index.js"
         }
     },
     "files": [

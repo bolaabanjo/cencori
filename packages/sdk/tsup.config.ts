@@ -15,6 +15,7 @@ export default defineConfig({
         'storage/index': 'src/storage/index.ts',
         'memory/index': 'src/memory/index.ts',
         'telemetry/index': 'src/telemetry/index.ts',
+        'web/index': 'src/web/index.ts',
     },
     format: ['cjs', 'esm'],
     dts: true,

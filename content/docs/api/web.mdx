@@ -1,0 +1,169 @@
+---
+title: Web
+description: First-party web retrieval, extraction, crawling, search, and citation evidence for agents.
+---
+
+# Web
+
+Cencori Web gives agents a first-party web substrate without routing queries through an external search API. It retrieves public pages, extracts machine-readable content, builds a project-scoped index, and returns evidence tied to a content hash and retrieval timestamp.
+
+All endpoints require a Cencori API key. Retrieved page content is untrusted input and must never be treated as agent instructions.
+
+## Crawl and search
+
+Seed a project index from one or more public sites:
+
+```ts
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+await cencori.web.crawl({
+  seeds: ['https://docs.example.com'],
+  maxPages: 10,
+  maxDepth: 1,
+  sameOrigin: true,
+});
+
+const response = await cencori.web.search({
+  query: 'configure authentication',
+  freshness: '30d',
+  limit: 10,
+});
+```
+
+For agent runtimes using function tools directly, the SDK exports `WEB_SEARCH_TOOL` and `WEB_FETCH_TOOL`. Resolve a returned tool call with `cencori.web.executeTool(call.name, JSON.parse(call.arguments))`.
+
+Search combines the Cencori-owned public corpus with pages indexed for the authenticated project. V1 ranking uses weighted PostgreSQL full-text retrieval plus a freshness signal. It does not call Tavily, Brave, Serper, or another hosted search provider.
+
+## Fetch
+
+`POST /api/v1/web/fetch`
+
+```json
+{
+  "url": "https://example.com/reference",
+  "maxBytes": 1048576,
+  "timeoutMs": 15000
+}
+```
+
+Fetch supports bounded textual HTTP resources. Private network destinations, unsafe redirects, embedded credentials, unsupported protocols, and responses over the configured byte limit are rejected.
+
+## Extract
+
+`POST /api/v1/web/extract`
+
+```json
+{
+  "url": "https://example.com/reference"
+}
+```
+
+Extraction returns clean text, canonical URL, metadata, normalized links, publication timestamps when available, and evidence spans with exact character offsets.
+
+```json
+{
+  "canonicalUrl": "https://example.com/reference",
+  "title": "API reference",
+  "content": "...",
+  "contentHash": "sha256...",
+  "retrievedAt": "2026-08-07T20:00:00.000Z",
+  "evidenceSpans": [
+    {
+      "id": "ev_...",
+      "text": "...",
+      "start": 0,
+      "end": 142
+    }
+  ],
+  "untrusted": true
+}
+```
+
+## Crawl
+
+`POST /api/v1/web/crawl`
+
+```json
+{
+  "seeds": ["https://docs.example.com"],
+  "maxPages": 10,
+  "maxDepth": 1,
+  "sameOrigin": true
+}
+```
+
+V1 crawls at most 25 pages per request and a maximum depth of three. `robots.txt`, `nofollow`, SSRF restrictions, response limits, canonicalization, and duplicate URLs are enforced. Crawled documents remain private to the project.
+
+## Search
+
+`POST /api/v1/web/search`
+
+```json
+{
+  "query": "authentication guide",
+  "domain": "docs.example.com",
+  "freshness": "30d",
+  "limit": 10
+}
+```
+
+Each result carries citation provenance:
+
+```json
+{
+  "title": "Authentication",
+  "canonicalUrl": "https://docs.example.com/auth",
+  "snippet": "...",
+  "score": 0.42,
+  "contentHash": "sha256...",
+  "retrievedAt": "2026-08-07T20:00:00.000Z",
+  "evidence": {
+    "quote": "...",
+    "contentHash": "sha256...",
+    "retrievedAt": "2026-08-07T20:00:00.000Z"
+  }
+}
+```
+
+## Responses API
+
+The Responses API built-in `web_search_preview` tool uses the same Cencori Web index. It no longer requires an external search provider key.
+
+```ts
+await cencori.ai.responses({
+  model: 'gpt-5.4',
+  input: 'What changed in the latest indexed release notes?',
+  tools: [{ type: 'web_search_preview', search_context_size: 'medium' }],
+});
+```
+
+## Shared public corpus operations
+
+The public corpus runs on a durable, lease-based frontier. Configure these deployment variables:
+
+```bash
+WEB_CRAWL_ADMIN_SECRET=replace-with-a-long-random-secret
+```
+
+Create a public crawl job manually:
+
+```bash
+curl -X POST https://cencori.com/api/internal/web/crawl \
+  -H "Authorization: Bearer $WEB_CRAWL_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domains": ["docs.example.com", "research.example.org"],
+    "maxPages": 10000,
+    "maxDepth": 2
+  }'
+```
+
+Each worker invocation retrieves conventional and robots-declared sitemaps, follows same-origin links, retries transient failures, and schedules due public documents for recrawling. Cencori Web does not require Vercel Cron; the caller that invokes the protected worker endpoint is deployment-specific.
+
+Inspect jobs with `GET /api/internal/web/crawl` and an individual job with `GET /api/internal/web/crawl/:jobId`. Trigger a bounded worker run manually with `POST /api/internal/web/crawl/worker`.
+
+## Current boundary
+
+The current runtime handles static HTML, XML sitemaps, and text resources. JavaScript browser rendering, distributed per-host politeness coordination, snapshot object storage, and learned reranking remain separate layers that can be added without changing these API contracts.
