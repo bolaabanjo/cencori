@@ -388,21 +388,23 @@ await cencori.telemetry.reportWebRequest({
 
 ### Memory
 
-Per-user memory that persists across sessions. Turn it on with a `memory` field
-on any chat call (native), or use `cencori.memory.*` directly with any provider
-(standalone). Managed and org-isolated; PII is redacted before write.
+Per-user memory that persists across sessions. Works with any model: use
+`cencori.memory.*` around your own inference — no gateway required. Or, if you're
+already on Cencori, turn it on with a `memory` field on any chat call. Managed and
+org-isolated; PII is redacted before write.
 
 ```typescript
-// Native: memory-aware chat in one field. Retrieval + writeback are automatic.
+// Any model: recall() → inject-ready string; remember() writes the new facts.
+const context = await cencori.memory.recall(user.id, message);
+// ...your own openai/anthropic/local call using `context` as a system message...
+await cencori.memory.remember(user.id, { user: message, assistant: reply });
+
+// On the gateway: memory-aware chat in one field. Retrieval + writeback automatic.
 const res = await cencori.chat.completions.create({
   model: 'gpt-4o',
   messages,
   memory: { userId: user.id },
 });
-
-// Standalone: bring any model. recall() → inject-ready string; remember() writes.
-const context = await cencori.memory.recall(user.id, message);
-await cencori.memory.remember(user.id, { user: message, assistant: reply });
 
 // Direct: write / searchUser / list / fetch(id) / forget(id).
 await cencori.memory.write({ userId: user.id, content: 'Prefers TypeScript.' });
@@ -1097,5 +1099,5 @@ When integrating Cencori into a project:
 - Chat API: https://cencori.com/docs/api/chat
 - Cencori Web API: https://cencori.com/docs/api/web
 - Build a Web Research Agent: https://cencori.com/docs/guides/build-a-web-research-agent
-- MCP Server: https://cencori.com/docs/integrations/mcp
+- MCP Server: https://cencori.com/docs/mcp
 - Continue: https://cencori.com/docs/agentic-engineering/desktop/continue

@@ -1,13 +1,15 @@
 ---
 title: MCP Server
 description: Give MCP clients first-party web search, Cencori docs, platform reads, inference, memory, sessions, and governance with explicit action tiers.
-section: Integrations
-order: 7
+section: MCP
+order: 1
 ---
 
 # MCP server
 
 `@cencori/mcp` is Cencori's official [Model Context Protocol](https://modelcontextprotocol.io) server. It gives Cursor, Claude Desktop, Codex, and any MCP client direct access to Cencori Web, documentation, gateway metrics, memory, agents, sessions, governance, and multimodal inference.
+
+It is a thin stdio adapter over Cencori's public HTTP APIs. The platform enforces authentication, project isolation, quota, policy, and audit logging; the MCP server adds capability flags and tool annotations for reads, writes, destructive changes, and open-web access.
 
 Version `0.7.1` includes first-party Web tools.
 
@@ -61,6 +63,8 @@ Web search, fetch, extraction, and browser-job polling are read tools. Crawling,
 
 ## Web tools
 
+Web access uses Cencori's own crawler, corpus, embeddings, and ranking pipeline — not a third-party search API.
+
 | Tier | Tool | Purpose |
 |---|---|---|
 | Read | `web_search` | Search Cencori's first-party hybrid index and return citation evidence. |
@@ -71,7 +75,7 @@ Web search, fetch, extraction, and browser-job polling are read tools. Crawling,
 | Write | `web_crawl` | Crawl pages into the authenticated project's private index. |
 | Write | `request_web_takedown` | Submit a removal request for operator review. |
 
-All Web tools advertise `openWorldHint: true`. Their descriptions state that page content is untrusted data, never agent instructions. `web_browse` also rejects password, token, and secret field selectors.
+All Web tools advertise `openWorldHint: true`. Their descriptions state that page content is untrusted data, never agent instructions. `web_browse` also rejects password, token, and secret field selectors. Browser jobs are asynchronous; call `get_web_browser_job` with the id returned by `web_browse`.
 
 Example prompt after configuring the server:
 

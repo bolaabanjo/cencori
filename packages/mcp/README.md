@@ -147,4 +147,4 @@ src/
 - The built artifact receives its shebang from `tsup.config.ts`.
 - `Authorization: Bearer <key>` is used for Cencori API calls.
 
-Full documentation: https://cencori.com/docs/integrations/mcp
+Full documentation: https://cencori.com/docs/mcp
