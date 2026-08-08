@@ -12,6 +12,14 @@ describe('search quality evaluation', () => {
         expect(result.ndcgAtK).toBeCloseTo(1 / Math.log2(3));
     });
 
+    it('credits an expected domain only once', () => {
+        const result = scoreSearchEvaluationCase({ id: 'q1', query: 'query', expectedDomains: ['docs.example.com'] }, [
+            'https://docs.example.com/first', 'https://docs.example.com/second',
+        ], 42);
+        expect(result.recallAtK).toBe(1);
+        expect(result.ndcgAtK).toBe(1);
+    });
+
     it('summarizes a suite and reports p95 latency', () => {
         const summary = summarizeSearchEvaluations([
             { id: 'a', query: 'a', reciprocalRank: 1, recallAtK: 1, ndcgAtK: 1, latencyMs: 10, returnedDomains: ['a.com'] },
