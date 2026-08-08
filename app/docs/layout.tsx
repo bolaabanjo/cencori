@@ -11,6 +11,20 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: { default: "Documentation", template: "%s — Cencori Docs" },
   description: "Cencori documentation — guides, API reference, and tutorials.",
+  openGraph: {
+    images: [
+      {
+        url: "/docs/og/v1/introduction.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Cencori Documentation",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/docs/og/v1/introduction.jpg"],
+  },
 };
 
 export default function DocsRouteLayout({
