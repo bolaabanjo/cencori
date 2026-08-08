@@ -31,6 +31,7 @@ console.log(response.content);
 | Product | Status | Description |
 |---------|--------|-------------|
 | **AI Gateway** | ✅ Available | Multi-provider routing, security, observability |
+| **Web** | ✅ Available | First-party fetch, extraction, crawl, and evidence-bearing search |
 | **Billing** | ✅ Available | End-user usage monetization and Stripe integration |
 | **Integration** | ✅ Available | SDKs, Vercel AI, TanStack |
 
@@ -194,6 +195,34 @@ const { answer } = await cencori.documents.query({
 ```
 
 Full API in [docs](https://cencori.com/docs/ai/endpoints/documents). See the [Contract Analyzer tutorial](https://cencori.com/docs/guides/build-a-contract-analyzer) for an end-to-end example.
+
+### Web Search and Retrieval
+
+Fetch and extract public pages, build a private project corpus, or search Cencori's continuously refreshed public index:
+
+```typescript
+const results = await cencori.web.search({
+  query: 'PostgreSQL row-level locking',
+  freshness: '30d',
+  limit: 10,
+});
+
+for (const result of results.results) {
+  console.log(result.title, result.canonicalUrl, result.evidence.quote);
+}
+
+const page = await cencori.web.extract({
+  url: 'https://www.postgresql.org/docs/current/explicit-locking.html',
+});
+
+await cencori.web.crawl({
+  seeds: ['https://docs.example.com/'],
+  maxPages: 100,
+  maxDepth: 2,
+});
+```
+
+For tool-calling agents, import `WEB_SEARCH_TOOL` or `WEB_FETCH_TOOL` from `cencori/web`, then resolve emitted calls with `cencori.web.executeTool(...)`. Retrieved page content is always marked as untrusted input.
 
 ### Image Generation
 
