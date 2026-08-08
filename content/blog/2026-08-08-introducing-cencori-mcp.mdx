@@ -1,0 +1,218 @@
+---
+title: "Introducing Cencori MCP"
+slug: "introducing-cencori-mcp"
+date: "2026-08-08"
+excerpt: "Cencori is now native to every MCP client. Search our first-party Web index, read documentation, inspect your AI infrastructure, work with memory and agents, and run multimodal tools through one secure server."
+coverImage: "/blog/images/covers/cencori-mcp.png"
+authors: []
+tags: ["MCP", "Agents", "Developer Tools", "Product"]
+category: "product"
+published: true
+---
+
+The tools an agent can reach define what it can become.
+
+Today we are launching **Cencori MCP**, the official Model Context Protocol server for the Cencori platform.
+
+It gives Cursor, Claude Desktop, Codex, and any MCP-compatible client a direct, structured way to search Cencori Web, read our documentation, inspect gateway health and usage, work with memory and agents, manage durable sessions, query governance, and run multimodal inference.
+
+One server. One project key. The Cencori platform, available as tools.
+
+```bash
+npx -y @cencori/mcp@latest
+```
+
+## Start with no configuration
+
+Cencori MCP is useful before you add a key.
+
+Run the package and your agent can immediately search the Cencori documentation, retrieve an exact page, inspect the docs navigation, or load our complete `llm.txt` integration contract.
+
+```json
+{
+  "mcpServers": {
+    "cencori": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp@latest"]
+    }
+  }
+}
+```
+
+That gives the client four public tools:
+
+- `search_docs`
+- `get_doc`
+- `list_docs`
+- `get_integration_guide`
+
+It also exposes guidance tools for the decisions that must remain human-controlled: creating or revoking API keys, changing billing, managing access, and activating governance policy.
+
+An agent can tell you exactly what to do. It cannot quietly do those things for you.
+
+## Give your agent the web
+
+Add a Cencori project key and the server exposes our first-party Web layer:
+
+```json
+{
+  "mcpServers": {
+    "cencori": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_your_project_key"
+      }
+    }
+  }
+}
+```
+
+Now the client can:
+
+- `web_search` across Cencori's owned hybrid index
+- `web_fetch` a bounded public text resource
+- `web_extract` clean content, links, metadata, dates, and evidence spans
+- `get_web_browser_job` to poll a JavaScript browser exploration
+
+Cencori Web does not forward these queries to a hosted search provider. The crawler, corpus, local embeddings, retrieval system, ranking pipeline, extraction layer, and browser workers belong to Cencori.
+
+Search results return more than a title and a URL. They include an evidence quote, content hash, and retrieval timestamp so the agent can show what supported its answer and when that evidence was observed.
+
+Every Web tool is marked as open-world access. Every description tells the client that retrieved content is untrusted data, never instructions. A page can inform the agent; it cannot promote itself into the agent's control plane.
+
+## Operate the platform from the same client
+
+With the same project key, an agent can inspect the infrastructure its work runs through.
+
+### Gateway
+
+- List available models
+- Inspect request, token, cost, and latency metrics
+- Check platform health
+- Check project quota
+
+### Memory
+
+- List and semantically search memories
+- Read a specific memory
+- Inspect resolved entities and the memory graph
+- Review forget suggestions
+
+### Agents and sessions
+
+- List and inspect agents
+- Poll agent actions
+- Read durable sessions and their event streams
+
+### Governance
+
+- Inspect policies and roles
+- Review change requests
+- Read the governance ledger and evidence
+- Discover available policy templates
+
+This is not a second implementation of Cencori inside an MCP package. The server is a thin adapter over the same public APIs applications use. Authentication, tenant isolation, quotas, governance, and audit logging remain enforced by the platform.
+
+## Safe by default
+
+Agent tools should not all have the same power.
+
+Cencori MCP divides operations into explicit action tiers:
+
+| Tier | Gate | What it allows |
+|---|---|---|
+| **Public** | none | Documentation and manual-action guidance |
+| **Read** | `CENCORI_API_KEY` | Web retrieval and platform inspection |
+| **Write** | `CENCORI_MCP_WRITE=1` | Inference, Web actions, and additive state changes |
+| **Destructive** | `CENCORI_MCP_DESTRUCTIVE=1` | Deletes and approve/reject operations; implies write |
+
+Without a write flag, the server does not register tools that incur inference cost, queue browser work, crawl into a project index, or change project state.
+
+To enable the full non-destructive surface:
+
+```json
+{
+  "mcpServers": {
+    "cencori": {
+      "command": "npx",
+      "args": ["-y", "@cencori/mcp@latest"],
+      "env": {
+        "CENCORI_API_KEY": "csk_your_project_key",
+        "CENCORI_MCP_WRITE": "1"
+      }
+    }
+  }
+}
+```
+
+That adds:
+
+- JavaScript browser exploration and project-scoped crawling
+- Text generation and RAG
+- Embeddings and moderation
+- Image generation and vision
+- Document extraction, summarization, and Q&A
+- Text-to-speech and transcription
+- Memory, agent, session, and governance-draft writes
+
+Destructive tools remain absent until you enable them separately.
+
+MCP clients receive `readOnlyHint`, `destructiveHint`, and `openWorldHint` metadata on each tool. The client can understand the nature of an operation before it asks to execute it.
+
+## Expose only what the agent needs
+
+You can narrow the tool surface with `CENCORI_MCP_FEATURES`:
+
+```json
+{
+  "CENCORI_MCP_FEATURES": "web,docs"
+}
+```
+
+Available feature groups are:
+
+```text
+docs, guidance, gateway, agents, memory,
+sessions, web, governance, multimodal
+```
+
+An agent researching technical documentation does not need billing metrics. An operations agent may need gateway and governance reads but no browser. A product agent may need memory and sessions but not destructive access.
+
+The smallest sufficient tool surface is usually the best one.
+
+## A native interface for agents
+
+APIs are designed for applications that already know which endpoint to call. MCP lets an agent discover the available operations, understand their schemas, and select the right tool during a task.
+
+That distinction matters. A developer can now ask:
+
+```text
+Search Cencori Web for the latest PostgreSQL row-level security guidance.
+Compare the strongest three sources, quote the evidence you used, and include
+each source URL and retrieval timestamp.
+```
+
+Or:
+
+```text
+Check our Cencori gateway health and seven-day latency. Then inspect the active
+governance policies and tell me whether anything would block a document-analysis
+agent from entering production.
+```
+
+The agent sees typed tools. Cencori sees authenticated, scoped API requests. The user sees an inspectable result.
+
+## Available now
+
+Cencori MCP is open source and available on npm as `@cencori/mcp@0.7.1`.
+
+```bash
+npx -y @cencori/mcp@latest
+```
+
+Start without a key for documentation. Add `CENCORI_API_KEY` for Web and platform reads. Enable write or destructive capabilities only when the agent's job requires them.
+
+Agents should be able to understand and operate the infrastructure they run on. Now Cencori speaks their native protocol.
+
+[Read the MCP documentation →](/docs/integrations/mcp) · [Explore Cencori Web →](/docs/api/web) · [View the package on npm →](https://www.npmjs.com/package/@cencori/mcp)
