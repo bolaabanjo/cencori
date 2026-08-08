@@ -23,6 +23,23 @@ export interface FetchWebResourceOptions {
     respectRobots?: boolean;
 }
 
+export function normalizeWebFetchError(error: unknown): WebRuntimeError {
+    if (error instanceof WebRuntimeError) return error;
+    if (error instanceof UnsafeOutboundUrlError) {
+        if (error.message.includes('exceeds the')) {
+            return new WebRuntimeError('response_too_large', error.message, 413);
+        }
+        if (error.message === 'URL hostname could not be resolved') {
+            return new WebRuntimeError('dns_unavailable', error.message, 503);
+        }
+        return new WebRuntimeError('unsafe_url', error.message, 400);
+    }
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        return new WebRuntimeError('fetch_timeout', 'The remote server did not respond before the timeout', 504);
+    }
+    return new WebRuntimeError('fetch_failed', error instanceof Error ? error.message : 'Web retrieval failed', 422);
+}
+
 export async function fetchWebResource(
     value: string,
     options: FetchWebResourceOptions = {},
@@ -81,16 +98,6 @@ export async function fetchWebResource(
             },
         };
     } catch (error) {
-        if (error instanceof WebRuntimeError) throw error;
-        if (error instanceof UnsafeOutboundUrlError) {
-            if (error.message.includes('exceeds the')) {
-                throw new WebRuntimeError('response_too_large', error.message, 413);
-            }
-            throw new WebRuntimeError('unsafe_url', error.message, 400);
-        }
-        if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-            throw new WebRuntimeError('fetch_timeout', 'The remote server did not respond before the timeout', 504);
-        }
-        throw new WebRuntimeError('fetch_failed', error instanceof Error ? error.message : 'Web retrieval failed', 422);
+        throw normalizeWebFetchError(error);
     }
 }
