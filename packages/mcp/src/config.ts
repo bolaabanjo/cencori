@@ -6,6 +6,7 @@ export type McpFeature =
     | 'agents'
     | 'memory'
     | 'sessions'
+    | 'web'
     | 'multimodal'
     | 'governance'
     | 'guidance';
@@ -16,6 +17,7 @@ const KNOWN_FEATURES: readonly McpFeature[] = [
     'agents',
     'memory',
     'sessions',
+    'web',
     'multimodal',
     'governance',
     'guidance',
@@ -63,6 +65,7 @@ function allFeaturesEnabled(): Record<McpFeature, boolean> {
         agents: true,
         memory: true,
         sessions: true,
+        web: true,
         multimodal: true,
         governance: true,
         guidance: true,
@@ -95,6 +98,7 @@ function parseFeatures(value: string | undefined): Record<McpFeature, boolean> {
         agents: enabled.has('agents'),
         memory: enabled.has('memory'),
         sessions: enabled.has('sessions'),
+        web: enabled.has('web'),
         multimodal: enabled.has('multimodal'),
         governance: enabled.has('governance'),
         guidance: enabled.has('guidance'),

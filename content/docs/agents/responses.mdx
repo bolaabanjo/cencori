@@ -58,7 +58,7 @@ The response contains everything — the text answer, search results, retrieved 
 
 All four tools run on Cencori's infrastructure:
 
-- **Web search** hits a search provider, fetches and ranks results, injects them as context
+- **Web search** queries Cencori's first-party hybrid index, retrieves evidence-bearing results, and injects them as context
 - **File search** queries your Cencori project's vector store
 - **Code interpreter** executes in a sandboxed environment with timeouts and resource limits
 - **Function calls** route through your existing provider chain with the same security, failover, and observability as any other gateway request
@@ -76,7 +76,7 @@ Every request passes through the same security pipeline — jailbreak detection,
 | Let your agent run code | Add `{ type: "code_interpreter" }` to `tools` |
 | Integrate your own APIs | Add standard `{ type: "function" }` definitions alongside built-in tools |
 
-The Responses API is available now at `https://cencori.com/api/v1/responses` or through the Cencori SDK starting with `cencori@1.2.0`.
+The Responses API is available at `https://cencori.com/api/v1/responses`. Its first-party Web integration is available through `cencori@1.6.1` and later.
 
 ## Beyond the First Request
 
