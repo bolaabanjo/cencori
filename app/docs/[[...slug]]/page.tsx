@@ -23,11 +23,32 @@ export async function generateMetadata(
   if (!page) return {};
 
   const { title, description } = page.data;
+  const docPath = page.url.replace(/^\/docs\/?/, "") || "introduction";
+  const socialImage = `/docs/og/v1/${docPath}.jpg`;
+
   return {
     title,
     description,
-    openGraph: { type: "article", title, description, siteName: "Cencori" },
-    twitter: { card: "summary_large_image", title, description },
+    openGraph: {
+      type: "article",
+      title,
+      description,
+      siteName: "Cencori",
+      images: [
+        {
+          url: socialImage,
+          width: 1200,
+          height: 630,
+          alt: `${title} — Cencori Docs`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [socialImage],
+    },
   };
 }
 
