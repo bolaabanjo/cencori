@@ -21,12 +21,15 @@ function normalizedUrl(value: string): string {
     return parsed.toString().replace(/\/$/, '');
 }
 
-function isRelevant(url: string, testCase: SearchEvaluationCase): boolean {
+function relevanceKey(url: string, testCase: SearchEvaluationCase): string | null {
     const parsed = new URL(url);
     const expectedDomains = testCase.expectedDomains || [];
     const expectedUrls = (testCase.expectedUrls || []).map(normalizedUrl);
-    return expectedDomains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))
-        || expectedUrls.includes(normalizedUrl(url));
+    const exactUrl = expectedUrls.find(expectedUrl => expectedUrl === normalizedUrl(url));
+    if (exactUrl) return `url:${exactUrl}`;
+    const domain = expectedDomains.find(expectedDomain =>
+        parsed.hostname === expectedDomain || parsed.hostname.endsWith(`.${expectedDomain}`));
+    return domain ? `domain:${domain}` : null;
 }
 
 export function scoreSearchEvaluationCase(
@@ -34,7 +37,13 @@ export function scoreSearchEvaluationCase(
     urls: string[],
     latencyMs: number,
 ): SearchEvaluationResult {
-    const relevance = urls.map(url => isRelevant(url, testCase));
+    const creditedTargets = new Set<string>();
+    const relevance = urls.map(url => {
+        const key = relevanceKey(url, testCase);
+        if (!key || creditedTargets.has(key)) return false;
+        creditedTargets.add(key);
+        return true;
+    });
     const firstRelevant = relevance.findIndex(Boolean);
     const relevantReturned = relevance.filter(Boolean).length;
     const expectedCount = Math.max((testCase.expectedUrls?.length || 0) + (testCase.expectedDomains?.length || 0), 1);
