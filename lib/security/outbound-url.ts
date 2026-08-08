@@ -99,7 +99,10 @@ export async function assertSafeOutboundUrl(value: string | URL): Promise<URL> {
 export async function safeOutboundFetch(
     value: string | URL,
     init: RequestInit = {},
-    options: { maxRedirects?: number } = {},
+    options: {
+        maxRedirects?: number;
+        onRedirect?: (url: URL, status: number) => void | Promise<void>;
+    } = {},
 ): Promise<Response> {
     const maxRedirects = options.maxRedirects ?? 0;
     let url = await assertSafeOutboundUrl(value);
@@ -115,10 +118,12 @@ export async function safeOutboundFetch(
             throw new UnsafeOutboundUrlError('Outbound redirect was not allowed');
         }
 
-        url = await assertSafeOutboundUrl(new URL(location, url));
+        const redirectedUrl = await assertSafeOutboundUrl(new URL(location, url));
+        await response.body?.cancel().catch(() => undefined);
+        await options.onRedirect?.(redirectedUrl, response.status);
+        url = redirectedUrl;
         if (response.status === 303 || ((response.status === 301 || response.status === 302) && requestInit.method?.toUpperCase() === 'POST')) {
-            const { body: _body, ...withoutBody } = requestInit;
-            requestInit = { ...withoutBody, method: 'GET', redirect: 'manual' };
+            requestInit = { ...requestInit, body: undefined, method: 'GET', redirect: 'manual' };
         }
     }
 }

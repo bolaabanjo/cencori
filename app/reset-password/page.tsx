@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { supabase } from "@/lib/supabaseClient";
 import { Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,6 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
-    );
-
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         setSession(true);
@@ -51,11 +46,6 @@ export default function ResetPasswordPage() {
     }
 
     try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
-      );
-
       const { error: updateError } = await supabase.auth.updateUser({ password });
 
       if (updateError) {
@@ -73,7 +63,7 @@ export default function ResetPasswordPage() {
 
   if (session === null) {
     return (
-      <div className="h-dvh flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center">
         <p className="text-sm text-muted-foreground">Checking…</p>
       </div>
     );
@@ -81,7 +71,7 @@ export default function ResetPasswordPage() {
 
   if (session === false) {
     return (
-      <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6">
+      <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6">
         <div className="w-full max-w-sm flex flex-col items-center text-center gap-4">
           <Logo variant="mark" className="h-6" />
           <h1 className="text-lg font-medium">Invalid or expired link</h1>
@@ -97,7 +87,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="h-dvh overflow-hidden flex flex-col items-center justify-center p-4 md:p-6">
+    <div className="min-h-dvh flex flex-col items-center justify-center p-4 md:p-6">
       <div className="w-full max-w-sm flex flex-col items-center text-center gap-8">
         <Logo variant="mark" className="h-6" />
 

@@ -152,6 +152,21 @@ export {
 } from './chat';
 export { SessionsNamespace, type Session, type SessionEvent, type CreateSessionParams, type TurnParams, type PaginatedResponse, type SessionListParams } from './sessions';
 export { TelemetryClient, type WebTelemetryPayload } from './telemetry';
+export {
+    WebNamespace,
+    WEB_SEARCH_TOOL,
+    WEB_FETCH_TOOL,
+    type WebFetchRequest,
+    type WebFetchResult,
+    type WebExtractResult,
+    type WebLink,
+    type WebEvidenceSpan,
+    type WebSearchRequest,
+    type WebSearchHit,
+    type WebSearchResponse,
+    type WebCrawlRequest,
+    type WebCrawlResponse,
+} from './web';
 
 // Default export for convenience
 export { Cencori as default } from './cencori';
@@ -160,4 +175,3 @@ export { Cencori as default } from './cencori';
 // Users can also import from 'cencori/vercel' directly
 export { cencori, createCencori } from './vercel';
 export type { CencoriProvider, CencoriProviderSettings, CencoriChatSettings } from './vercel';
-

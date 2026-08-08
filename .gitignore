@@ -30,6 +30,7 @@ docs/company/VOLUME_7_AGENT_KNOWLEDGE_BASE.md
 /docs/
 # production
 /build
+/dist-workers
 
 # misc
 .DS_Store

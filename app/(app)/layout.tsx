@@ -68,6 +68,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     async function check() {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error || !session?.user) {
+        // This request already passed middleware.ts (or the org layout's
+        // server-side check), so the session is valid as far as the server is
+        // concerned. A null session here means the client couldn't read the
+        // cookie — historically that raced the redirect and bounced people
+        // straight back to /login after a successful sign-in. Only give up when
+        // there's also no cached user, i.e. nothing to render at all.
+        if (cachedUser) return;
+
         clearDashboardUserCache();
         if (mounted) {
           setAuthState({ loading: true, user: null });

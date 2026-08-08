@@ -154,29 +154,53 @@ function isProtectedApiPath(pathname: string): boolean {
   );
 }
 
+/**
+ * Page paths that require a session. Exact match or `${prefix}/…`.
+ *
+ * `/internal` is intentionally absent: app/internal/layout.tsx renders its own
+ * sign-in form in place when there's no user, so redirecting to /login here
+ * would make the internal panel unreachable.
+ */
+const PROTECTED_PAGE_PREFIXES = ["/dashboard", "/account", "/onboarding"];
+
+function isProtectedPagePath(pathname: string): boolean {
+  return PROTECTED_PAGE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+/**
+ * Refresh whenever the visitor actually has a session.
+ *
+ * This used to list `/dashboard` and `/internal` — but the URL polish handled
+ * further down this same file moved the app to top-level `/{orgSlug}/*`, and
+ * this predicate was never updated with it. The result: the entire dashboard
+ * ran with no server-side token refresh, leaning on the browser client's
+ * `autoRefreshToken` timer alone. That timer is exactly what mobile Safari
+ * freezes when you switch apps, so the token would go stale with nothing to
+ * renew it, and the session guard bounced the user to /login.
+ *
+ * Keying off the cookie instead of a path list means anonymous marketing and
+ * docs traffic still skips the round-trip to Supabase, while every signed-in
+ * request gets its session renewed no matter which URL shape it uses.
+ */
 function shouldRefreshAuthSession(
   pathname: string,
   isScanSubdomain: boolean,
   needsApiAccessCheck: boolean,
   isScanAuthPath: boolean,
+  hasSessionCookie: boolean,
+  isFile: boolean,
 ): boolean {
   if (needsApiAccessCheck) {
     return true;
   }
 
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/internal")) {
-    return true;
+  if (isScanSubdomain && isScanAuthPath) {
+    return false;
   }
 
-  if (pathname.startsWith("/scan")) {
-    return !isScanAuthPath;
-  }
-
-  if (isScanSubdomain && !isScanAuthPath) {
-    return true;
-  }
-
-  return false;
+  return hasSessionCookie && !isFile;
 }
 
 function extractProjectId(pathname: string): string | null {
@@ -424,11 +448,17 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  const hasSessionCookie = request.cookies
+    .getAll()
+    .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+
   const shouldRefreshAuth = shouldRefreshAuthSession(
     pathname,
     isScanSubdomain,
     needsApiAccessCheck,
     isScanAuthPath,
+    hasSessionCookie,
+    isFile,
   );
 
   let userId: string | null = null;
@@ -469,6 +499,24 @@ export async function proxy(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     userId = user?.id ?? null;
+  }
+
+  // Protect pages here rather than in the client layout's useEffect. The old
+  // guard shipped the whole protected page to the browser, then ran
+  // getSession() and redirected — a race that mobile lost often enough that
+  // signing in appeared to dump you straight back on /login.
+  //
+  // Org routes (`/{orgSlug}/…`) are deliberately absent: any non-reserved top
+  // level segment looks like an org slug, so guarding them by path shape here
+  // would redirect anonymous visitors off any marketing page missing from
+  // RESERVED_ORG_SLUGS. They're guarded in app/(app)/[orgSlug]/layout.tsx,
+  // where the segment is unambiguous.
+  if (!isFile && !isScanSubdomain && !userId && isProtectedPagePath(pathname)) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("redirect", `${pathname}${request.nextUrl.search}`);
+    return applySecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
   if (needsApiAccessCheck) {

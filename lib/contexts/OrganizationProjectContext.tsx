@@ -1,9 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { supabase } from "@/lib/supabaseClient";
 
-interface Organization {
+export interface Organization {
     id: string;
     name: string;
     slug: string;
@@ -11,7 +11,7 @@ interface Organization {
     subscription_tier?: string;
 }
 
-interface Project {
+export interface Project {
     id: string;
     name: string;
     slug: string;
@@ -58,15 +58,6 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
     const [organizations, setOrganizations] = useState<Organization[]>(cached?.organizations ?? []);
     const [projects, setProjects] = useState<Project[]>(cached?.projects ?? []);
     const [loading, setLoading] = useState(!cached);
-
-    const supabase = useMemo(
-        () =>
-            createBrowserClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-            ),
-        []
-    );
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -121,7 +112,7 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
         } finally {
             setLoading(false);
         }
-    }, [supabase]);
+    }, []);
 
     useEffect(() => {
         fetchData();
