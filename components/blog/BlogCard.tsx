@@ -3,20 +3,21 @@ import Image from "next/image";
 import { BlogPost } from "@/lib/blog";
 import { Clock, ArrowUpRight } from "lucide-react";
 import { format } from "date-fns";
-import { buildOgImageUrl } from "@/lib/og";
 
 interface BlogCardProps {
     post: BlogPost;
 }
 
 export function BlogCard({ post }: BlogCardProps) {
+    const coverImage = post.coverImage || `/blog/og/v1/${post.slug}.jpg`;
+
     return (
         <Link href={post.category === "changelog" ? `/changelog/${post.slug}` : `/blog/${post.slug}`} className="block h-full group">
             <div className="h-full border border-border/50 rounded-lg overflow-hidden bg-background hover:border-border transition-colors">
                 {/* Cover Image */}
                 <div className="relative w-full h-36 overflow-hidden border-b border-border/40">
                     <Image
-                        src={post.coverImage || buildOgImageUrl({ title: post.title, type: "blog" })}
+                        src={coverImage}
                         alt={post.title}
                         fill
                         className="object-cover group-hover:scale-105 transition-transform duration-300"

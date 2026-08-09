@@ -19,10 +19,7 @@ const BACKGROUND_COUNT = 5;
 
 function getFallbackPosts() {
   return getAllPosts()
-    .filter(
-      (post) =>
-        post.published && post.category !== "changelog" && !post.coverImage,
-    )
+    .filter((post) => post.published && !post.coverImage)
     .sort((a, b) => {
       const dateDifference =
         new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -83,7 +80,6 @@ export async function GET(
   if (
     !post ||
     !post.published ||
-    post.category === "changelog" ||
     post.coverImage
   ) {
     return new Response(null, { status: 404 });
