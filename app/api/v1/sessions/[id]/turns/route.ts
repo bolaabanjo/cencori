@@ -31,6 +31,7 @@ import {
     type MemorySettings,
     type RetrievedMemory,
 } from "@/lib/memory";
+import { isLocalMemoryBuild } from "@/lib/memory/availability";
 
 const normalizeGatewayModelId = (modelId: string): string => {
     const strippedModel = modelId.startsWith("cencori/")
@@ -269,6 +270,10 @@ export async function POST(
                 }
                 return [];
             });
+
+        if (body.memory !== undefined && !isLocalMemoryBuild()) {
+            return respondError(400, "The memory parameter is not available.", "unsupported_parameter");
+        }
 
         // ── Memory directive (API opt-in: presence of `memory` enables it) ──
         // Mirrors the chat-completions door so a session turn can recall

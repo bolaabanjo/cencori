@@ -7,6 +7,7 @@ import { after } from 'next/server';
 import { slugify } from '@/lib/utils';
 import { isReservedProjectSlug } from '@/lib/reserved-slugs';
 import { buildAndDeploy } from '@/lib/compute/build';
+import { isLocalComputeBuild } from '@/lib/compute/availability';
 
 interface DeployAgentProjectInput {
     orgSlug: string;
@@ -30,6 +31,10 @@ type Result = { ok: true; redirectTo: string } | { ok: false; error: string };
  * them 1:1, so the project name is the agent name.
  */
 export async function deployAgentProject(input: DeployAgentProjectInput): Promise<Result> {
+    if (!isLocalComputeBuild()) {
+        return { ok: false, error: 'Agent deployments are only available in local development.' };
+    }
+
     const supabase = await createServerClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) return { ok: false, error: 'Not signed in.' };

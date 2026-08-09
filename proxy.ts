@@ -154,6 +154,47 @@ function isProtectedApiPath(pathname: string): boolean {
   );
 }
 
+function isLocalHostname(domain: string): boolean {
+  return (
+    domain === "localhost" ||
+    domain.endsWith(".localhost") ||
+    domain === "127.0.0.1" ||
+    domain === "::1"
+  );
+}
+
+/**
+ * Hosted-agent deployments are still an unfinished local build. Block both
+ * their UI and API surface on every non-local host, including preview URLs.
+ */
+function isLocalComputePath(pathname: string): boolean {
+  return (
+    pathname === "/compute" ||
+    /^\/[^/]+\/~\/deployments(?:\/|$)/.test(pathname) ||
+    /^\/[^/]+\/~\/projects\/new-agent(?:\/|$)/.test(pathname) ||
+    /^\/[^/]+\/[^/]+\/deployments(?:\/|$)/.test(pathname) ||
+    /^\/dashboard\/organizations\/[^/]+\/deployments(?:\/|$)/.test(pathname) ||
+    /^\/dashboard\/organizations\/[^/]+\/projects\/[^/]+\/deployments(?:\/|$)/.test(pathname) ||
+    /^\/api\/projects\/[^/]+\/agents(?:\/|$)/.test(pathname) ||
+    /^\/api\/organizations\/[^/]+\/agents(?:\/|$)/.test(pathname) ||
+    pathname === "/api/github/detect"
+  );
+}
+
+/** Memory product surfaces are local-only until the product is launched. */
+function isLocalMemoryPath(pathname: string): boolean {
+  return (
+    pathname === "/memory" ||
+    /^\/[^/]+\/[^/]+\/memory(?:\/|$)/.test(pathname) ||
+    /^\/api\/projects\/[^/]+\/memory(?:\/|$)/.test(pathname) ||
+    pathname === "/api/memory" ||
+    pathname.startsWith("/api/memory/") ||
+    pathname === "/api/v1/memory" ||
+    pathname.startsWith("/api/v1/memory/") ||
+    pathname === "/api/ai/rag"
+  );
+}
+
 /**
  * Page paths that require a session. Exact match or `${prefix}/…`.
  *
@@ -320,6 +361,22 @@ export async function proxy(request: NextRequest) {
   });
 
   const pathname = request.nextUrl.pathname;
+
+  if (
+    !isLocalHostname(domain) &&
+    (isLocalComputePath(pathname) || isLocalMemoryPath(pathname))
+  ) {
+    if (pathname.startsWith("/api/")) {
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Not found" }, { status: 404 }),
+      );
+    }
+
+    const notFoundUrl = request.nextUrl.clone();
+    notFoundUrl.pathname = "/404";
+    return applySecurityHeaders(NextResponse.rewrite(notFoundUrl, { status: 404 }));
+  }
+
   const needsApiAccessCheck = isProtectedApiPath(pathname);
   const isScanAuthPath =
     pathname === "/signup" ||
@@ -604,6 +661,10 @@ export const config = {
     "/api/projects/:path*",
     "/api/organizations/:path*",
     "/api/github/repositories",
+    "/api/github/detect",
+    "/api/memory/:path*",
+    "/api/v1/memory/:path*",
+    "/api/ai/rag",
     "/api/internal/metrics/overview",
     "/api/internal/admins/verify",
   ],

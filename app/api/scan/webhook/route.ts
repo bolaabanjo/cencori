@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { verifyWebhookSignature } from '@/lib/scan/webhook-verify';
 import { scanPullRequest } from '@/lib/scan/pr-scan';
 import { handleComputePush, handleComputePullRequest, handleComputeRepository } from '@/lib/compute/webhook';
+import { isLocalComputeBuild } from '@/lib/compute/availability';
 
 // Allow up to 5 minutes for PR scans
 export const maxDuration = 300;
@@ -70,6 +71,10 @@ export async function POST(req: NextRequest) {
 
     // Compute — push → auto-deploy any agent watching this repo+branch.
     if (eventType === 'push') {
+        if (!isLocalComputeBuild()) {
+            return NextResponse.json({ message: 'Push received; local compute build is disabled' });
+        }
+
         let payload;
         try {
             payload = JSON.parse(rawBody);
@@ -85,6 +90,10 @@ export async function POST(req: NextRequest) {
 
     // Compute — repo rename/transfer keeps the agent's binding in sync; delete archives it.
     if (eventType === 'repository') {
+        if (!isLocalComputeBuild()) {
+            return NextResponse.json({ message: 'Repository event received; local compute build is disabled' });
+        }
+
         let payload;
         try {
             payload = JSON.parse(rawBody);
@@ -105,11 +114,13 @@ export async function POST(req: NextRequest) {
         }
 
         // Compute — preview deploys run independently of Scan's PR handling.
-        const previewTasks = await handleComputePullRequest(JSON.parse(rawBody));
-        if (previewTasks.length > 0) {
-            after(() =>
-                Promise.all(previewTasks.map((run) => run().catch((e) => console.error('[compute preview] build error:', e)))),
-            );
+        if (isLocalComputeBuild()) {
+            const previewTasks = await handleComputePullRequest(JSON.parse(rawBody));
+            if (previewTasks.length > 0) {
+                after(() =>
+                    Promise.all(previewTasks.map((run) => run().catch((e) => console.error('[compute preview] build error:', e)))),
+                );
+            }
         }
 
         const { action, pull_request: pr, repository, installation } = payload;

@@ -50,6 +50,7 @@ import type { ToolCallPayload } from "@/lib/gateway/v1-types";
 import type { SubscriptionTier } from "@/lib/entitlements";
 import type { UnifiedMessage } from "@/lib/providers/base";
 import { resolveAgentContext } from "@/lib/gateway/agent-context";
+import { isLocalMemoryBuild } from "@/lib/memory/availability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -412,6 +413,14 @@ export async function POST(req: NextRequest) {
         }
 
         const activeGatewayCtx = gatewayCtx;
+
+        if (body.memory !== undefined && !isLocalMemoryBuild()) {
+            return respondError(
+                400,
+                "The memory parameter is not available.",
+                "unsupported_parameter"
+            );
+        }
 
         // ── Memory directive (API opt-in: presence of `memory` enables it) ──
         let memoryDirective: MemoryDirective | null = null;

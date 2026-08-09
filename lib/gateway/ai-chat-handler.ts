@@ -68,6 +68,7 @@ import {
     type MemorySettings,
     type RetrievedMemory,
 } from '@/lib/memory';
+import { isLocalMemoryBuild } from '@/lib/memory/availability';
 
 const ROUTE = '/api/ai/chat';
 
@@ -322,6 +323,16 @@ export async function POST(req: NextRequest) {
                       ? msg.content
                       : JSON.stringify(msg.content ?? ''),
               }));
+
+        if (body.memory !== undefined && !isLocalMemoryBuild()) {
+            return wrap(
+                NextResponse.json(
+                    { error: 'unsupported_parameter', message: 'The memory parameter is not available.' },
+                    { status: 400 }
+                ),
+                ctx
+            );
+        }
 
         // ── Memory (API opt-in — same engine feature as /v1) ──
         let memoryDirective: MemoryDirective | null = null;

@@ -254,13 +254,15 @@ export default function OrganizationLayoutClient({
         { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
         // Memory is per-project (a memory belongs to one project's end-users),
         // so there is no org-scope view to fall back to — hide it outside a project.
-        ...(isInsideProject
+        ...(isInsideProject && process.env.NODE_ENV !== "production"
             ? [{ href: `${basePath}/memory`, icon: <HugeiconsIcon icon={AiBrain02Icon} className="!h-5 !w-5" />, label: "Memory" }]
             : []),
         { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
         // Compute — agent hosting. Project scope = that agent's version history;
         // org scope = the agent fleet (one row per agent-project). See ~/deployments.
-        { href: isInsideProject ? `${basePath}/deployments` : `${orgBase}/~/deployments`, icon: <HugeiconsIcon icon={ThreeDMoveIcon} className="!h-5 !w-5" />, label: "Deployments" },
+        ...(process.env.NODE_ENV !== "production"
+            ? [{ href: isInsideProject ? `${basePath}/deployments` : `${orgBase}/~/deployments`, icon: <HugeiconsIcon icon={ThreeDMoveIcon} className="!h-5 !w-5" />, label: "Deployments" }]
+            : []),
         { href: isInsideProject ? `${basePath}/monetization` : `${orgBase}/~/monetization`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "Monetization" },
     ];
 

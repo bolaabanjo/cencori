@@ -196,12 +196,14 @@ function CreateProjectMenu({ orgSlug }: { orgSlug: string }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem asChild className="cursor-pointer text-xs">
-          <Link href={`/${orgSlug}/~/projects/new-agent`}>
-            <Bot size={14} className="mr-2" aria-hidden="true" />
-            Deploy an agent
-          </Link>
-        </DropdownMenuItem>
+        {process.env.NODE_ENV !== "production" && (
+          <DropdownMenuItem asChild className="cursor-pointer text-xs">
+            <Link href={`/${orgSlug}/~/projects/new-agent`}>
+              <Bot size={14} className="mr-2" aria-hidden="true" />
+              Deploy an agent
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild className="cursor-pointer text-xs">
           <Link href={`/${orgSlug}/~/projects/new`}>
             <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.7} className="mr-2" aria-hidden="true" />

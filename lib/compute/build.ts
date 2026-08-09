@@ -18,6 +18,7 @@ import { getRuntimeProvider } from '@/lib/compute/runtime';
 import { mintAgentApiKey } from '@/lib/compute/api-key';
 import { createGithubDetectionContext, detectAgent, EMPTY_MANIFEST, type AgentBuildPlan } from '@/lib/compute/adapters';
 import { decryptApiKey } from '@/lib/encryption';
+import { isLocalComputeBuild } from '@/lib/compute/availability';
 
 interface DeploymentContext {
     deploymentId: string;
@@ -93,6 +94,11 @@ function fallbackPlan(ctx: DeploymentContext): AgentBuildPlan {
  * (queue/worker); for the v0 skeleton it can be awaited by the deploy route.
  */
 export async function buildAndDeploy(ctx: DeploymentContext): Promise<void> {
+    if (!isLocalComputeBuild()) {
+        console.warn(`[compute] ignored deployment ${ctx.deploymentId}: local-development-only build`);
+        return;
+    }
+
     const admin = createAdminClient();
     const provider = getRuntimeProvider();
     try {

@@ -151,7 +151,9 @@ const productMenuColumns: NavLink[][] = [
     [
         { title: "AI Gateway", href: siteConfig.links.products.aiGateway, description: "One API, 100+ models.", icon: renderMenuIcon(MoleculesIcon) },
         { title: "Models", href: siteConfig.links.products.models, description: "Hosted and mapped model catalog.", icon: renderMenuIcon(AiBrain01Icon) },
-        { title: "Memory", href: "/memory", description: "Stateful chat in one line.", icon: renderMenuIcon(AiBrain02Icon) },
+        ...(process.env.NODE_ENV !== "production"
+            ? [{ title: "Memory", href: "/memory", description: "Stateful chat in one line.", icon: renderMenuIcon(AiBrain02Icon) }]
+            : []),
         { title: "Audit Logs", href: siteConfig.links.products.audit, description: "Immutable logs and compliance trails.", icon: renderMenuIcon(BookOpen01Icon) },
     ],
     [
