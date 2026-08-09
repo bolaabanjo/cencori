@@ -191,7 +191,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                 success: false,
                 response: addGatewayHeaders(
                     NextResponse.json(
-                        { error: 'Invalid or missing public playground configuration' },
+                        { error: 'Invalid or missing public playground configuration', code: 'invalid_playground_config' },
                         { status: 403 }
                     ),
                     { requestId }
@@ -258,16 +258,16 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
 
         if (!ipRateLimit.allowed) {
             if (ipRateLimit.reason === 'backend_unavailable') {
-                return {
-                    success: false,
-                    response: addGatewayHeaders(
-                        NextResponse.json(
-                            { error: 'Rate limit unavailable' },
-                            { status: 503 }
-                        ),
-                        { requestId }
+return {
+                success: false,
+                response: addGatewayHeaders(
+                    NextResponse.json(
+                        { error: 'Rate limit unavailable', code: 'rate_limit_unavailable' },
+                        { status: 503 }
                     ),
-                };
+                    { requestId }
+                ),
+            };
             }
             return {
                 success: false,
@@ -276,9 +276,10 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                         {
                             error: 'Rate limit exceeded',
                             message: 'Too many requests. Sign up for a free account to increase your limits.',
+                            code: 'rate_limit_exceeded',
                             retry_after_ms: ipRateLimit.reset - Date.now(),
                         },
-                        { status: 429 }
+                        { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.round((ipRateLimit.reset - Date.now()) / 1000))) } }
                     ),
                     { requestId, rateLimit: ipRateLimit }
                 ),
@@ -417,7 +418,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
             success: false,
             response: addGatewayHeaders(
                 NextResponse.json(
-                    { error: 'Missing API key. Provide CENCORI_API_KEY header or Authorization: Bearer <key>' },
+                    { error: 'Missing API key. Provide CENCORI_API_KEY header or Authorization: Bearer <key>', code: 'missing_api_key' },
                     { status: 401 }
                 ),
                 { requestId }
@@ -476,7 +477,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
         return {
             success: false,
             response: addGatewayHeaders(
-                NextResponse.json({ error: 'Invalid API key' }, { status: 401 }),
+                NextResponse.json({ error: 'Invalid API key', code: 'invalid_api_key' }, { status: 401 }),
                 { requestId }
             ),
         };
@@ -492,7 +493,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                 success: false,
                 response: addGatewayHeaders(
                     NextResponse.json(
-                        { error: 'Domain not allowed for this API key' },
+                        { error: 'Domain not allowed for this API key', code: 'domain_not_allowed' },
                         { status: 403 }
                     ),
                     { requestId }
@@ -552,6 +553,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     {
                         error: 'Billing account frozen',
                         message: 'Billing is currently frozen for this organization. Contact support.',
+                        code: 'billing_frozen',
                     },
                     { status: 403 }
                 ),
@@ -568,6 +570,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     {
                         error: 'Credit balance exhausted',
                         message: 'Your organization has run out of credits. Top up to continue.',
+                        code: 'credit_balance_exhausted',
                         balance: 0,
                         top_up_url: '/billing',
                     },
@@ -590,6 +593,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     {
                         error: 'Monthly request limit reached',
                         message: `You've used ${currentUsage.toLocaleString()} of ${limit.toLocaleString()} requests this month.`,
+                        code: 'monthly_request_limit_reached',
                         current_tier: tier,
                         usage: {
                             used: currentUsage,
@@ -624,6 +628,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                         {
                             error: 'Rate limit unavailable',
                             message: 'Rate limiting backend is unavailable and fail-open mode is disabled.',
+                            code: 'rate_limit_unavailable',
                         },
                         { status: 503 }
                     ),
@@ -639,9 +644,10 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     {
                         error: 'Rate limit exceeded',
                         message: `${rateLimitResult.limit} requests per minute allowed. Try again shortly.`,
+                        code: 'rate_limit_exceeded',
                         retry_after_ms: rateLimitResult.reset - Date.now(),
                     },
-                    { status: 429 }
+                    { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.round((rateLimitResult.reset - Date.now()) / 1000))) } }
                 ),
                 { requestId, rateLimit: rateLimitResult }
             ),
@@ -656,6 +662,7 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     {
                         error: 'Spend cap reached',
                         message: spendCapResult.reason || 'Monthly spend cap has been reached.',
+                        code: 'spend_cap_reached',
                         spend: {
                             current: spendCapResult.status.currentSpend,
                             cap: spendCapResult.status.spendCap,

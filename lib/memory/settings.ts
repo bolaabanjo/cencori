@@ -29,9 +29,11 @@ export async function getProjectMemorySettings(
     try {
         const { data: row } = await supabase
             .from('project_memory_settings')
-            .select(
-                'enabled, extraction_model, extraction_prompt, min_importance, max_memories_per_exchange, session_ttl_seconds'
-            )
+            // Select * rather than a column list: a settings row is one row, and
+            // naming a column the live DB doesn't have yet (migrations are not
+            // auto-applied) would error the whole lookup and silently drop a
+            // project's custom extraction config back to defaults.
+            .select('*')
             .eq('project_id', projectId)
             .maybeSingle();
 
@@ -48,6 +50,9 @@ export async function getProjectMemorySettings(
                     row.max_memories_per_exchange ?? DEFAULT_MEMORY_SETTINGS.maxMemoriesPerExchange,
                 sessionTtlSeconds:
                     row.session_ttl_seconds ?? DEFAULT_MEMORY_SETTINGS.sessionTtlSeconds,
+                // Column added after the table shipped — absent (pre-migration)
+                // reads as the default, not as disabled.
+                graphEnabled: row.graph_enabled !== false,
             };
         }
     } catch (error) {

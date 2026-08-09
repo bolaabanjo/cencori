@@ -35,6 +35,12 @@ export interface RunEvalConfig {
     tier: SubscriptionTier;
     /** Run reconciliation (true) or the blind-insert baseline (false). */
     reconcile: boolean;
+    /**
+     * Build and query the entity graph during the run (default false). Off by
+     * default so a run measures the semantic layers in isolation and doesn't
+     * pay a second extraction call per turn; turn it on to score Layer 5.
+     */
+    graph?: boolean;
     /** Restrict to specific scenario ids (default: all scenarios). */
     scenarioIds?: string[];
     /** Scenario set to run (default: the homegrown BENCHMARK). Pass loaded
@@ -65,7 +71,12 @@ async function resetScenarioMemory(
         .eq('scope_key', userId);
 }
 
-function userDirective(scopeKey: string, topK: number, asOf: string | null = null): MemoryDirective {
+function userDirective(
+    scopeKey: string,
+    topK: number,
+    asOf: string | null = null,
+    graph = false
+): MemoryDirective {
     return {
         scope: 'user',
         scopeKey,
@@ -78,6 +89,7 @@ function userDirective(scopeKey: string, topK: number, asOf: string | null = nul
         extract: null,
         asOf,
         mode: 'inject',
+        graph,
     };
 }
 
@@ -87,12 +99,13 @@ async function buildScenarioMemory(config: RunEvalConfig, scenario: EvalScenario
     const topK = config.topK ?? 6;
     await resetScenarioMemory(supabase, organizationId, projectId, scenario.userId);
     const settings = await getProjectMemorySettings(supabase, projectId);
-    const writeDirective = userDirective(scenario.userId, topK);
+    const writeDirective = userDirective(scenario.userId, topK, null, config.graph ?? false);
     for (const turn of scenario.transcript) {
         await rememberExchange({
             supabase, organizationId, projectId, tier,
             directive: writeDirective, settings,
             userText: turn.user, assistantText: turn.assistant, reconcile,
+            graph: config.graph ?? false,
         });
     }
 }
@@ -103,7 +116,7 @@ async function recallForQuestion(config: RunEvalConfig, scenario: EvalScenario, 
         supabase: config.supabase,
         organizationId: config.organizationId,
         projectId: config.projectId,
-        directive: userDirective(scenario.userId, config.topK ?? 6, question.asOf ?? null),
+        directive: userDirective(scenario.userId, config.topK ?? 6, question.asOf ?? null, config.graph ?? false),
         queryText: question.query,
     });
     return recalled.map(m => m.content);

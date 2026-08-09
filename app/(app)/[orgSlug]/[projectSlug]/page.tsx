@@ -6,16 +6,18 @@ import Link from "next/link";
 import { Copy, Check, ExternalLink, Info, Terminal } from "lucide-react";
 import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { EXAMPLE_PROJECTS } from "@/config/examples";
-import { useState, use } from "react";
+import { useMemo, useState, use } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useEnvironment } from "@/lib/contexts/EnvironmentContext";
 import {
   ProjectOverviewDashboard,
   type ProjectOverviewChartPoint,
+  type ProjectOverviewDeployment,
   type ProjectOverviewModel,
+  type ProjectOverviewMonetization,
   type ProjectOverviewStats,
 } from "@/components/dashboard/project-overview/ProjectOverviewDashboard";
+import { useOrganizationProject } from "@/lib/contexts/OrganizationProjectContext";
 
 interface OrganizationData {
   id: string;
@@ -31,6 +33,38 @@ interface ProjectData {
   visibility: "public" | "private";
   status: "active" | "inactive";
   created_at: string;
+}
+
+interface OverviewAgent {
+  id: string;
+  name: string;
+  framework: string;
+  repo_full_name: string | null;
+  branch: string;
+  status: string;
+  hostname: string | null;
+  current_deployment_id: string | null;
+  updated_at: string | null;
+}
+
+interface OverviewDeployment {
+  id: string;
+  version: number;
+  status: string;
+  updated_at: string | null;
+}
+
+interface MonetizationConfig {
+  end_user_billing_enabled: boolean;
+}
+
+interface MonetizationStats {
+  total_end_users: number;
+  active_end_users: number;
+  provider_cost_usd: number;
+  customer_revenue_usd: number;
+  margin_usd: number;
+  margin_percentage: number;
 }
 
 // Getting Started Section Component - Compact
@@ -268,7 +302,11 @@ export { cencori };`);
 }
 
 // Hook to fetch project and organization details with caching
-function useProjectAndOrg(orgSlug: string, projectSlug: string) {
+function useProjectAndOrg(
+  orgSlug: string,
+  projectSlug: string,
+  initialData?: { organization: OrganizationData; project: ProjectData },
+) {
   return useQuery({
     queryKey: ["projectOverview", orgSlug, projectSlug],
     queryFn: async () => {
@@ -299,6 +337,8 @@ function useProjectAndOrg(orgSlug: string, projectSlug: string) {
       };
     },
     staleTime: 60 * 1000,
+    initialData,
+    initialDataUpdatedAt: initialData ? 0 : undefined,
     placeholderData: (prev) => prev,
   });
 }
@@ -310,10 +350,38 @@ export default function ProjectDetailsPage({
 }) {
   const { orgSlug, projectSlug } = use(params);
   const { environment } = useEnvironment();
+  const { organizations, projects } = useOrganizationProject();
   const [period, setPeriod] = useState<string>('7d');
 
+  const cachedProjectData = useMemo(() => {
+    const organization = organizations.find((item) => item.slug === orgSlug);
+    if (!organization) return undefined;
+
+    const project = projects.find((item) => (
+      item.slug === projectSlug && item.organization_id === organization.id
+    ));
+    if (!project) return undefined;
+
+    return {
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+      },
+      project: {
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+        description: project.description,
+        visibility: "private" as const,
+        status: "active" as const,
+        created_at: "",
+      },
+    };
+  }, [organizations, projects, orgSlug, projectSlug]);
+
   // Fetch project and org with caching - INSTANT ON REVISIT!
-  const { data: projectData, isLoading: projectLoading, error } = useProjectAndOrg(orgSlug, projectSlug);
+  const { data: projectData, isLoading: projectLoading, error } = useProjectAndOrg(orgSlug, projectSlug, cachedProjectData);
   const organization = projectData?.organization;
   const project = projectData?.project;
 
@@ -355,36 +423,100 @@ export default function ProjectDetailsPage({
   const chartData = statsData?.chartData || [];
   const modelBreakdown = statsData?.modelBreakdown || [];
 
-  if (projectLoading) {
-    return (
-      <div className="min-h-[calc(100svh-5.5rem)] bg-background p-2 dark:bg-black sm:p-3 lg:p-4">
-        <div className="mx-auto min-h-[calc(100svh-7.5rem)] max-w-[90rem]">
-          <div className="space-y-3 py-6 lg:py-7">
-            <Skeleton className="h-3 w-36 rounded-sm" />
-            <Skeleton className="h-8 w-40 rounded-sm" />
-            <Skeleton className="h-3 w-72 max-w-full rounded-sm" />
-          </div>
-          <div className="overflow-hidden border border-black/[0.08] dark:border-white/[0.09]">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5">
-              {[1, 2, 3, 4, 5].map((item) => (
-                <div key={item} className="min-h-32 border-b border-border/50 px-5 py-5 lg:border-r lg:last:border-r-0">
-                  <Skeleton className="h-3 w-20 rounded-sm" />
-                  <Skeleton className="mt-5 h-7 w-24 rounded-sm" />
-                  <Skeleton className="mt-3 h-3 w-32 rounded-sm" />
-                </div>
-              ))}
-            </div>
-            <div className="grid border-t border-border/50 xl:grid-cols-[minmax(0,1fr)_21rem]">
-              <div className="h-[28rem] p-5"><Skeleton className="h-full w-full rounded-md" /></div>
-              <div className="hidden border-l border-border/50 p-5 xl:block"><Skeleton className="h-full w-full rounded-md" /></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const {
+    data: agentsData,
+    isLoading: agentsLoading,
+    isError: agentsError,
+  } = useQuery<{ agents: OverviewAgent[] }>({
+    queryKey: ["agents", project?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${project!.id}/agents`);
+      if (!response.ok) throw new Error("Failed to load deployments");
+      return response.json();
+    },
+    enabled: !!project?.id,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+  const overviewAgent = agentsData?.agents?.[0];
 
-  if (error || !organization || !project) {
+  const {
+    data: agentDetail,
+    isLoading: agentDetailLoading,
+    isError: agentDetailError,
+  } = useQuery<{ agent: OverviewAgent; deployments: OverviewDeployment[] }>({
+    queryKey: ["agent-detail", project?.id, overviewAgent?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${project!.id}/agents/${overviewAgent!.id}`);
+      if (!response.ok) throw new Error("Failed to load agent deployment");
+      return response.json();
+    },
+    enabled: !!project?.id && !!overviewAgent,
+    staleTime: 15 * 1000,
+    refetchInterval: (query) => (
+      query.state.data?.deployments?.some((deployment) =>
+        deployment.status === "building" || deployment.status === "created"
+      ) ? 4000 : false
+    ),
+  });
+  const overviewDeployment = agentDetail?.deployments.find(
+    (deployment) => deployment.id === overviewAgent?.current_deployment_id,
+  ) ?? agentDetail?.deployments?.[0];
+  const deploymentSummary: ProjectOverviewDeployment | null = overviewAgent
+    ? {
+        status: overviewDeployment?.status ?? overviewAgent.status,
+        agentName: overviewAgent.name,
+        endpoint: overviewAgent.hostname,
+        framework: overviewAgent.framework,
+        repoFullName: overviewAgent.repo_full_name,
+        branch: overviewAgent.branch,
+        version: overviewDeployment?.version ?? null,
+        updatedAt: overviewDeployment?.updated_at ?? overviewAgent.updated_at,
+      }
+    : null;
+
+  const {
+    data: monetizationConfig,
+    isLoading: monetizationConfigLoading,
+    isError: monetizationConfigError,
+  } = useQuery<MonetizationConfig>({
+    queryKey: ["endUserBillingConfig", project?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${project!.id}/end-user-billing`);
+      if (!response.ok) throw new Error("Failed to load monetization configuration");
+      return response.json();
+    },
+    enabled: !!project?.id,
+    staleTime: 30 * 1000,
+  });
+  const monetizationEnabled = monetizationConfig?.end_user_billing_enabled ?? false;
+
+  const {
+    data: monetizationStats,
+    isLoading: monetizationStatsLoading,
+    isError: monetizationStatsError,
+  } = useQuery<MonetizationStats>({
+    queryKey: ["endUserBillingStats", project?.id, "30d"],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${project!.id}/end-user-billing/stats?period=30d`);
+      if (!response.ok) throw new Error("Failed to load monetization stats");
+      return response.json();
+    },
+    enabled: !!project?.id && monetizationEnabled,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+  const monetizationSummary: ProjectOverviewMonetization = {
+    enabled: monetizationEnabled,
+    customerRevenue: monetizationStats?.customer_revenue_usd ?? 0,
+    providerCost: monetizationStats?.provider_cost_usd ?? 0,
+    margin: monetizationStats?.margin_usd ?? 0,
+    marginPercentage: monetizationStats?.margin_percentage ?? 0,
+    activeCustomers: monetizationStats?.active_end_users ?? 0,
+    totalCustomers: monetizationStats?.total_end_users ?? 0,
+  };
+
+  if (!projectLoading && (error || !organization || !project)) {
     return (
       <div className="min-h-[calc(100svh-5.5rem)] bg-background p-3 dark:bg-black lg:p-4">
         <div className="mx-auto flex min-h-[calc(100svh-7.5rem)] max-w-[90rem] items-center justify-center px-6">
@@ -407,7 +539,7 @@ export default function ProjectDetailsPage({
         loading={projectLoading}
       />
       <ProjectOverviewDashboard
-        projectName={project.name}
+        projectName={project?.name || projectSlug}
         viewerName={profile?.first_name}
         orgSlug={orgSlug}
         projectSlug={projectSlug}
@@ -416,7 +548,13 @@ export default function ProjectDetailsPage({
         stats={aiStats}
         chartData={chartData}
         modelBreakdown={modelBreakdown}
-        loading={statsLoading && !statsData}
+        deployment={deploymentSummary}
+        deploymentLoading={agentsLoading || (!!overviewAgent && agentDetailLoading)}
+        deploymentError={agentsError || agentDetailError}
+        monetization={monetizationSummary}
+        monetizationLoading={monetizationConfigLoading || (monetizationEnabled && monetizationStatsLoading)}
+        monetizationError={monetizationConfigError || monetizationStatsError}
+        loading={projectLoading || (statsLoading && !statsData)}
         error={statsError}
         onRetry={() => void refetchStats()}
       />

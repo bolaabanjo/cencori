@@ -10,7 +10,7 @@ import { Footer } from "@/components/landing/Footer";
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
+    <div className="marketing-theme min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background [--border:#b8b8b8] dark:[--border:#4a4a4a]">
       <Navbar homeUrl="/" />
 
       <main>

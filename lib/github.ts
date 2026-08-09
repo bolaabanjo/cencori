@@ -28,6 +28,16 @@ export async function getInstallationOctokit(installationId: number): Promise<Oc
   return installationOctokit;
 }
 
+/**
+ * Mint a short-lived installation access token (≈1h) for an org's installation.
+ * Injected into a deployed agent's container so it can clone the repo at boot.
+ */
+export async function getInstallationToken(installationId: number): Promise<string> {
+  const auth = createAppAuth({ appId, privateKey });
+  const { token } = (await auth({ type: 'installation', installationId })) as { token: string };
+  return token;
+}
+
 export async function getAppOctokit(): Promise<Octokit> {
   const auth = createAppAuth({
     appId: appId,

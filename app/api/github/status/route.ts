@@ -17,16 +17,25 @@ interface Repo {
 async function fetchInstallationRepositories(installationId: number): Promise<Repo[] | null> {
     try {
         const octokit = await getInstallationOctokit(installationId);
-        const { data } = await octokit.request('GET /installation/repositories', {
-            per_page: 100,
-        });
+        const repositories: Repo[] = [];
 
-        return data.repositories.map((repo) => ({
-            id: repo.id,
-            full_name: repo.full_name,
-            html_url: repo.html_url,
-            description: repo.description,
-        }));
+        for (let page = 1; ; page += 1) {
+            const { data } = await octokit.request('GET /installation/repositories', {
+                per_page: 100,
+                page,
+            });
+
+            repositories.push(...data.repositories.map((repo) => ({
+                id: repo.id,
+                full_name: repo.full_name,
+                html_url: repo.html_url,
+                description: repo.description,
+            })));
+
+            if (data.repositories.length < 100) break;
+        }
+
+        return repositories;
     } catch (error) {
         console.error('[GitHub Status] Error fetching repos for installation', installationId, error);
         return null;
@@ -155,10 +164,24 @@ export async function GET(req: NextRequest) {
             }
         }
 
+        // Account metadata for each connected installation (org can have many).
+        const adminForAccounts = createAdminClient();
+        const { data: accountRows } = await adminForAccounts
+            .from('github_app_installations')
+            .select('installation_id, github_account_login, github_account_type, github_account_name')
+            .in('installation_id', successfulInstallationIds);
+        const connectedAccounts = (accountRows ?? []).map((a) => ({
+            installationId: a.installation_id,
+            login: a.github_account_login,
+            accountType: a.github_account_type,
+            name: a.github_account_name,
+        }));
+
         return NextResponse.json({
             status: 'installed',
             organizationId: orgData.id,
             installationId: successfulInstallationIds[0],
+            connectedAccounts,
             repositories: Array.from(repositoriesById.values()),
         });
     } catch (error) {

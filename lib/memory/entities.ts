@@ -105,6 +105,146 @@ export function resolveEntity(candidate: ExtractedEntity, existing: ExistingEnti
     return { action: 'create', canonicalKey };
 }
 
+/** An entity reduced to the surface forms it can be recognized by. */
+export interface EntitySurfaceForms {
+    id: string;
+    name: string;
+    aliases: string[];
+}
+
+/** A resolved entity ↔ memory link. */
+export interface EntityMention {
+    entityId: string;
+    memoryId: string;
+}
+
+/**
+ * Shortest surface form we'll match on. One-character names ("J", "A") match
+ * far too much text to be evidence of anything.
+ */
+const MIN_MATCHABLE_NAME = 2;
+
+/**
+ * Does `haystack` contain `name` as a whole token sequence? Both arguments are
+ * already normalized. Padding with spaces makes this a word-boundary check
+ * without a regex: "zap" matches "works at zap" but not "zapier".
+ */
+export function mentionsName(haystackNorm: string, nameNorm: string): boolean {
+    if (nameNorm.length < MIN_MATCHABLE_NAME) return false;
+    return ` ${haystackNorm} `.includes(` ${nameNorm} `);
+}
+
+/**
+ * Name parts too generic to identify anyone on their own. Without this, "Corp"
+ * in an unrelated sentence would link to "Zap Corp".
+ */
+const GENERIC_NAME_TOKENS = new Set([
+    'corp', 'corporation', 'inc', 'ltd', 'llc', 'plc', 'co', 'company', 'group',
+    'holdings', 'labs', 'studio', 'team', 'project', 'app', 'the', 'and', 'of',
+]);
+
+/** Shortest token that can stand in for a longer name ("Zap" for "Zap Corp"). */
+const MIN_DISTINCTIVE_TOKEN = 3;
+
+/** Every distinct normalized surface form an entity answers to. */
+function surfaceForms(entity: EntitySurfaceForms): string[] {
+    const forms = new Set<string>();
+    for (const raw of [entity.name, ...entity.aliases]) {
+        const norm = normalizeName(raw);
+        if (norm.length >= MIN_MATCHABLE_NAME) forms.add(norm);
+    }
+    return [...forms];
+}
+
+/** Resolved surface forms + short forms for one set of entities. */
+interface EntityMatcher {
+    id: string;
+    forms: string[];
+    /** Single tokens that identify this entity and no other in the set. */
+    distinctive: string[];
+}
+
+/**
+ * Index a set of entities for text matching. Beyond full names, an entity is
+ * matchable by any single token that belongs to it alone — people say "Sarah",
+ * not "Sarah Chen", and a fact that never repeats the full name would otherwise
+ * never link. Ambiguous tokens (two Sarahs in scope) identify nobody and are
+ * dropped, so this can't over-merge.
+ */
+function buildMatchers(entities: EntitySurfaceForms[]): EntityMatcher[] {
+    const withForms = entities.map(e => ({ id: e.id, forms: surfaceForms(e) }));
+
+    // How many distinct entities each candidate token could refer to.
+    const owners = new Map<string, Set<string>>();
+    for (const entity of withForms) {
+        for (const form of entity.forms) {
+            const parts = form.split(' ');
+            if (parts.length < 2) continue; // single-token names already match in full
+            for (const token of parts) {
+                if (token.length < MIN_DISTINCTIVE_TOKEN || GENERIC_NAME_TOKENS.has(token)) continue;
+                const set = owners.get(token) ?? new Set<string>();
+                set.add(entity.id);
+                owners.set(token, set);
+            }
+        }
+    }
+
+    return withForms.map(entity => ({
+        ...entity,
+        distinctive: [...owners.entries()]
+            .filter(([, ids]) => ids.size === 1 && ids.has(entity.id))
+            .map(([token]) => token),
+    }));
+}
+
+function matchesText(matcher: EntityMatcher, haystackNorm: string): boolean {
+    return (
+        matcher.forms.some(f => mentionsName(haystackNorm, f)) ||
+        matcher.distinctive.some(t => mentionsName(haystackNorm, t))
+    );
+}
+
+/**
+ * Link written memories to the entities they mention — the join that makes
+ * graph-aware recall possible ("walk to Zap Corp, then pull what I know about
+ * it"). Pure string matching, no model call: the memories were derived from the
+ * same exchange the entities were extracted from, so the surface forms line up.
+ */
+export function matchEntityMentions(
+    entities: EntitySurfaceForms[],
+    memories: { id: string; content: string }[]
+): EntityMention[] {
+    if (entities.length === 0 || memories.length === 0) return [];
+
+    const matchers = buildMatchers(entities);
+    const mentions: EntityMention[] = [];
+
+    for (const memory of memories) {
+        const contentNorm = normalizeName(memory.content);
+        for (const matcher of matchers) {
+            if (matchesText(matcher, contentNorm)) {
+                mentions.push({ entityId: matcher.id, memoryId: memory.id });
+            }
+        }
+    }
+
+    return mentions;
+}
+
+/**
+ * Traversal seeds: the stored entities the query text actually names. Runs on
+ * the retrieval hot path, so it is deterministic string matching rather than an
+ * extraction call — an LLM round trip per recall would blow the latency budget.
+ */
+export function findSeedEntities(queryText: string, entities: EntitySurfaceForms[]): string[] {
+    const queryNorm = normalizeName(queryText);
+    if (!queryNorm) return [];
+
+    return buildMatchers(entities)
+        .filter(matcher => matchesText(matcher, queryNorm))
+        .map(matcher => matcher.id);
+}
+
 /**
  * Defensive parse of the extraction model's output. Never throws; drops
  * anything malformed. Expected shape:

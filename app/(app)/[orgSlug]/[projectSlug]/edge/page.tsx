@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { VercelLogo, SupabaseLogo } from '@/components/icons/BrandIcons';
 import type { EdgeDeploymentSummary, EdgeIntegration } from '@/lib/edge-integrations/types';
 import { useOrganizationProject } from '@/lib/contexts/OrganizationProjectContext';
+import { queryKeys } from '@/lib/hooks/useQueries';
 
 interface PageProps {
     params: Promise<{ orgSlug: string; projectSlug: string }>;
@@ -119,7 +120,9 @@ const PROVIDER_CARDS: ProviderCardDefinition[] = [
 
 function useProjectId(orgSlug: string, projectSlug: string, initialData?: ProjectData) {
     return useQuery({
-        queryKey: ['projectId', orgSlug, projectSlug],
+        // This query returns project details, not a bare project ID. Keeping
+        // it separate prevents detail objects from poisoning ID-only queries.
+        queryKey: queryKeys.projectDetailsBySlug(orgSlug, projectSlug),
         queryFn: async () => {
             const { data: org } = await supabase
                 .from('organizations')

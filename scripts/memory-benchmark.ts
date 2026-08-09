@@ -12,6 +12,7 @@
  *   npx tsx scripts/memory-benchmark.ts --type locomo --file ./locomo.json --limit 1
  *
  * Flags: --type <locomo|longmemeval>  --file <path>  [--limit N]  [--baseline]
+ *        [--graph]  build + query the entity graph during the run (Layer 5)
  *
  * NOTE: a full run is thousands of LLM calls — start with --limit 1 to validate,
  * and expect free-tier throttling. Use paid quota for the full headline run.
@@ -38,6 +39,9 @@ async function main() {
     const file = arg('file');
     const limit = arg('limit') ? parseInt(arg('limit')!, 10) : undefined;
     const reconcile = !process.argv.includes('--baseline');
+    // Layer 5 costs a second extraction call per turn, so it's opt-in: run the
+    // benchmark twice (with and without) to price what the graph buys.
+    const graph = process.argv.includes('--graph');
     const organizationId = process.env.EVAL_ORG_ID;
     const projectId = process.env.EVAL_PROJECT_ID;
 
@@ -84,8 +88,8 @@ async function main() {
         return parseJudgeVerdict(r?.content ?? '');
     };
 
-    const run = await runJudgedEval({ ...cfg, reconcile, scenarios }, answerFn, judgeFn);
-    console.log('\n' + formatJudgedScorecard(`${type} — ${run.label}`, run.scorecard));
+    const run = await runJudgedEval({ ...cfg, reconcile, graph, scenarios }, answerFn, judgeFn);
+    console.log('\n' + formatJudgedScorecard(`${type} — ${run.label}${graph ? ' +graph' : ''}`, run.scorecard));
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

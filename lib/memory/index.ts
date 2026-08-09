@@ -9,9 +9,11 @@
 export {
     DEFAULT_MEMORY_SETTINGS,
     MEMORY_CONTENT_MAX_CHARS,
+    MEMORY_MANAGED_MODEL,
     PHASE1_SCOPES,
     fromMemoryId,
     parseMemoryDirective,
+    resolveMemoryModel,
     toMemoryId,
 } from './types';
 export type {
@@ -21,6 +23,7 @@ export type {
     MemoryExtractOverride,
     MemoryScope,
     MemorySettings,
+    MemorySource,
     ParseDirectiveResult,
     RetrievedMemory,
     WrittenMemory,
@@ -58,16 +61,23 @@ export {
     normalizeEntityKey,
     resolveEntity,
     parseEntityExtraction,
+    matchEntityMentions,
+    findSeedEntities,
+    mentionsName,
 } from './entities';
 export type {
     ExtractedEntity,
     ExtractedRelation,
     EntityExtraction,
+    EntityMention,
+    EntitySurfaceForms,
     ExistingEntity,
     ResolveResult,
 } from './entities';
 export { traverseGraph, reachableEntityIds } from './graph';
 export type { GraphEdge, TraversalHit, TraverseOptions } from './graph';
+export { retrieveGraphMemories } from './graph-recall';
+export type { GraphRecallParams } from './graph-recall';
 export {
     memoryStrength,
     classifyStrength,
@@ -75,7 +85,16 @@ export {
     daysSinceUse,
 } from './strength';
 export type { StrengthInput, StrengthBand, ForgetSuggestion } from './strength';
-export { extractEntities, persistEntityGraph, ENTITY_EXTRACTION_PROMPT } from './entity-persist';
-export type { ExtractEntitiesResult, PersistEntityGraphResult } from './entity-persist';
+export {
+    extractEntities,
+    persistEntityGraph,
+    runEntityGraphWriteback,
+    ENTITY_EXTRACTION_PROMPT,
+} from './entity-persist';
+export type {
+    ExtractEntitiesResult,
+    PersistEntityGraphResult,
+    EntityGraphWritebackResult,
+} from './entity-persist';
 export { rememberExchange, runChatMemoryWriteback, writeMemories } from './writeback';
 export type { RememberExchangeResult } from './writeback';

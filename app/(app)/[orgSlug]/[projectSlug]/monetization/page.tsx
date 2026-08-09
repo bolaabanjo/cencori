@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, Fragment } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
@@ -215,6 +216,151 @@ interface PageProps {
 
 type Tab = "configuration" | "end_users" | "rate_plans" | "revenue";
 
+// Demo fixtures stay entirely in the browser. They never pass through an API
+// route and are only used when the page is opened with `?demo=1`.
+const DEMO_BILLING_CONFIG: BillingConfig = {
+  end_user_billing_enabled: true,
+  customer_markup_percentage: 68,
+  billing_cycle: "monthly",
+  default_rate_plan_id: "demo-growth",
+};
+
+const DEMO_RATE_PLANS: RatePlan[] = [
+  {
+    id: "demo-starter", name: "Starter", slug: "starter", is_default: false,
+    daily_token_limit: 250_000, monthly_token_limit: 5_000_000,
+    daily_request_limit: 500, monthly_request_limit: 10_000, requests_per_minute: 30,
+    daily_cost_limit_usd: 15, monthly_cost_limit_usd: 250,
+    markup_percentage: 55, platform_commission_percentage: 20,
+    flat_rate_per_request: 0.004, currency: "USD",
+    allowed_models: ["gpt-5-mini", "claude-haiku-4-5"], overage_action: "block",
+    end_user_count: 128, created_at: "2026-05-12T10:00:00.000Z",
+  },
+  {
+    id: "demo-growth", name: "Growth", slug: "growth", is_default: true,
+    daily_token_limit: 2_000_000, monthly_token_limit: 45_000_000,
+    daily_request_limit: 3_000, monthly_request_limit: 75_000, requests_per_minute: 120,
+    daily_cost_limit_usd: 90, monthly_cost_limit_usd: 1_800,
+    markup_percentage: 68, platform_commission_percentage: 15,
+    flat_rate_per_request: 0.002, currency: "USD",
+    allowed_models: ["gpt-5", "claude-sonnet-4-5", "gemini-2.5-pro"], overage_action: "alert_only",
+    end_user_count: 64, created_at: "2026-05-18T10:00:00.000Z",
+  },
+  {
+    id: "demo-scale", name: "Scale", slug: "scale", is_default: false,
+    daily_token_limit: null, monthly_token_limit: 300_000_000,
+    daily_request_limit: null, monthly_request_limit: 500_000, requests_per_minute: 600,
+    daily_cost_limit_usd: null, monthly_cost_limit_usd: 12_000,
+    markup_percentage: 42, platform_commission_percentage: 10,
+    flat_rate_per_request: null, currency: "USD",
+    allowed_models: null, overage_action: "alert_only",
+    end_user_count: 18, created_at: "2026-06-02T10:00:00.000Z",
+  },
+];
+
+const DEMO_USERS: EndUser[] = [
+  { id: "demo-user-1", external_id: "usr_northstar", display_name: "Northstar Labs", rate_plan_id: "demo-scale", rate_plan_name: "Scale", status: "active", metadata: { segment: "enterprise" }, requests_30d: 5_842, tokens_30d: 118_420_500, cost_30d: 858.55, last_seen_at: new Date(Date.now() - 8 * 60_000).toISOString(), created_at: "2026-05-08T09:15:00.000Z" },
+  { id: "demo-user-2", external_id: "usr_kinetic", display_name: "Kinetic AI", rate_plan_id: "demo-growth", rate_plan_name: "Growth", status: "active", metadata: { segment: "startup" }, requests_30d: 4_291, tokens_30d: 82_930_100, cost_30d: 601.24, last_seen_at: new Date(Date.now() - 31 * 60_000).toISOString(), created_at: "2026-05-21T11:40:00.000Z" },
+  { id: "demo-user-3", external_id: "usr_helio", display_name: "Helio Health", rate_plan_id: "demo-growth", rate_plan_name: "Growth", status: "active", metadata: { segment: "growth" }, requests_30d: 3_766, tokens_30d: 71_118_200, cost_30d: 515.61, last_seen_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), created_at: "2026-06-03T16:20:00.000Z" },
+  { id: "demo-user-4", external_id: "usr_papertrail", display_name: "Papertrail", rate_plan_id: "demo-starter", rate_plan_name: "Starter", status: "active", metadata: null, requests_30d: 2_884, tokens_30d: 48_664_000, cost_30d: 352.81, last_seen_at: new Date(Date.now() - 5 * 3_600_000).toISOString(), created_at: "2026-06-16T08:05:00.000Z" },
+  { id: "demo-user-5", external_id: "usr_daybreak", display_name: "Daybreak Studio", rate_plan_id: "demo-growth", rate_plan_name: "Growth", status: "active", metadata: null, requests_30d: 2_112, tokens_30d: 39_504_800, cost_30d: 286.41, last_seen_at: new Date(Date.now() - 19 * 3_600_000).toISOString(), created_at: "2026-06-22T13:10:00.000Z" },
+  { id: "demo-user-6", external_id: "usr_orbit", display_name: "Orbit Finance", rate_plan_id: "demo-scale", rate_plan_name: "Scale", status: "active", metadata: { segment: "enterprise" }, requests_30d: 1_978, tokens_30d: 36_110_400, cost_30d: 261.80, last_seen_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), created_at: "2026-07-01T10:30:00.000Z" },
+  { id: "demo-user-7", external_id: "usr_lumen", display_name: "Lumen Works", rate_plan_id: "demo-starter", rate_plan_name: "Starter", status: "active", metadata: null, requests_30d: 1_405, tokens_30d: 22_981_700, cost_30d: 166.62, last_seen_at: new Date(Date.now() - 4 * 86_400_000).toISOString(), created_at: "2026-07-07T15:45:00.000Z" },
+  { id: "demo-user-8", external_id: "usr_ember", display_name: "Ember Support", rate_plan_id: "demo-starter", rate_plan_name: "Starter", status: "blocked", metadata: { reason: "limit_exceeded" }, requests_30d: 922, tokens_30d: 14_808_500, cost_30d: 107.36, last_seen_at: new Date(Date.now() - 7 * 86_400_000).toISOString(), created_at: "2026-07-11T12:00:00.000Z" },
+];
+
+function demoDate(daysAgo: number): string {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() - daysAgo);
+  return date.toISOString().slice(0, 10);
+}
+
+function createDemoBreakdown(days: number): DailyBreakdown[] {
+  return Array.from({ length: days }, (_, index) => {
+    const age = days - index - 1;
+    const requests = Math.round(470 + index * 4.2 + Math.sin(index * 0.72) * 86 + (index % 7 === 5 ? 115 : 0));
+    const tokens = Math.round(requests * (18_400 + (index % 5) * 1_350));
+    const cost = Number(((tokens / 1_000_000) * 7.25).toFixed(2));
+    const revenue = Number((cost * 1.68 + requests * 0.002).toFixed(2));
+    return {
+      date: demoDate(age), requests, tokens, cost, revenue,
+      total_customers: 184 + Math.floor(index * 0.9),
+      active_customers: 116 + (index % 8) * 4 + Math.floor(index * 0.35),
+    };
+  });
+}
+
+function createDemoBillingStats(period: "7d" | "30d" | "90d"): BillingStats {
+  const days = Number(period.slice(0, -1));
+  const daily_breakdown = createDemoBreakdown(days);
+  const total_requests = daily_breakdown.reduce((sum, day) => sum + day.requests, 0);
+  const total_tokens = daily_breakdown.reduce((sum, day) => sum + day.tokens, 0);
+  const provider_cost_usd = Number(daily_breakdown.reduce((sum, day) => sum + day.cost, 0).toFixed(2));
+  const customer_revenue_usd = Number(daily_breakdown.reduce((sum, day) => sum + day.revenue, 0).toFixed(2));
+  const margin_usd = Number((customer_revenue_usd - provider_cost_usd).toFixed(2));
+  return {
+    period, total_end_users: 210, active_end_users: 167, total_requests, total_tokens,
+    provider_cost_usd, customer_revenue_usd, margin_usd,
+    margin_percentage: Number(((margin_usd / customer_revenue_usd) * 100).toFixed(1)),
+    top_users: DEMO_USERS.slice(0, 6).map((user) => ({
+      end_user_id: user.external_id,
+      requests: Math.round(user.requests_30d * days / 30),
+      tokens: Math.round(user.tokens_30d * days / 30),
+      provider_cost_usd: Number((user.cost_30d * days / 30).toFixed(2)),
+      customer_revenue_usd: Number((user.cost_30d * 1.68 * days / 30).toFixed(2)),
+    })),
+    daily_breakdown,
+  };
+}
+
+function createDemoEndUserStats(): EndUserStats {
+  const stats = createDemoBillingStats("30d");
+  return {
+    total_end_users: stats.total_end_users, active_end_users: stats.active_end_users,
+    total_requests: stats.total_requests, total_tokens: stats.total_tokens,
+    customer_revenue_usd: stats.customer_revenue_usd, daily_breakdown: stats.daily_breakdown,
+  };
+}
+
+function createDemoDailyUsage(userId: string | null): DailyUsage[] {
+  const userIndex = Math.max(0, DEMO_USERS.findIndex((user) => user.id === userId));
+  return createDemoBreakdown(7).map((day, index) => ({
+    date: day.date,
+    requests: Math.round(day.requests * (0.09 + userIndex * 0.008) + index * 2),
+    tokens: Math.round(day.tokens * (0.085 + userIndex * 0.006)),
+    cost: Number((day.cost * (0.085 + userIndex * 0.006)).toFixed(2)),
+  }));
+}
+
+function downloadRevenueExport(format: "csv" | "json", stats: BillingStats, period: string) {
+  const content = format === "json"
+    ? JSON.stringify(stats, null, 2)
+    : [
+        "date,requests,tokens,provider_cost_usd,customer_revenue_usd,total_customers,active_customers",
+        ...stats.daily_breakdown.map((day) => [
+          day.date, day.requests, day.tokens, day.cost, day.revenue,
+          day.total_customers, day.active_customers,
+        ].join(",")),
+      ].join("\n");
+  const url = URL.createObjectURL(new Blob([content], {
+    type: format === "json" ? "application/json" : "text/csv;charset=utf-8",
+  }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `monetization-${period}.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+const DEMO_INVOICES: Invoice[] = [
+  { id: "demo-invoice-1", end_user_id: "demo-user-1", end_user_external_id: "usr_northstar", end_user_name: "Northstar Labs", end_user_email: "billing@northstarlabs.example", stripe_invoice_id: "in_demo_01", period_start: "2026-07-01", period_end: "2026-07-31", total_requests: 5_842, total_tokens: 118_420_500, subtotal_usd: 858.55, markup_usd: 583.81, total_usd: 1_442.36, status: "paid", sent_at: "2026-08-01T08:00:00.000Z", paid_at: "2026-08-01T09:12:00.000Z", created_at: "2026-08-01T08:00:00.000Z" },
+  { id: "demo-invoice-2", end_user_id: "demo-user-2", end_user_external_id: "usr_kinetic", end_user_name: "Kinetic AI", end_user_email: "finance@kinetic.example", stripe_invoice_id: "in_demo_02", period_start: "2026-07-01", period_end: "2026-07-31", total_requests: 4_291, total_tokens: 82_930_100, subtotal_usd: 601.24, markup_usd: 408.84, total_usd: 1_010.08, status: "sent", sent_at: "2026-08-01T08:00:00.000Z", paid_at: null, created_at: "2026-08-01T08:00:00.000Z" },
+  { id: "demo-invoice-3", end_user_id: "demo-user-3", end_user_external_id: "usr_helio", end_user_name: "Helio Health", end_user_email: "accounts@helio.example", stripe_invoice_id: null, period_start: "2026-07-01", period_end: "2026-07-31", total_requests: 3_766, total_tokens: 71_118_200, subtotal_usd: 515.61, markup_usd: 350.61, total_usd: 866.22, status: "draft", sent_at: null, paid_at: null, created_at: "2026-08-01T08:00:00.000Z" },
+];
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function fmt(n: number): string {
@@ -387,8 +533,14 @@ function useProjectId(orgSlug: string, projectSlug: string) {
 
 export default function UsageBillingPage({ params }: PageProps) {
   const { orgSlug, projectSlug } = use(params);
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get("demo") === "1";
   const queryClient = useQueryClient();
   const { data: projectId, isLoading: projectLoading } = useProjectId(orgSlug, projectSlug);
+
+  const [demoRatePlans, setDemoRatePlans] = useState<RatePlan[]>(DEMO_RATE_PLANS);
+  const [demoUsers, setDemoUsers] = useState<EndUser[]>(DEMO_USERS);
+  const [demoInvoices, setDemoInvoices] = useState<Invoice[]>(DEMO_INVOICES);
 
   const [tab, setTab] = useState<Tab>("configuration");
 
@@ -424,19 +576,21 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   // ─── Queries ───
 
-  const { data: config, isLoading: configLoading } = useQuery<BillingConfig>({
+  const { data: persistedConfig, isLoading: persistedConfigLoading } = useQuery<BillingConfig>({
     queryKey: ["endUserBillingConfig", projectId],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/end-user-billing`);
       if (!res.ok) throw new Error("Failed to fetch billing config");
       return res.json();
     },
-    enabled: !!projectId,
+    enabled: !!projectId && !isDemo,
     staleTime: 30 * 1000,
   });
+  const config = isDemo ? DEMO_BILLING_CONFIG : persistedConfig;
+  const configLoading = !isDemo && persistedConfigLoading;
 
   // Stripe Connect status
-  const { data: stripeConnect, isLoading: stripeLoading } = useQuery<{
+  const { data: persistedStripeConnect, isLoading: persistedStripeLoading } = useQuery<{
     connected: boolean;
     status?: "pending" | "active" | "restricted" | "disabled";
     charges_enabled?: boolean;
@@ -450,46 +604,55 @@ export default function UsageBillingPage({ params }: PageProps) {
       if (!res.ok) throw new Error("Failed to fetch Stripe status");
       return res.json();
     },
-    enabled: tab === "configuration",
+    enabled: tab === "configuration" && !isDemo,
     staleTime: 60 * 1000,
   });
+  const stripeConnect = isDemo
+    ? { connected: true, status: "active" as const, charges_enabled: true, payouts_enabled: true, onboarding_completed: true, stripe_account_id: "acct_demo" }
+    : persistedStripeConnect;
+  const stripeLoading = !isDemo && persistedStripeLoading;
 
-  const { data: ratePlansData } = useQuery({
+  const { data: persistedRatePlansData } = useQuery({
     queryKey: ["rate-plans", projectId],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/rate-plans`);
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!projectId,
+    enabled: !!projectId && !isDemo,
     staleTime: 60 * 1000,
   });
 
+  const ratePlansData = isDemo ? demoRatePlans : persistedRatePlansData;
   const ratePlans: RatePlan[] = ratePlansData?.rate_plans ?? ratePlansData?.ratePlans ?? (Array.isArray(ratePlansData) ? ratePlansData : []);
   const ratePlansList: { id: string; name: string }[] = ratePlans;
 
-  const { data: stats, isLoading: statsLoading } = useQuery<BillingStats>({
+  const { data: persistedStats, isLoading: persistedStatsLoading } = useQuery<BillingStats>({
     queryKey: ["endUserBillingStats", projectId, period],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/end-user-billing/stats?period=${period}`);
       if (!res.ok) throw new Error("Failed to fetch billing stats");
       return res.json();
     },
-    enabled: !!projectId && enabled && tab === "revenue",
+    enabled: !!projectId && enabled && tab === "revenue" && !isDemo,
     staleTime: 30 * 1000,
   });
+  const stats = isDemo ? createDemoBillingStats(period) : persistedStats;
+  const statsLoading = !isDemo && persistedStatsLoading;
 
-  const { data: euStats, isLoading: euStatsLoading } = useQuery<EndUserStats>({
+  const { data: persistedEuStats, isLoading: persistedEuStatsLoading } = useQuery<EndUserStats>({
     queryKey: ["endUserStats", projectId],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/end-user-billing/stats?period=30d`);
       if (!res.ok) throw new Error("Failed to fetch stats");
       return res.json();
     },
-    enabled: !!projectId && (tab === "end_users" || (tab === "configuration" && enabled)),
+    enabled: !!projectId && !isDemo && (tab === "end_users" || (tab === "configuration" && enabled)),
   });
+  const euStats = isDemo ? createDemoEndUserStats() : persistedEuStats;
+  const euStatsLoading = !isDemo && persistedEuStatsLoading;
 
-  const { data: usersData, isLoading: usersLoading } = useQuery({
+  const { data: persistedUsersData, isLoading: persistedUsersLoading } = useQuery({
     queryKey: ["endUsers", projectId, euSearch, euRatePlanFilter, euStatusFilter, euPage],
     queryFn: async () => {
       const p = new URLSearchParams({ page: String(euPage), per_page: "50" });
@@ -500,18 +663,34 @@ export default function UsageBillingPage({ params }: PageProps) {
       if (!res.ok) throw new Error("Failed to fetch customers");
       return res.json() as Promise<{ users: EndUser[]; pagination: Pagination }>;
     },
-    enabled: !!projectId && tab === "end_users",
+    enabled: !!projectId && tab === "end_users" && !isDemo,
   });
 
-  const { data: dailyUsage } = useQuery<DailyUsage[]>({
+  const normalizedSearch = euSearch.trim().toLowerCase();
+  const filteredDemoUsers = demoUsers.filter((user) => {
+    const matchesSearch = !normalizedSearch
+      || user.external_id.toLowerCase().includes(normalizedSearch)
+      || user.display_name?.toLowerCase().includes(normalizedSearch);
+    const matchesPlan = euRatePlanFilter === "all" || user.rate_plan_id === euRatePlanFilter;
+    const matchesStatus = euStatusFilter === "all" || user.status === euStatusFilter;
+    return matchesSearch && matchesPlan && matchesStatus;
+  });
+  const usersData = isDemo ? {
+    users: filteredDemoUsers,
+    pagination: { page: 1, per_page: 50, total: filteredDemoUsers.length, total_pages: 1 },
+  } : persistedUsersData;
+  const usersLoading = !isDemo && persistedUsersLoading;
+
+  const { data: persistedDailyUsage } = useQuery<DailyUsage[]>({
     queryKey: ["endUserDailyUsage", projectId, expandedRow],
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/end-users/${expandedRow}/usage?period=7d`);
       if (!res.ok) throw new Error("Failed to fetch usage");
       return res.json();
     },
-    enabled: !!projectId && !!expandedRow && tab === "end_users",
+    enabled: !!projectId && !!expandedRow && tab === "end_users" && !isDemo,
   });
+  const dailyUsage = isDemo && expandedRow ? createDemoDailyUsage(expandedRow) : persistedDailyUsage;
 
   // ─── Sync config to form ───
 
@@ -529,6 +708,7 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const stripeConnectMutation = useMutation({
     mutationFn: async () => {
+      if (isDemo) return { stripe_account_id: "acct_demo", onboarding_url: "" };
       const returnUrl = `${window.location.origin}/${orgSlug}/${projectSlug}/monetization`;
       const res = await fetch(`/api/organizations/${orgSlug}/stripe-connect`, {
         method: "POST",
@@ -539,6 +719,10 @@ export default function UsageBillingPage({ params }: PageProps) {
       return res.json() as Promise<{ stripe_account_id: string; onboarding_url: string }>;
     },
     onSuccess: (data) => {
+      if (isDemo) {
+        toast.success("Stripe is already connected");
+        return;
+      }
       window.location.href = data.onboarding_url;
     },
     onError: (err: Error) => toast.error(err.message),
@@ -546,6 +730,7 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (isDemo) return DEMO_BILLING_CONFIG;
       const res = await fetch(`/api/projects/${projectId}/end-user-billing`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -562,23 +747,29 @@ export default function UsageBillingPage({ params }: PageProps) {
     onSuccess: () => {
       toast.success("Billing configuration saved");
       setConfigDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["endUserBillingConfig", projectId] });
+      if (!isDemo) queryClient.invalidateQueries({ queryKey: ["endUserBillingConfig", projectId] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ userId, newStatus }: { userId: string; newStatus: "active" | "blocked" }) => {
+      if (isDemo) return { userId, newStatus };
       const res = await fetch(`/api/projects/${projectId}/end-users/${userId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed to update status");
-      return res.json();
+      const result = await res.json();
+      return { userId, newStatus, result };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["endUsers", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["endUserStats", projectId] });
+    onSuccess: ({ userId, newStatus }) => {
+      if (isDemo) {
+        setDemoUsers((current) => current.map((user) => user.id === userId ? { ...user, status: newStatus } : user));
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["endUsers", projectId] });
+        queryClient.invalidateQueries({ queryKey: ["endUserStats", projectId] });
+      }
       toast.success("User status updated");
     },
     onError: () => toast.error("Failed to update user status"),
@@ -586,15 +777,26 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const assignPlanMutation = useMutation({
     mutationFn: async ({ userId, ratePlanId }: { userId: string; ratePlanId: string | null }) => {
+      if (isDemo) return { userId, ratePlanId };
       const res = await fetch(`/api/projects/${projectId}/end-users/${userId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rate_plan_id: ratePlanId }),
       });
       if (!res.ok) throw new Error("Failed to assign plan");
-      return res.json();
+      const result = await res.json();
+      return { userId, ratePlanId, result };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["endUsers", projectId] });
+    onSuccess: ({ userId, ratePlanId }) => {
+      if (isDemo) {
+        const selectedPlan = demoRatePlans.find((plan) => plan.id === ratePlanId);
+        setDemoUsers((current) => current.map((user) => user.id === userId ? {
+          ...user,
+          rate_plan_id: ratePlanId,
+          rate_plan_name: selectedPlan?.name ?? null,
+        } : user));
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["endUsers", projectId] });
+      }
       toast.success("Rate plan updated");
     },
     onError: () => toast.error("Failed to assign pricing plan"),
@@ -602,6 +804,7 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const rpCreateMutation = useMutation({
     mutationFn: async (data: ReturnType<typeof formToPayload>) => {
+      if (isDemo) return { id: `demo-plan-${Date.now()}`, ...data };
       const res = await fetch(`/api/projects/${projectId}/rate-plans`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -609,8 +812,16 @@ export default function UsageBillingPage({ params }: PageProps) {
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to create"); }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+    onSuccess: (created) => {
+      if (isDemo) {
+        setDemoRatePlans((current) => [...current, {
+          ...created,
+          end_user_count: 0,
+          created_at: new Date().toISOString(),
+        } as RatePlan]);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+      }
       closeRpDialog();
       toast.success("Rate plan created");
     },
@@ -619,15 +830,21 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const rpUpdateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ReturnType<typeof formToPayload> }) => {
+      if (isDemo) return { id, data, result: null };
       const res = await fetch(`/api/projects/${projectId}/rate-plans/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to update"); }
-      return res.json();
+      const result = await res.json();
+      return { id, data, result };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+    onSuccess: ({ id, data }) => {
+      if (isDemo) {
+        setDemoRatePlans((current) => current.map((plan) => plan.id === id ? { ...plan, ...data } : plan));
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+      }
       closeRpDialog();
       toast.success("Rate plan updated");
     },
@@ -636,12 +853,19 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   const rpDeleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (isDemo) return { id };
       const res = await fetch(`/api/projects/${projectId}/rate-plans/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
-      return res.json();
+      await res.json();
+      return { id };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+    onSuccess: ({ id }) => {
+      if (isDemo) {
+        setDemoRatePlans((current) => current.filter((plan) => plan.id !== id));
+        setDemoUsers((current) => current.map((user) => user.rate_plan_id === id ? { ...user, rate_plan_id: null, rate_plan_name: null } : user));
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["rate-plans", projectId] });
+      }
       setRpDeleteTarget(null);
       toast.success("Rate plan deleted");
     },
@@ -683,7 +907,7 @@ export default function UsageBillingPage({ params }: PageProps) {
 
   // ─── Invoices ───
 
-  const { data: invoicesData, isLoading: invoicesLoading } = useQuery<{
+  const { data: persistedInvoicesData, isLoading: persistedInvoicesLoading } = useQuery<{
     invoices: Invoice[];
     pagination: Pagination;
   }>({
@@ -693,12 +917,18 @@ export default function UsageBillingPage({ params }: PageProps) {
       if (!res.ok) throw new Error("Failed to fetch invoices");
       return res.json();
     },
-    enabled: !!projectId && enabled && tab === "revenue",
+    enabled: !!projectId && enabled && tab === "revenue" && !isDemo,
     staleTime: 30 * 1000,
   });
+  const invoicesData = isDemo ? {
+    invoices: demoInvoices,
+    pagination: { page: 1, per_page: 50, total: demoInvoices.length, total_pages: 1 },
+  } : persistedInvoicesData;
+  const invoicesLoading = !isDemo && persistedInvoicesLoading;
 
   const generateInvoicesMutation = useMutation({
     mutationFn: async (params: { period_start: string; period_end: string; send_via_stripe: boolean }) => {
+      if (isDemo) return { generated: 1, skipped: 0, errors: 0, params };
       const res = await fetch(`/api/projects/${projectId}/end-user-billing/invoices`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -708,11 +938,35 @@ export default function UsageBillingPage({ params }: PageProps) {
         const err = await res.json().catch(() => ({ error: "Failed to generate invoices" }));
         throw new Error(err.error);
       }
-      return res.json();
+      const result = await res.json();
+      return { ...result, params };
     },
     onSuccess: (data) => {
+      if (isDemo) {
+        const now = new Date().toISOString();
+        setDemoInvoices((current) => [{
+          id: `demo-invoice-${Date.now()}`,
+          end_user_id: "demo-user-4",
+          end_user_external_id: "usr_papertrail",
+          end_user_name: "Papertrail",
+          end_user_email: "billing@papertrail.example",
+          stripe_invoice_id: invoiceSendStripe ? `in_demo_${Date.now()}` : null,
+          period_start: data.params.period_start,
+          period_end: data.params.period_end,
+          total_requests: 2_884,
+          total_tokens: 48_664_000,
+          subtotal_usd: 352.81,
+          markup_usd: 239.91,
+          total_usd: 592.72,
+          status: invoiceSendStripe ? "sent" : "draft",
+          sent_at: invoiceSendStripe ? now : null,
+          paid_at: null,
+          created_at: now,
+        }, ...current]);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["invoices", projectId] });
+      }
       toast.success(`Generated ${data.generated} invoice(s)${data.skipped > 0 ? `, ${data.skipped} skipped` : ""}${data.errors > 0 ? `, ${data.errors} failed` : ""}`);
-      queryClient.invalidateQueries({ queryKey: ["invoices", projectId] });
       setInvoiceDialogOpen(false);
     },
     onError: (err: Error) => toast.error(err.message),
@@ -936,7 +1190,7 @@ export default function UsageBillingPage({ params }: PageProps) {
                       <>
                         <ChartContainer
                           config={{
-                            [stat.dataKey]: { label: stat.label, color: "hsl(var(--foreground))" },
+                            [stat.dataKey]: { label: stat.label, color: "var(--foreground)" },
                           }}
                           className="h-full w-full"
                         >
@@ -1188,7 +1442,7 @@ export default function UsageBillingPage({ params }: PageProps) {
                 { label: "Revenue", description: "Gross customer revenue", value: euStats ? formatCurrency(euStats.customer_revenue_usd) : "$0.00", dataKey: "revenue", formatChartValue: formatCurrency, hasData: (euStats?.customer_revenue_usd ?? 0) > 0 },
               ].map((stat) => {
                 const chartConfig = {
-                  [stat.dataKey]: { label: stat.label, color: "hsl(var(--foreground))" },
+                  [stat.dataKey]: { label: stat.label, color: "var(--foreground)" },
                 };
                 const chartData = euStats?.daily_breakdown ?? [];
                 const dateTicks = chartData.length > 0
@@ -1804,16 +2058,25 @@ export default function UsageBillingPage({ params }: PageProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-36">
-                    <DropdownMenuItem asChild>
-                      <a href={`/api/projects/${projectId}/end-user-billing/export?format=csv&period=${period}`} download>
-                        Export CSV
-                      </a>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <a href={`/api/projects/${projectId}/end-user-billing/export?format=json&period=${period}`} download>
-                        Export JSON
-                      </a>
-                    </DropdownMenuItem>
+                    {isDemo ? (
+                      <>
+                        <DropdownMenuItem onSelect={() => stats && downloadRevenueExport("csv", stats, period)}>Export CSV</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => stats && downloadRevenueExport("json", stats, period)}>Export JSON</DropdownMenuItem>
+                      </>
+                    ) : (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <a href={`/api/projects/${projectId}/end-user-billing/export?format=csv&period=${period}`} download>
+                            Export CSV
+                          </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <a href={`/api/projects/${projectId}/end-user-billing/export?format=json&period=${period}`} download>
+                            Export JSON
+                          </a>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1886,7 +2149,7 @@ export default function UsageBillingPage({ params }: PageProps) {
                         <>
                           <ChartContainer
                             config={{
-                              [stat.dataKey]: { label: stat.label, color: "hsl(var(--foreground))" },
+                              [stat.dataKey]: { label: stat.label, color: "var(--foreground)" },
                             }}
                             className="h-full w-full"
                           >

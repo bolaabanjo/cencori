@@ -28,6 +28,10 @@ interface SearchMemoryRequest {
     topK?: number;
     threshold?: number;
     namespace?: string;
+    /** Temporal recall: memory as it was valid at this instant (ISO 8601). */
+    asOf?: string;
+    /** Expand recall across the entity graph (default true). */
+    graph?: boolean;
 }
 
 export async function OPTIONS() {
@@ -68,6 +72,10 @@ export async function POST(req: NextRequest) {
             topK: body.topK,
             threshold: body.threshold,
             namespace: body.namespace,
+            // The standalone door takes the same directive as the gateway door —
+            // one directive shape, two entry points.
+            asOf: body.asOf,
+            graph: body.graph,
         });
         if (!parsed.ok) {
             return respond({ error: 'bad_request', message: parsed.error }, 400);
@@ -118,6 +126,10 @@ export async function POST(req: NextRequest) {
                     namespace: m.namespace,
                     importance: m.importance,
                     createdAt: m.createdAt,
+                    // How it was reached: matched by similarity, or walked to
+                    // across the entity graph (score 0, `hops` from the query).
+                    ...(m.source ? { source: m.source } : {}),
+                    ...(m.hops != null ? { hops: m.hops } : {}),
                 })),
                 count: results.length,
                 latencyMs: Date.now() - startTime,

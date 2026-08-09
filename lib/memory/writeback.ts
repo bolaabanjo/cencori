@@ -9,6 +9,7 @@ import { logGatewayRequest, incrementUsage } from '@/lib/gateway-middleware';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { embedForMemory } from './embeddings';
+import { runEntityGraphWriteback, type EntityGraphWritebackResult } from './entity-persist';
 import { extractFacts } from './extraction';
 import { checkMemoryQuota } from './quota';
 import { redactFact } from './redact';
@@ -289,6 +290,8 @@ export interface RememberExchangeResult {
     quotaExceeded: boolean;
     costUsd: number;
     model: string;
+    /** Entity-graph outcome for the exchange (absent when the graph is off). */
+    graph?: EntityGraphWritebackResult;
 }
 
 /**
@@ -311,6 +314,12 @@ export async function rememberExchange(params: {
     requestId?: string;
     /** Override Layer-1 reconciliation (default on). The eval harness sets false for its baseline run. */
     reconcile?: boolean;
+    /**
+     * Override Layer-5 entity-graph writeback (default on, subject to the
+     * project setting). The eval harness sets false so a run measures the
+     * semantic layers without paying for a second extraction call per turn.
+     */
+    graph?: boolean;
 }): Promise<RememberExchangeResult> {
     const { supabase, organizationId, projectId, tier, directive, settings, userText, assistantText, requestId } = params;
 
@@ -371,12 +380,30 @@ export async function rememberExchange(params: {
         },
     });
 
+    // Layer 5: entities + relations for the same exchange, linked to the facts
+    // just written. Runs after the write (it needs their ids) and never throws.
+    const graph = params.graph === false
+        ? undefined
+        : await runEntityGraphWriteback({
+            supabase,
+            organizationId,
+            projectId,
+            tier,
+            settings,
+            directive,
+            userText,
+            assistantText,
+            written: result.written,
+            requestId,
+        });
+
     return {
         written: result.written,
         extracted: extraction.facts.length,
         quotaExceeded: result.quotaExceeded,
-        costUsd: extraction.costUsd + result.embeddingCostUsd,
+        costUsd: extraction.costUsd + result.embeddingCostUsd + (graph?.costUsd ?? 0),
         model: extraction.model,
+        graph,
     };
 }
 
@@ -418,6 +445,7 @@ export async function runChatMemoryWriteback(params: {
         let embeddingModel: string | undefined;
         let embeddingProvider: 'openai' | 'google' | undefined;
         let reconciliation: WriteMemoriesResult['reconciliation'];
+        let graph: EntityGraphWritebackResult | undefined;
 
         if (directive.scope === 'session') {
             // Redact, then append to the Redis session list (no embeddings).
@@ -465,9 +493,25 @@ export async function runChatMemoryWriteback(params: {
                     `[Memory] Writeback dropped (quota exceeded) project=${gatewayCtx.projectId} request=${gatewayCtx.requestId}`
                 );
             }
+
+            // Layer 5: entities + relations for the same exchange, linked to
+            // the facts just written. Never throws; a graph failure costs the
+            // walk, not the facts.
+            graph = await runEntityGraphWriteback({
+                supabase,
+                organizationId: gatewayCtx.organizationId,
+                projectId: gatewayCtx.projectId,
+                tier,
+                settings,
+                directive,
+                userText,
+                assistantText,
+                written: result.written,
+                requestId: gatewayCtx.requestId,
+            });
         }
 
-        const totalCost = extraction.costUsd + embeddingCostUsd;
+        const totalCost = extraction.costUsd + embeddingCostUsd + (graph?.costUsd ?? 0);
         await logGatewayRequest(gatewayCtx, {
             endpoint: 'memory/writeback',
             model: extraction.model,
@@ -491,6 +535,14 @@ export async function runChatMemoryWriteback(params: {
                         reconcile_superseded: reconciliation.superseded,
                         reconcile_noop: reconciliation.noop,
                         reconcile_fell_back: reconciliation.fellBack,
+                    }
+                    : {}),
+                ...(graph
+                    ? {
+                        graph_entities_created: graph.entitiesCreated,
+                        graph_entities_merged: graph.entitiesMerged,
+                        graph_edges_created: graph.edgesCreated,
+                        graph_mentions_created: graph.mentionsCreated,
                     }
                     : {}),
             },

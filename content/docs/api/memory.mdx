@@ -5,11 +5,39 @@ section: "API Reference"
 order: 14
 ---
 
-Memory is not a separate product — it's a property of a request. Add a `memory` field to a chat completion and the gateway retrieves relevant facts about the user before the model call and persists new ones after. Everything else you already get from Cencori — BYOK, PII redaction, audit logs, spend caps — composes for free, because memory goes through the same pipeline.
+Cencori Memory gives any model persistent memory. Two calls — `recall()` to pull what you already know about a user, `remember()` to store what's new — wrap around your own OpenAI, Anthropic, or local inference; nothing has to route through our gateway. And when your chat already does, the same behavior collapses into a single `memory` field on the request. One engine, either path — with PII redaction, per-org isolation, audit logs, and forget built in.
 
 **A new chat is not a memory reset. It's a fresh conversation with a model that already knows the user.**
 
-## The two-line integration
+## Works with any model
+
+`recall` returns a ready-to-inject system string (empty when there's nothing yet, so it's safe to spread unconditionally); `remember` extracts and stores the durable facts from a completed exchange. Any provider — no gateway required.
+
+```typescript
+// 1. Pull what you know about this user.
+const context = await cencori.memory.recall(userId, message);
+
+// 2. Your own model call — any provider, no gateway required.
+const reply = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [
+    ...(context ? [{ role: 'system', content: context }] : []),
+    { role: 'user', content: message },
+  ],
+});
+
+// 3. Store the new facts from the exchange.
+await cencori.memory.remember(userId, {
+  user: message,
+  assistant: reply.choices[0].message.content,
+});
+```
+
+Inference stays wherever it already runs — this is the drop-in path off Mem0/Zep.
+
+## On the gateway — one field
+
+If your chat already routes through Cencori, `recall` and `remember` fuse into a single field. Retrieval and writeback both default to **on**; omit the field for a stateless chat.
 
 ```typescript
 const response = await cencori.chat.completions.create({
@@ -21,8 +49,6 @@ const response = await cencori.chat.completions.create({
 console.log(response.choices[0].message.content);
 console.log(response.memory?.retrieved); // facts injected into this reply
 ```
-
-When `memory` is present, retrieval and writeback both default to **on**. Omit the field for a stateless chat.
 
 ## The `memory` field
 
@@ -38,6 +64,7 @@ When `memory` is present, retrieval and writeback both default to **on**. Omit t
 | `namespace` | string | — | Sub-scope partition. Maps cleanly to per-project sidebars for multi-project users. |
 | `asOf` | string (ISO 8601) | — | Temporal recall — retrieve memory as it was valid at this instant, including facts later superseded. Omit for current state. |
 | `mode` | `"inject" \| "index"` | `"inject"` | How recalled memories are surfaced. `inject` = full contents in context. `index` = a compact table of contents the model fetches from on demand. See [Progressive disclosure](#progressive-disclosure--index-mode). |
+| `graph` | boolean | `true` | Graph-aware recall — when the query names an entity we know, also walk its relations and pull in connected facts similarity would miss. See [Entity graph](#entity-graph--multi-hop-recall). |
 | `extract` | object | — | Override fact extraction: `{ model, prompt, minImportance }`. |
 
 The response carries a `memory` block:
@@ -57,7 +84,7 @@ Writeback runs asynchronously after the response, so `written` is empty and `wri
 
 ## Direct memory endpoints
 
-For managing memories outside a chat — settings pages, GDPR panels, manual seeding.
+The full REST surface. `remember` and `search` back the `recall`/`remember` path above; the rest cover settings pages, GDPR panels, and manual seeding.
 
 | Path | Purpose |
 |------|---------|
@@ -194,6 +221,46 @@ const { entities } = await cencori.memory.entities({ userId: user.id });
 
 Entity extraction runs on Cencori's managed model. The graph shares the same
 tenant boundary as every other memory — no entity or edge ever crosses orgs.
+
+### The graph maintains itself
+
+You don't have to call `rememberGraph` to get a graph. Every memory writeback —
+`memory` on a chat completion, a session turn, or `memory.remember()` — extracts
+entities and relations from the same exchange and links them to the facts it just
+stored. `rememberGraph` is for building the graph from text you aren't storing as
+memories.
+
+### Recall walks it for you
+
+Graph traversal isn't a separate query you have to make. When a recall names an
+entity we know, retrieval walks outward from it and adds connected facts that the
+query vector would never have matched:
+
+```typescript
+// Stored across two different sessions:
+//   "Sarah works at Zap Corp."      → Sarah —works_at→ Zap Corp
+//   "Zap Corp's office is Berlin."  → Zap Corp —located_in→ Berlin
+
+const { results } = await cencori.memory.searchUser({
+  userId: user.id,
+  query: 'where does Sarah work from?',
+});
+
+// [
+//   { content: 'Sarah works at Zap Corp.',     score: 0.71, source: 'vector' },
+//   { content: "Zap Corp's office is Berlin.", score: 0,    source: 'graph', hops: 2 },
+// ]
+```
+
+The Berlin fact shares no words with the question — similarity alone never
+returns it. `source` tells you how each memory was reached, and `hops` how far
+the walk went. Graph hits carry a score of `0` because they were reached by
+relation, not by match; they're capped so a walk supplements recall instead of
+flooding it.
+
+Set `graph: false` on the `memory` field (or on `searchUser` / `recall`) for
+strictly vector recall. Turning the graph off for a whole project — which also
+skips the extraction call on write — is a project-level setting.
 
 ## Use with any provider — `recall` + `remember`
 

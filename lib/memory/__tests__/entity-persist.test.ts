@@ -22,7 +22,8 @@ interface ExistingRow {
 function makeSupabase(existing: ExistingRow[]) {
     const inserted: Array<{ name: string; type: string }> = [];
     const updated: Array<{ id: string; aliases: string[] }> = [];
-    const edges: Array<{ src: string; dst: string; relation: string }> = [];
+    const edges: Array<{ src: string; dst: string; relation: string; sourceMemoryId: string | null }> = [];
+    const mentions: Array<{ entityId: string; memoryId: string }> = [];
     let counter = 0;
 
     const from = (table: string) => {
@@ -56,14 +57,38 @@ function makeSupabase(existing: ExistingRow[]) {
                 },
             };
         };
-        chain.upsert = async (row: Record<string, unknown>) => {
-            edges.push({ src: row.src_entity_id as string, dst: row.dst_entity_id as string, relation: row.relation as string });
-            return { error: null };
+        // upsert(...).select('id') — returns the rows that were actually
+        // inserted (ON CONFLICT DO NOTHING returns nothing for duplicates).
+        chain.upsert = (payload: Record<string, unknown> | Record<string, unknown>[]) => {
+            const rows: string[] = [];
+            if (table === 'memory_entity_mentions') {
+                for (const row of payload as Record<string, unknown>[]) {
+                    const link = { entityId: row.entity_id as string, memoryId: row.memory_id as string };
+                    const dup = mentions.some(m => m.entityId === link.entityId && m.memoryId === link.memoryId);
+                    if (dup) continue;
+                    mentions.push(link);
+                    rows.push(`mention-${mentions.length}`);
+                }
+            } else {
+                const row = payload as Record<string, unknown>;
+                const edge = {
+                    src: row.src_entity_id as string,
+                    dst: row.dst_entity_id as string,
+                    relation: row.relation as string,
+                    sourceMemoryId: (row.source_memory_id as string | null) ?? null,
+                };
+                const dup = edges.some(e => e.src === edge.src && e.dst === edge.dst && e.relation === edge.relation);
+                if (!dup) {
+                    edges.push(edge);
+                    rows.push(`edge-${edges.length}`);
+                }
+            }
+            return { select: async () => ({ data: rows.map(id => ({ id })), error: null }) };
         };
         return chain;
     };
 
-    return { supabase: { from } as never, inserted, updated, edges };
+    return { supabase: { from } as never, inserted, updated, edges, mentions };
 }
 
 const ctx = { organizationId: 'org_1', projectId: 'proj_1', scope: 'user', scopeKey: 'user_1', namespace: null };
@@ -107,12 +132,76 @@ describe('persistEntityGraph', () => {
         expect(updated[0]).toMatchObject({ id: 'e-sarah', aliases: ['Sarah'] });
     });
 
+    it('links written memories to the entities they mention', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { supabase, mentions, edges } = makeSupabase([]);
+        const extraction: EntityExtraction = {
+            entities: [
+                { name: 'Sarah Chen', type: 'person' },
+                { name: 'Zap Corp', type: 'org' },
+            ],
+            relations: [{ source: 'Sarah Chen', relation: 'works_at', target: 'Zap Corp' }],
+        };
+
+        const res = await persistEntityGraph({
+            supabase,
+            ...ctx,
+            extraction,
+            memories: [
+                { id: 'm1', content: 'Sarah Chen works at Zap Corp.' },
+                { id: 'm2', content: 'Sarah Chen prefers async standups.' },
+                { id: 'm3', content: 'Deploys go out on Fridays.' },
+            ],
+        });
+
+        // m1 names both; m2 names only Sarah; m3 names nobody.
+        expect(res.mentionsCreated).toBe(3);
+        expect(mentions.map(m => m.memoryId).sort()).toEqual(['m1', 'm1', 'm2']);
+        // The edge points at the fact that actually stated the relation.
+        expect(edges).toHaveLength(1);
+        expect(edges[0].sourceMemoryId).toBe('m1');
+    });
+
+    it('re-observing an exchange merges instead of duplicating, and bumps salience', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { supabase, inserted, edges, mentions, updated } = makeSupabase([]);
+        const extraction: EntityExtraction = {
+            entities: [{ name: 'Zap Corp', type: 'org' }, { name: 'Berlin', type: 'place' }],
+            relations: [{ source: 'Zap Corp', relation: 'located_in', target: 'Berlin' }],
+        };
+        const memories = [{ id: 'm1', content: 'Zap Corp is based in Berlin.' }];
+
+        const first = await persistEntityGraph({ supabase, ...ctx, extraction, memories });
+        expect(first).toMatchObject({ entitiesCreated: 2, entitiesMerged: 0, edgesCreated: 1, mentionsCreated: 2 });
+
+        const second = await persistEntityGraph({ supabase, ...ctx, extraction, memories });
+        // Nothing new: same entities, same edge, same links.
+        expect(second).toMatchObject({ entitiesCreated: 0, entitiesMerged: 2, edgesCreated: 0, mentionsCreated: 0 });
+        expect(inserted).toHaveLength(2);
+        expect(edges).toHaveLength(1);
+        expect(mentions).toHaveLength(2);
+        // Both entities were bumped — the fast path used to skip this entirely.
+        expect(updated).toHaveLength(2);
+    });
+
+    it('writes no mention links when no memories are supplied', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { supabase, mentions } = makeSupabase([]);
+        const res = await persistEntityGraph({
+            supabase,
+            ...ctx,
+            extraction: { entities: [{ name: 'Zap Corp', type: 'org' }], relations: [] },
+        });
+        expect(mentions).toHaveLength(0);
+        expect(res.mentionsCreated).toBe(0);
+    });
+
     it('is a no-op for an empty extraction', async () => {
         const { supabase } = makeSupabase([]);
         const res = await persistEntityGraph({
             supabase, ...ctx,
             extraction: { entities: [], relations: [] },
         });
-        expect(res).toEqual({ entitiesCreated: 0, entitiesMerged: 0, edgesCreated: 0 });
+        expect(res).toEqual({ entitiesCreated: 0, entitiesMerged: 0, edgesCreated: 0, mentionsCreated: 0 });
     });
 });

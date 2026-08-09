@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Github } from "@lobehub/icons";
+import { Bot } from "lucide-react";
 import {
   Add01Icon,
   AiFolder01Icon,
@@ -194,11 +195,17 @@ function CreateProjectMenu({ orgSlug }: { orgSlug: string }) {
           <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={1.8} aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem asChild className="cursor-pointer text-xs">
+          <Link href={`/${orgSlug}/~/projects/new-agent`}>
+            <Bot size={14} className="mr-2" aria-hidden="true" />
+            Deploy an agent
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild className="cursor-pointer text-xs">
           <Link href={`/${orgSlug}/~/projects/new`}>
             <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.7} className="mr-2" aria-hidden="true" />
-            Create new project
+            Empty project (gateway only)
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="cursor-pointer text-xs">

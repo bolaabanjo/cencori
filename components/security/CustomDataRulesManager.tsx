@@ -7,7 +7,7 @@
  * for their specific use case (farm data, client info, etc.)
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     PlusIcon, TrashIcon, PencilIcon,
@@ -25,7 +25,6 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
@@ -45,7 +44,6 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/toast";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -328,6 +326,7 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
     const queryClient = useQueryClient();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<CustomDataRule | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState<FormData>({
         name: '',
@@ -340,7 +339,7 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
     });
 
     // Fetch rules
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, isError, error, refetch } = useQuery({
         queryKey: ['customRules', projectId],
         queryFn: async () => {
             const res = await fetch(`/api/projects/${projectId}/custom-rules`);
@@ -365,11 +364,11 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['customRules', projectId] });
-            toast.success('Rule created successfully');
+            toast.success('Rule created');
             resetForm();
         },
         onError: (error: Error) => {
-            toast.error(error.message);
+            setFormError(error.message);
         },
     });
 
@@ -389,11 +388,11 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['customRules', projectId] });
-            toast.success('Rule updated successfully');
+            toast.success('Rule updated');
             resetForm();
         },
         onError: (error: Error) => {
-            toast.error(error.message);
+            setFormError(error.message);
         },
     });
 
@@ -437,6 +436,7 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
     const resetForm = () => {
         setIsDialogOpen(false);
         setEditingRule(null);
+        setFormError(null);
         setFormData({
             name: '',
             description: '',
@@ -450,6 +450,7 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
 
     const handleEdit = (rule: CustomDataRule) => {
         setEditingRule(rule);
+        setFormError(null);
         setFormData({
             name: rule.name,
             description: rule.description || '',
@@ -463,8 +464,15 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
     };
 
     const handleSubmit = () => {
-        if (!formData.name || !formData.pattern) {
-            toast.error('Name and pattern are required');
+        setFormError(null);
+
+        if (!formData.name.trim()) {
+            setFormError('Enter a name for this rule.');
+            return;
+        }
+
+        if (!formData.pattern.trim()) {
+            setFormError('Define what this rule should detect.');
             return;
         }
 
@@ -477,6 +485,7 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
 
     const handleApplyTemplate = (template: RuleTemplate) => {
         setEditingRule(null);
+        setFormError(null);
         setFormData({
             name: template.name,
             description: template.description,
@@ -491,364 +500,468 @@ export function CustomDataRulesManager({ projectId }: CustomDataRulesManagerProp
     };
 
     const matchTypeInfo = MATCH_TYPE_INFO[formData.match_type];
+    const rules = data?.rules || [];
+    const activeRules = rules.filter((rule) => rule.is_active).length;
+    const aiRules = rules.filter((rule) => rule.match_type === 'ai_detect').length;
+    const deterministicRules = rules.length - aiRules;
 
     if (isLoading) {
         return (
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="h-8 w-24" />
+            <div className="space-y-3">
+                <div className="flex items-end justify-between gap-6">
+                    <div>
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="mt-2 h-3 w-72 max-w-full" />
+                    </div>
+                    <Skeleton className="h-8 w-28" />
                 </div>
-                {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-20 w-full" />
-                ))}
+                <div className="overflow-hidden rounded-lg border border-border/25 bg-[#f3f3f1] dark:bg-[#111111]">
+                    <div className="grid grid-cols-2 border-b border-border/25 sm:grid-cols-4">
+                        {[1, 2, 3, 4].map((item) => (
+                            <div key={item} className="border-b border-border/20 px-5 py-5 even:border-l sm:border-b-0 sm:border-l sm:first:border-l-0">
+                                <Skeleton className="h-3 w-20" />
+                                <Skeleton className="mt-3 h-6 w-10" />
+                            </div>
+                        ))}
+                    </div>
+                    <div className="px-6 py-14 sm:px-7">
+                        <Skeleton className="h-5 w-52" />
+                        <Skeleton className="mt-3 h-3 w-96 max-w-full" />
+                        <Skeleton className="mt-2 h-3 w-72 max-w-full" />
+                    </div>
+                </div>
             </div>
         );
     }
 
-    const rules = data?.rules || [];
-
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <div className="space-y-3">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h3 className="text-sm font-medium">Custom Data Rules</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                        Define patterns for your domain-specific sensitive data
+                    <h2 className="text-sm font-medium tracking-[-0.01em]">Protection rules</h2>
+                    <p className="mt-1 max-w-[60ch] text-[11px] leading-4 text-muted-foreground">
+                        Detect domain-specific sensitive data and decide how Cencori handles each match.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    {/* Templates Dropdown */}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                {rules.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <RuleTemplateMenu onSelect={handleApplyTemplate}>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-8 text-xs gap-1.5"
+                                className="h-8 gap-1.5 border-border/30 bg-transparent text-xs shadow-none active:translate-y-px"
                             >
-                                <DocumentTextIcon className="h-3.5 w-3.5" />
-                                Templates
+                                Browse templates
                                 <ChevronDownIcon className="h-3 w-3 opacity-50" />
                             </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-64 p-0">
-                            <div className="p-2 border-b border-border/50">
-                                <span className="text-xs font-medium">Pre-built Templates</span>
-                            </div>
-                            <ScrollArea className="h-80">
-                                {RULE_TEMPLATES.map((category, index) => {
-                                    const CategoryIcon = category.icon;
-                                    return (
-                                        <div key={category.name}>
-                                            {index > 0 && <DropdownMenuSeparator />}
-                                            <DropdownMenuLabel className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 flex items-center gap-2 py-2 px-3 bg-muted/30">
-                                                <CategoryIcon className={`h-4 w-4 ${category.color}`} />
-                                                {category.name}
-                                            </DropdownMenuLabel>
-                                            {category.templates.map((template) => (
-                                                <DropdownMenuItem
-                                                    key={template.name}
-                                                    className="text-xs pl-8 cursor-pointer py-2 mx-1 rounded-md"
-                                                    onClick={() => handleApplyTemplate(template)}
-                                                >
-                                                    <div>
-                                                        <div className="font-medium">{template.name}</div>
-                                                        <div className="text-muted-foreground text-[10px] mt-0.5">
-                                                            {template.description}
-                                                        </div>
-                                                    </div>
-                                                </DropdownMenuItem>
-                                            ))}
-                                        </div>
-                                    );
-                                })}
-                            </ScrollArea>
-                            {/* Scroll indicator */}
-                            <div className="flex items-center justify-center py-1.5 border-t border-border/50 bg-gradient-to-t from-background to-transparent">
-                                <ChevronDownIcon className="h-3 w-3 text-muted-foreground animate-bounce" />
-                            </div>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {/* Add Rule Button */}
-                    <Button
-                        size="sm"
-                        className="h-8 text-xs gap-1.5"
-                        onClick={() => setIsDialogOpen(true)}
-                    >
-                        <PlusIcon className="h-3.5 w-3.5" />
-                        Add Rule
-                    </Button>
-                </div>
-            </div>
-
-            {/* Rules List */}
-            {rules.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-border/50 rounded-lg">
-                    <div className="w-10 h-10 rounded-lg bg-secondary/50 flex items-center justify-center mx-auto mb-3">
-                        <ShieldCheckIcon className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium">No custom rules yet</p>
-                    <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-                        Create custom rules or use pre-built templates for Healthcare, Finance, Agriculture, and more
-                    </p>
-                    <div className="flex items-center justify-center gap-2 mt-4">
+                        </RuleTemplateMenu>
                         <Button
                             size="sm"
-                            variant="outline"
-                            className="h-8 text-xs gap-1.5"
-                            onClick={() => {
-                                // Apply first template as example
-                                const firstTemplate = RULE_TEMPLATES[0].templates[0];
-                                handleApplyTemplate(firstTemplate);
-                            }}
-                        >
-                            <DocumentTextIcon className="h-3.5 w-3.5" />
-                            Use Template
-                        </Button>
-                        <Button
-                            size="sm"
-                            className="h-8 text-xs gap-1.5"
+                            className="h-8 gap-1.5 text-xs shadow-none active:translate-y-px"
                             onClick={() => setIsDialogOpen(true)}
                         >
                             <PlusIcon className="h-3.5 w-3.5" />
-                            Create Rule
+                            Create rule
                         </Button>
                     </div>
-                </div>
-            ) : (
-                <div className="space-y-3">
+                )}
+            </header>
+
+            <section className="overflow-hidden rounded-lg border border-border/25 bg-[#f3f3f1] dark:bg-[#111111]">
+                <dl className="grid grid-cols-2 border-b border-border/25 sm:grid-cols-4">
+                    <RuleMetric label="Total rules" value={rules.length} />
+                    <RuleMetric label="Active" value={activeRules} />
+                    <RuleMetric label="Pattern matchers" value={deterministicRules} />
+                    <RuleMetric label="AI classifiers" value={aiRules} />
+                </dl>
+
+                {isError ? (
+                    <div className="flex min-h-72 flex-col items-center justify-center px-7 py-14 text-center">
+                        <span className="mb-5 h-px w-10 bg-red-500/70" />
+                        <p className="text-sm font-medium">Rules are unavailable</p>
+                        <p className="mt-1 max-w-sm text-[11px] leading-5 text-muted-foreground">
+                            {error instanceof Error ? error.message : 'We could not load this project’s rules.'}
+                        </p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-5 h-8 gap-2 border-border/30 bg-transparent text-xs shadow-none"
+                            onClick={() => void refetch()}
+                        >
+                            <ArrowPathRoundedSquareIcon className="size-3.5" />
+                            Try again
+                        </Button>
+                    </div>
+                ) : rules.length === 0 ? (
+                    <div className="grid sm:grid-cols-2">
+                        <article className="flex min-h-64 flex-col justify-between border-b border-border/25 px-6 py-7 sm:border-b-0 sm:border-r sm:px-7 sm:py-8">
+                            <div>
+                                <span className="mb-6 block h-px w-10 bg-emerald-500/70" />
+                                <p className="text-[10px] font-medium text-muted-foreground">Start from scratch</p>
+                                <h3 className="mt-2 text-lg font-medium tracking-[-0.025em]">Create a protection rule</h3>
+                                <p className="mt-2 max-w-sm text-[11px] leading-5 text-muted-foreground">
+                                    Define the exact data to detect, then mask, redact, tokenize, or block every match.
+                                </p>
+                            </div>
+                            <Button
+                                size="sm"
+                                className="mt-7 h-9 w-fit gap-1.5 text-xs shadow-none active:translate-y-px"
+                                onClick={() => setIsDialogOpen(true)}
+                            >
+                                <PlusIcon className="size-3.5" />
+                                Create first rule
+                            </Button>
+                        </article>
+
+                        <article className="flex min-h-64 flex-col justify-between px-6 py-7 sm:px-7 sm:py-8">
+                            <div>
+                                <span className="mb-6 block h-px w-10 bg-foreground/35" />
+                                <p className="text-[10px] font-medium text-muted-foreground">Start from policy</p>
+                                <h3 className="mt-2 text-lg font-medium tracking-[-0.025em]">Use a vetted template</h3>
+                                <p className="mt-2 max-w-sm text-[11px] leading-5 text-muted-foreground">
+                                    Begin with common PII, healthcare, finance, agriculture, or legal protections and adapt them.
+                                </p>
+                            </div>
+                            <RuleTemplateMenu onSelect={handleApplyTemplate}>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-7 h-9 w-fit gap-1.5 border-border/30 bg-transparent text-xs shadow-none active:translate-y-px"
+                                >
+                                    <DocumentTextIcon className="size-3.5" />
+                                    Browse templates
+                                </Button>
+                            </RuleTemplateMenu>
+                        </article>
+                    </div>
+                ) : (
+                    <div className="divide-y divide-border/20">
                     {rules.map((rule) => {
-                        const MatchIcon = MATCH_TYPE_INFO[rule.match_type].icon;
                         const ActionInfo = ACTION_INFO[rule.action];
-                        const ActionIcon = ActionInfo.icon;
 
                         return (
-                            <div
+                            <article
                                 key={rule.id}
-                                className={`p-4 rounded-lg border transition-colors ${rule.is_active
-                                    ? 'border-border/50 bg-card'
-                                    : 'border-border/30 bg-card/50 opacity-60'
-                                    }`}
+                                className={`grid gap-5 px-5 py-5 transition-colors hover:bg-muted/45 sm:px-7 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)_auto] lg:items-center ${rule.is_active ? '' : 'opacity-55'}`}
                             >
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-sm font-medium truncate">
-                                                {rule.name}
-                                            </span>
-                                            <Badge variant="outline" className="text-[10px] h-5">
-                                                {MATCH_TYPE_INFO[rule.match_type].label}
-                                            </Badge>
-                                            <Badge className={`text-[10px] h-5 ${ActionInfo.color}`}>
-                                                {ActionInfo.label}
-                                            </Badge>
-                                        </div>
-                                        {rule.description && (
-                                            <p className="text-xs text-muted-foreground mb-2">
-                                                {rule.description}
-                                            </p>
-                                        )}
-                                        <code className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-2 py-1 rounded block truncate">
-                                            {rule.pattern}
-                                        </code>
-                                    </div>
-
+                                <div className="min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <Switch
-                                            checked={rule.is_active}
-                                            onCheckedChange={(checked) =>
-                                                toggleMutation.mutate({ ruleId: rule.id, is_active: checked })
-                                            }
-                                        />
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8"
-                                            onClick={() => handleEdit(rule)}
-                                        >
-                                            <PencilIcon className="h-3.5 w-3.5" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-destructive hover:text-destructive"
-                                            onClick={() => deleteMutation.mutate(rule.id)}
-                                        >
-                                            <TrashIcon className="h-3.5 w-3.5" />
-                                        </Button>
+                                        <span className={`size-1.5 shrink-0 rounded-full ${rule.is_active ? 'bg-emerald-500' : 'bg-foreground/25'}`} />
+                                        <h3 className="truncate text-sm font-medium">{rule.name}</h3>
                                     </div>
+                                    {rule.description && <p className="mt-1 truncate text-[11px] text-muted-foreground">{rule.description}</p>}
+                                    <code className="mt-3 block truncate rounded-[3px] bg-background/35 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">
+                                        {rule.pattern}
+                                    </code>
                                 </div>
-                            </div>
+
+                                <dl className="grid grid-cols-3 gap-4">
+                                    <RuleMeta label="Match" value={MATCH_TYPE_INFO[rule.match_type].label} />
+                                    <RuleMeta label="Action" value={ActionInfo.label} />
+                                    <RuleMeta label="Priority" value={String(rule.priority)} mono />
+                                </dl>
+
+                                <div className="flex items-center justify-end gap-1.5">
+                                    <Switch
+                                        checked={rule.is_active}
+                                        aria-label={`${rule.is_active ? 'Disable' : 'Enable'} ${rule.name}`}
+                                        onCheckedChange={(checked) => toggleMutation.mutate({ ruleId: rule.id, is_active: checked })}
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Edit ${rule.name}`}
+                                        className="size-8"
+                                        onClick={() => handleEdit(rule)}
+                                    >
+                                        <PencilIcon className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Delete ${rule.name}`}
+                                        className="size-8 text-muted-foreground hover:text-destructive"
+                                        onClick={() => deleteMutation.mutate(rule.id)}
+                                    >
+                                        <TrashIcon className="size-3.5" />
+                                    </Button>
+                                </div>
+                            </article>
                         );
                     })}
-                </div>
-            )}
+                    </div>
+                )}
 
-            {/* AI Detect Info */}
-            <div className="rounded-lg border border-border/50 bg-gradient-to-br from-purple-500/5 to-blue-500/5 p-4">
-                <div className="flex items-start gap-3">
+                <footer className="flex flex-col gap-4 border-t border-border/25 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
                     <div>
-                        <h4 className="text-sm font-medium">AI-Powered Detection</h4>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Use &quot;AI Detect&quot; to describe sensitive data in plain English.
-                            It understands context and meaning—not just keywords.
+                        <h3 className="text-xs font-medium">Context-aware matching</h3>
+                        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                            AI Detect rules classify meaning and context when keywords or patterns are not enough.
                         </p>
                     </div>
-                </div>
-            </div>
+                    <span className="w-fit rounded-[3px] border border-border/25 bg-background/30 px-2 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground">
+                        AI DETECT
+                    </span>
+                </footer>
+            </section>
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={(open) => !open && resetForm()}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>{editingRule ? 'Edit Rule' : 'Create Data Rule'}</DialogTitle>
-                        <DialogDescription>
-                            Define a pattern to detect and protect sensitive data
+                <DialogContent className="max-w-[calc(100%-2rem)] gap-0 overflow-hidden border-border/25 bg-[#f3f3f1] p-0 shadow-none dark:bg-[#111111] sm:max-w-2xl">
+                    <DialogHeader className="border-b border-border/25 px-6 pb-6 pt-6 pr-14 text-left sm:px-7 sm:pr-14">
+                        <DialogTitle className="text-base font-medium tracking-[-0.02em]">
+                            {editingRule ? 'Edit protection rule' : 'Create protection rule'}
+                        </DialogTitle>
+                        <DialogDescription className="max-w-lg text-xs leading-5">
+                            Define what Cencori should detect and how it should handle each match.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 py-4">
-                        {/* Name */}
-                        <div className="space-y-2">
-                            <Label htmlFor="name" className="text-xs">Name</Label>
-                            <Input
-                                id="name"
-                                placeholder="e.g., Farm Production Data"
-                                value={formData.name}
-                                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                                className="h-9 text-sm"
-                            />
-                        </div>
-
-                        {/* Description */}
-                        <div className="space-y-2">
-                            <Label htmlFor="description" className="text-xs">Description (optional)</Label>
-                            <Input
-                                id="description"
-                                placeholder="Brief description of what this rule protects"
-                                value={formData.description}
-                                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                                className="h-9 text-sm"
-                            />
-                        </div>
-
-                        {/* Match Type */}
-                        <div className="space-y-2">
-                            <Label className="text-xs">Match Type</Label>
-                            <Select
-                                value={formData.match_type}
-                                onValueChange={(value) =>
-                                    setFormData(prev => ({ ...prev, match_type: value as MatchType, pattern: '' }))
-                                }
-                            >
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(MATCH_TYPE_INFO).map(([key, info]) => (
-                                        <SelectItem key={key} value={key} className="text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <info.icon className="h-4 w-4" />
-                                                {info.label}
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <p className="text-[11px] text-muted-foreground">
-                                {matchTypeInfo.description}
-                            </p>
-                        </div>
-
-                        {/* Pattern */}
-                        <div className="space-y-2">
-                            <Label htmlFor="pattern" className="text-xs">Pattern</Label>
-                            <Textarea
-                                id="pattern"
-                                placeholder={matchTypeInfo.placeholder}
-                                value={formData.pattern}
-                                onChange={(e) => setFormData(prev => ({ ...prev, pattern: e.target.value }))}
-                                className="min-h-[80px] text-sm font-mono"
-                            />
-                        </div>
-
-                        {/* Case Sensitive (only for keywords/regex) */}
-                        {(formData.match_type === 'keywords' || formData.match_type === 'regex') && (
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <Label className="text-xs">Case Sensitive</Label>
-                                    <p className="text-[11px] text-muted-foreground">Match exact case</p>
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            handleSubmit();
+                        }}
+                    >
+                        <div className="max-h-[65vh] overflow-y-auto">
+                            <section className="border-b border-border/25 px-6 py-6 sm:px-7">
+                                <div className="mb-5">
+                                    <h3 className="text-xs font-medium">Rule identity</h3>
+                                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                        Give operators a clear name and a short explanation of what this rule protects.
+                                    </p>
                                 </div>
-                                <Switch
-                                    checked={formData.case_sensitive}
-                                    onCheckedChange={(checked) =>
-                                        setFormData(prev => ({ ...prev, case_sensitive: checked }))
-                                    }
-                                />
-                            </div>
-                        )}
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="name" className="text-[11px]">Name</Label>
+                                        <Input
+                                            id="name"
+                                            placeholder="Farm production data"
+                                            value={formData.name}
+                                            aria-invalid={Boolean(formError && !formData.name.trim())}
+                                            onChange={(e) => {
+                                                setFormError(null);
+                                                setFormData(prev => ({ ...prev, name: e.target.value }));
+                                            }}
+                                            className="h-9 border-border/25 bg-background/35 text-sm shadow-none focus-visible:ring-1"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description" className="text-[11px]">Description <span className="text-muted-foreground">· optional</span></Label>
+                                        <Input
+                                            id="description"
+                                            placeholder="Protects internal production metrics"
+                                            value={formData.description}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                                            className="h-9 border-border/25 bg-background/35 text-sm shadow-none focus-visible:ring-1"
+                                        />
+                                    </div>
+                                </div>
+                            </section>
 
-                        {/* Action */}
-                        <div className="space-y-2">
-                            <Label className="text-xs">Action</Label>
-                            <Select
-                                value={formData.action}
-                                onValueChange={(value) =>
-                                    setFormData(prev => ({ ...prev, action: value as ActionType }))
-                                }
-                            >
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(ACTION_INFO).map(([key, info]) => (
-                                        <SelectItem key={key} value={key} className="text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <info.icon className="h-4 w-4" />
-                                                <span>{info.label}</span>
-                                                <span className="text-muted-foreground">
-                                                    — {info.description}
-                                                </span>
+                            <section className="border-b border-border/25 px-6 py-6 sm:px-7">
+                                <div className="mb-5">
+                                    <h3 className="text-xs font-medium">Detection logic</h3>
+                                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                        Choose how Cencori identifies a match, then define the content it should look for.
+                                    </p>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[11px]">Match type</Label>
+                                        <Select
+                                            value={formData.match_type}
+                                            onValueChange={(value) => {
+                                                setFormError(null);
+                                                setFormData(prev => ({ ...prev, match_type: value as MatchType, pattern: '' }));
+                                            }}
+                                        >
+                                            <SelectTrigger className="h-9 border-border/25 bg-background/35 text-sm shadow-none focus:ring-1">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {Object.entries(MATCH_TYPE_INFO).map(([key, info]) => (
+                                                    <SelectItem key={key} value={key} className="text-sm">
+                                                        <div className="flex items-center gap-2">
+                                                            <info.icon className="size-4" />
+                                                            <span>{info.label}</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] leading-4 text-muted-foreground">{matchTypeInfo.description}</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="pattern" className="text-[11px]">
+                                            {formData.match_type === 'ai_detect' ? 'Detection instruction' : 'Pattern'}
+                                        </Label>
+                                        <Textarea
+                                            id="pattern"
+                                            placeholder={matchTypeInfo.placeholder}
+                                            value={formData.pattern}
+                                            aria-invalid={Boolean(formError && !formData.pattern.trim())}
+                                            onChange={(e) => {
+                                                setFormError(null);
+                                                setFormData(prev => ({ ...prev, pattern: e.target.value }));
+                                            }}
+                                            className="min-h-24 resize-y border-border/25 bg-background/35 font-mono text-xs leading-5 shadow-none focus-visible:ring-1"
+                                        />
+                                    </div>
+
+                                    {(formData.match_type === 'keywords' || formData.match_type === 'regex') && (
+                                        <div className="flex items-center justify-between rounded-[5px] border border-border/20 bg-background/25 px-4 py-3">
+                                            <div>
+                                                <Label htmlFor="case-sensitive" className="text-[11px]">Case sensitive</Label>
+                                                <p className="mt-1 text-[10px] text-muted-foreground">Require capitalization to match exactly.</p>
                                             </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                            <Switch
+                                                id="case-sensitive"
+                                                checked={formData.case_sensitive}
+                                                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, case_sensitive: checked }))}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                            <section className="px-6 py-6 sm:px-7">
+                                <div className="mb-5">
+                                    <h3 className="text-xs font-medium">Enforcement</h3>
+                                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                        Decide what happens after a match and where this rule sits in the evaluation order.
+                                    </p>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                                    <div className="space-y-2">
+                                        <Label className="text-[11px]">Action</Label>
+                                        <Select
+                                            value={formData.action}
+                                            onValueChange={(value) => setFormData(prev => ({ ...prev, action: value as ActionType }))}
+                                        >
+                                            <SelectTrigger className="h-9 border-border/25 bg-background/35 text-sm shadow-none focus:ring-1">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {Object.entries(ACTION_INFO).map(([key, info]) => (
+                                                    <SelectItem key={key} value={key} className="text-sm">
+                                                        <div className="flex items-center gap-2">
+                                                            <info.icon className="size-4" />
+                                                            <span>{info.label}</span>
+                                                            <span className="text-muted-foreground">— {info.description}</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="priority" className="text-[11px]">Priority</Label>
+                                        <Input
+                                            id="priority"
+                                            type="number"
+                                            inputMode="numeric"
+                                            value={formData.priority}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, priority: Number(e.target.value) || 0 }))}
+                                            className="h-9 border-border/25 bg-background/35 font-mono text-sm tabular-nums shadow-none focus-visible:ring-1"
+                                        />
+                                        <p className="text-[10px] leading-4 text-muted-foreground">Higher runs first.</p>
+                                    </div>
+                                </div>
+
+                                {formData.action === 'block' && formData.match_type === 'ai_detect' && (
+                                    <p className="mt-4 rounded-[5px] border border-red-500/15 bg-red-500/[0.06] px-4 py-3 text-[10px] leading-4 text-red-700 dark:text-red-400">
+                                        Blocking with AI Detect adds roughly 200–500ms while classification completes before the request proceeds.
+                                    </p>
+                                )}
+                            </section>
                         </div>
 
-                        {/* Block Warning */}
-                        {formData.action === 'block' && formData.match_type === 'ai_detect' && (
-                            <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                                <p className="text-xs text-red-600 dark:text-red-400">
-                                    <strong>Warning:</strong> Using Block with AI Detect will add ~200-500ms latency
-                                    as we must wait for classification before processing the request.
-                                </p>
+                        <div className="flex flex-col gap-3 border-t border-border/25 bg-background/15 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+                            <div className="min-h-4" aria-live="polite">
+                                {formError && <p className="text-[10px] leading-4 text-red-700 dark:text-red-400">{formError}</p>}
                             </div>
-                        )}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" size="sm" onClick={resetForm}>
-                            Cancel
-                        </Button>
-                        <Button
-                            size="sm"
-                            onClick={handleSubmit}
-                            disabled={createMutation.isPending || updateMutation.isPending}
-                        >
-                            {createMutation.isPending || updateMutation.isPending ? (
-                                'Saving...'
-                            ) : editingRule ? (
-                                'Save Changes'
-                            ) : (
-                                'Create Rule'
-                            )}
-                        </Button>
-                    </DialogFooter>
+                            <div className="flex items-center justify-end gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={resetForm}>
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    disabled={createMutation.isPending || updateMutation.isPending}
+                                >
+                                    {createMutation.isPending || updateMutation.isPending
+                                        ? 'Saving…'
+                                        : editingRule
+                                            ? 'Save changes'
+                                            : 'Create rule'}
+                                </Button>
+                            </div>
+                        </div>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>
+    );
+}
+
+function RuleMetric({ label, value }: { label: string; value: number }) {
+    return (
+        <div className="border-b border-border/20 px-5 py-5 even:border-l sm:border-b-0 sm:border-l sm:first:border-l-0">
+            <dt className="text-[10px] text-muted-foreground">{label}</dt>
+            <dd className="mt-3 font-mono text-xl font-medium leading-none tracking-[-0.04em] tabular-nums">{value}</dd>
+        </div>
+    );
+}
+
+function RuleMeta({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+    return (
+        <div className="min-w-0">
+            <dt className="text-[9px] text-muted-foreground">{label}</dt>
+            <dd className={`mt-1 truncate text-[11px] font-medium ${mono ? 'font-mono tabular-nums' : ''}`}>{value}</dd>
+        </div>
+    );
+}
+
+function RuleTemplateMenu({ onSelect, children }: { onSelect: (template: RuleTemplate) => void; children: ReactNode }) {
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 overflow-hidden border-border/30 p-0 shadow-none">
+                <div className="border-b border-border/25 px-4 py-3">
+                    <p className="text-xs font-medium">Rule templates</p>
+                    <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Select a starting policy, then review it before saving.</p>
+                </div>
+                <ScrollArea className="h-80">
+                    <div className="py-1.5">
+                        {RULE_TEMPLATES.map((category, index) => {
+                            const CategoryIcon = category.icon;
+                            return (
+                                <div key={category.name}>
+                                    {index > 0 && <DropdownMenuSeparator className="my-1.5" />}
+                                    <DropdownMenuLabel className="flex items-center gap-2 px-3 py-2 text-[10px] font-medium text-muted-foreground">
+                                        <CategoryIcon className={`size-3.5 ${category.color}`} />
+                                        {category.name}
+                                    </DropdownMenuLabel>
+                                    {category.templates.map((template) => (
+                                        <DropdownMenuItem
+                                            key={template.name}
+                                            className="mx-1.5 cursor-pointer rounded-[4px] px-3 py-2.5 focus:bg-muted/70"
+                                            onClick={() => onSelect(template)}
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-medium">{template.name}</p>
+                                                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{template.description}</p>
+                                            </div>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </ScrollArea>
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }

@@ -79,6 +79,8 @@ const ALL_FEATURES_ENABLED: TierFeatures = {
 // preserved in git history (see this file before this commit).
 //
 // Explicit existence gates:
+//   - security, piiMasking, customDataRules, outputScanning,
+//     securityIncidents, auditTrails — Pro, Team, and Enterprise
 //   - teams — Pro, Team, and Enterprise
 //   - auditLogs — Pro, Team, and Enterprise
 //   - auditLogIdentityEvents, auditLogExtendedHistory, auditLogExports — Team and Enterprise
@@ -98,6 +100,12 @@ const ALL_FEATURES_ENABLED: TierFeatures = {
 export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
   free: {
     ...ALL_FEATURES_ENABLED,
+    security: false,
+    piiMasking: false,
+    customDataRules: false,
+    outputScanning: false,
+    securityIncidents: false,
+    auditTrails: false,
     teams: false,
     auditLogs: false,
     auditLogIdentityEvents: false,

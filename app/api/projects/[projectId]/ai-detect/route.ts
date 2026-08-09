@@ -8,6 +8,7 @@ import {
     parseCreditsBalance,
     shouldEnforceProjectCredits,
 } from '@/lib/project-credit-billing';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface RouteParams {
     params: Promise<{ projectId: string }>;
@@ -89,6 +90,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         if (!hasOrgAccess) {
             return NextResponse.json({ error: 'Access denied' }, { status: 403 });
         }
+
+        const gate = await requireTierFeatureForProject(projectId, 'security');
+        if (gate) return gate;
 
         const organization = project.organizations as unknown as {
             subscription_tier: string | null;
