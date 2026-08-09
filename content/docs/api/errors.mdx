@@ -7,7 +7,7 @@ order: 7
 
 ## Error Response Format
 
-Every AI Gateway endpoint (chat, vision, audio, embeddings, …) returns errors as flat JSON. The `error` field is always present — for gateway-level failures it is a human-readable phrase, for endpoint-level failures it doubles as a machine code. Machine-readable codes appear in the optional `code` field.
+Every AI Gateway endpoint (chat, vision, audio, embeddings, …) returns errors as flat JSON. The `error` field is always present and is a string — for gateway-level failures it is a human-readable phrase (with a machine code in `code`), while endpoint-level failures use the machine code directly as `error` (e.g. `"bad_request"`).
 
 ```json
 {
@@ -21,9 +21,9 @@ Fields by failure class:
 
 | Field | Present when |
 |-------|--------------|
-| `error` | Always |
+| `error` | Always (string) |
 | `message` | Most failures (added to auth failures too) |
-| `code` | Gateway policy failures and endpoint validation failures |
+| `code` | Gateway policy failures |
 | `reasons` | A security guard (input/output) blocked the request |
 | `retry_after_ms` | Per-minute rate limit exceeded |
 | `balance` | Credit balance exhausted |
@@ -81,12 +81,7 @@ Security guards (input/output) return their own blocked responses with `error`, 
 
 ## Rate Limit Headers
 
-Every gateway response includes:
-
-- `X-RateLimit-Limit`: Maximum requests per window
-- `X-RateLimit-Remaining`: Requests remaining in the window
-- `X-RateLimit-Reset`: Unix timestamp (ms) when the window resets
-- `X-Request-Id`: Correlation id for every request and response
+Rate-limited responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` (Unix timestamp in **milliseconds**), and every gateway response carries `X-Request-Id` for correlation.
 
 429 responses also set a standards-compliant `Retry-After` header in seconds. The same value is available as `retry_after_ms` in the body.
 

@@ -38,15 +38,16 @@ Resets happen on the monthly cycle (see `cron/reset-usage`).
 
 ## Rate Limit Headers
 
-Every response includes headers showing your current rate limit status:
+429 responses include headers showing your current rate limit status:
 
 | Header | Description | Example |
 |--------|-------------|---------|
 | `X-RateLimit-Limit` | Max requests per window | 60 |
 | `X-RateLimit-Remaining` | Requests left in window | 45 |
 | `X-RateLimit-Reset` | Unix timestamp (ms) when window resets | 1701234567000 |
-| `X-Request-Id` | Correlation id for this request | ... |
 | `Retry-After` | Seconds to wait — only on `429` responses | 45 |
+
+Every gateway response (success or error) additionally carries `X-Request-Id` for correlation.
 
 ## Handling Rate Limit Errors
 

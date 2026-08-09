@@ -13,8 +13,9 @@ Turn text into speech and speech into text through a single billable, logged, PI
 |------|---------|
 | `POST /api/ai/audio/speech` | Text-to-speech (TTS) |
 | `POST /api/ai/audio/transcriptions` | Speech-to-text (STT) |
-| `GET /api/ai/audio/speech` | List TTS models |
-| `GET /api/ai/audio/transcriptions` | List STT models |
+| `GET /api/ai/audio/speech` | TTS models + formats + limits |
+| `GET /api/ai/audio/transcriptions` | STT models + supported formats + limits |
+| `GET /api/ai/audio/voices` | Full TTS voice registry (runtime voice discovery) |
 
 The **provider is inferred from `model`** — you never pass a provider name. Both endpoints default to OpenAI for backward compatibility.
 
@@ -37,19 +38,58 @@ await fs.writeFile('hello.mp3', Buffer.from(audio));
 | `input` | string | Yes | Text to synthesize (max 4096 chars) |
 | `model` | string | No | TTS model. Default `tts-1`. See the table below |
 | `voice` | string | No | Voice id/name; provider-specific, falls back to the model default |
-| `responseFormat` | string | No | `mp3` (default), `opus`, `aac`, `flac`, `wav`, `pcm` (support varies by provider) |
-| `speed` | number | No | 0.25–4.0 (OpenAI only) |
+| `response_format` | string | No | `mp3` (default), `opus`, `aac`, `flac`, `wav`, `pcm` (support varies by provider) |
+| `speed` | number | No | 0.25–4.0 |
 | `language` | string | No | Language code — Spitch: `en`, `yo`, `ha`, `ig`, `am` |
+| `stream` | boolean | No | `true` returns chunked audio (see [Streaming](#streaming)) |
 
-### TTS models
+### TTS models and voices
 
-| Model | Provider | Notes |
-|-------|----------|-------|
-| `tts-1`, `tts-1-hd` | OpenAI | 6 built-in voices |
-| `aura-asteria-en`, `aura-luna-en`, `aura-stella-en`, `aura-orion-en`, `aura-arcas-en` | Deepgram | Sub-200ms, great for agents |
-| `sonic-2` | Cartesia | Sub-100ms, purpose-built for realtime |
-| `spitch-tts` | Spitch | **African languages** — Yoruba, Hausa, Igbo, English, Amharic |
-| `eleven_turbo_v2_5`, `eleven_flash_v2_5`, `eleven_multilingual_v2` | ElevenLabs | Best voice quality (paid ElevenLabs plan required) |
+| Model | Provider | Voices | Default voice |
+|-------|----------|--------|---------------|
+| `tts-1` | OpenAI | `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` | `alloy` |
+| `tts-1-hd` | OpenAI | `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` | `alloy` |
+| `aura-asteria-en` | Deepgram | (voice baked into model) | — |
+| `aura-luna-en` | Deepgram | (voice baked into model) | — |
+| `aura-stella-en` | Deepgram | (voice baked into model) | — |
+| `aura-orion-en` | Deepgram | (voice baked into model) | — |
+| `aura-arcas-en` | Deepgram | (voice baked into model) | — |
+| `sonic-2` | Cartesia | (voice is a UUID id) | `a0e99841-…` |
+| `sonic-english` | Cartesia | (voice is a UUID id) | `a0e99841-…` |
+| `spitch-tts` | Spitch | `sade`, `funmi`, `segun`, `femi`, `amara`, `amina`, `aliyu`, `hasan`, `ngozi`, `obinna`, `henry`, `kani` | `sade` |
+| `eleven_turbo_v2_5`, `eleven_flash_v2_5`, `eleven_multilingual_v2` | ElevenLabs | (voice is an id) | `21m00Tcm4TlvDq8ikWAM` |
+
+The authoritative, always-current list comes from `GET /api/ai/audio/voices`, which returns each model with its `voices`, `default_voice`, `formats`, and `max_input_chars`. Omit `voice` to get the default.
+
+### Response
+
+`POST /api/ai/audio/speech` returns **raw audio bytes**, not JSON:
+
+- `Content-Type`: `audio/mpeg` (mp3), `audio/opus`, `audio/aac`, `audio/flac`, `audio/wav`, or `audio/pcm` per `response_format`
+- `X-Provider`: which provider served the request
+- `X-Request-Id`: correlation id
+- `Content-Length`: byte count (buffered responses)
+- `X-Stream: true` on streaming responses, which are chunked and have **no** `Content-Length`
+
+Save the body directly to a file or play it — no decoding needed.
+
+## Streaming
+
+Set `"stream": true` to receive the audio as a chunked `Transfer-Encoding: chunked` response instead of one buffered blob. The client can begin decoding/playing bytes as they arrive, and the server never holds the full file in memory.
+
+```bash
+curl -X POST https://cencori.com/api/ai/audio/speech \
+  -H "CENCORI_API_KEY: csk_..." \
+  -H "Content-Type: application/json" \
+  -d '{ "input": "A long reply…", "stream": true }' \
+  --output speech.mp3
+```
+
+Notes:
+
+- Providers still synthesize the full utterance before sending bytes (none emit partial audio today), so the win is network-level: playback starts while the file is still in transit, and no `Content-Length` is sent.
+- Billing, logging, and validation are identical to the buffered path; the character count is known before the first byte.
+- Errors after the first byte cannot change the HTTP status (headers are already sent) — validation errors all occur before streaming starts.
 
 ## Speech-to-Text
 
@@ -64,12 +104,20 @@ const { text } = await cencori.voice.transcribe({
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `audio` | Blob \| ArrayBuffer \| Uint8Array | Yes | Audio to transcribe (max 25MB) |
+| `file` | multipart `File` | Yes | Audio to transcribe (max **25MB**) |
 | `model` | string | No | STT model. Default `whisper-1` |
-| `language` | string | No | Language hint (Spitch: target language) |
-| `diarize` | boolean | No | Speaker labels (diarization-capable models) |
-| `responseFormat` | string | No | `json` (default), `text`, `srt`, `vtt`, `verbose_json` |
+| `language` | string | No | ISO language hint (Spitch: target language) |
 | `prompt` | string | No | Context hint (OpenAI only) |
+| `temperature` | number | No | 0–1 (OpenAI only) |
+| `diarize` | boolean | No | Speaker labels (diarization-capable models) |
+| `response_format` | string | No | `json` (default), `text`, `srt`, `vtt`, `verbose_json` |
+| `provider` | string | No | Force the provider (must match the model) |
+
+### Accepted audio containers
+
+`mp3`, `wav`, `webm`, `mp4`, `m4a`, `ogg`, `flac` — including browser-recorded `audio/webm;codecs=opus` and `audio/mp4` blobs. The gateway validates by MIME type first, then falls back to the **filename extension**, so keep a real extension (e.g. `recording.webm`) on the multipart file name. Files over 25MB are rejected with `400 bad_request` before any provider call.
+
+There is no explicit audio-duration cap in the gateway; the 25MB size cap and the 55s provider timeout govern.
 
 ### STT models
 
@@ -80,9 +128,21 @@ const { text } = await cencori.voice.transcribe({
 | `assemblyai-universal` | AssemblyAI | ✓ | Strong long-form + speaker labels |
 | `spitch-stt` | Spitch | — | **African languages** |
 
+### Response formats
+
+| `response_format` | Body |
+|-------------------|------|
+| `json` (default) | `{ "text": "…" }` — flat, no wrapping |
+| `verbose_json` | `{ "text", "language", "duration", "provider", "model", "segments", "words" }` — segments/words carry optional `speaker` |
+| `text` | Plain text body, `Content-Type: text/plain` |
+| `srt` | SubRip with timestamps, `Content-Type: application/x-subrip` |
+| `vtt` | WebVTT with timestamps, `Content-Type: text/vtt` |
+
+Every STT response includes `X-Provider` (and `X-Request-Id`).
+
 ## Speaker diarization
 
-Use `diarize()` (or `diarize: true` + `responseFormat: 'verbose_json'`) with a diarization-capable model to get speaker-attributed segments:
+Use `diarize()` (or `diarize: true` + `response_format: 'verbose_json'`) with a diarization-capable model to get speaker-attributed segments:
 
 ```typescript
 const { segments } = await cencori.voice.diarize({
@@ -97,13 +157,13 @@ for (const s of segments) {
 
 ## Subtitles (SRT / VTT)
 
-Set `responseFormat` to `srt` or `vtt` to get ready-to-use subtitles with timestamps:
+Set `response_format` to `srt` or `vtt` to get ready-to-use subtitles with timestamps:
 
 ```typescript
 const { text: srt } = await cencori.voice.transcribe({
   audio: videoAudio,
   model: 'nova-3',
-  responseFormat: 'srt',
+  response_format: 'srt',
 });
 ```
 
@@ -190,6 +250,29 @@ curl -X POST https://cencori.com/api/ai/audio/transcriptions \
   -F response_format=verbose_json
 ```
 
+### Voice discovery
+
+```bash
+# All TTS models with voices, defaults, and limits
+curl https://cencori.com/api/ai/audio/voices
+# Same registry plus formats / supports_streaming
+curl https://cencori.com/api/ai/audio/speech
+# STT models, accepted containers, response formats, max file size
+curl https://cencori.com/api/ai/audio/transcriptions
+```
+
+These GET endpoints are unauthenticated and safe to call at startup.
+
+## Errors
+
+Errors use the shared flat envelope — see the [Error Reference](/docs/api/errors). For these endpoints the relevant cases are:
+
+- `400 bad_request` — unsupported model/voice/format, temperature/speed out of range, missing file, **file > 25MB**, **input > 4096 chars**
+- `400 provider_not_configured` — no managed or BYOK key for the provider
+- `400 provider_error` / `502` — upstream provider failed
+- `403 credit_balance_exhausted` — credit-gated org out of credits (free tier is not credit-gated)
+- `429 rate_limit_exceeded` — 60 requests/min per project (see [Rate Limiting](/docs/platform/ai-gateway/rate-limiting))
+
 ## Pricing & billing
 
-TTS bills per 1,000 characters; STT bills per minute of audio. Every request is logged to `ai_requests` with the provider, model, provider cost, and your Cencori charge (provider cost + markup) — visible in the dashboard alongside chat and vision usage. BYOK keys are used when configured; otherwise the platform key is used.
+TTS bills per 1,000 characters; STT bills per minute of audio (derived from the provider's reported duration — a failed request without a duration is never billed). Every request is logged to `ai_requests` with the provider, model, provider cost, and your Cencori charge (provider cost + markup) — visible in the dashboard alongside chat and vision usage. BYOK keys are used when configured; otherwise the platform key is used. Streaming responses bill the same as buffered ones (characters are known before the first byte).
