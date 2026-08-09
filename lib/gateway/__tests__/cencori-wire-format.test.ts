@@ -221,7 +221,7 @@ describe('cencori wire format — stream', () => {
         );
     }
 
-    it('buffers content until output approval, then emits metrics and [DONE]', async () => {
+    it('guards short content, then emits metrics and [DONE]', async () => {
         streamChunks([
             { delta: 'Hel' },
             { delta: 'lo' },
@@ -232,8 +232,9 @@ describe('cencori wire format — stream', () => {
         if (!result.ok) throw new Error('expected ok');
 
         expect(result.response.headers.get('Content-Type')).toBe('text/event-stream');
-        expect(result.response.headers.get('Cache-Control')).toBe('no-cache');
+        expect(result.response.headers.get('Cache-Control')).toBe('no-cache, no-transform');
         expect(result.response.headers.get('Connection')).toBe('keep-alive');
+        expect(result.response.headers.get('X-Accel-Buffering')).toBe('no');
 
         const { chunks, sawDone } = await readSSE(result.response);
         expect(sawDone).toBe(true);
@@ -241,12 +242,60 @@ describe('cencori wire format — stream', () => {
         const c = chunks as Array<Record<string, unknown>>;
         // Content chunks: delta is a STRING (legacy), not {content}
         expect(c[0].delta).toBe('Hello');
-        expect(c[0].finish_reason).toBe('stop');
+        expect(c.some((chunk) => chunk.finish_reason === 'stop')).toBe(true);
         // NEW terminal metrics chunk (playground reads these)
-        const metrics = c[1];
+        const metrics = c.find((chunk) => chunk.usage !== undefined)!;
         expect(metrics.usage).toBeDefined();
         expect((metrics.usage as Record<string, unknown>).total_tokens).toBeGreaterThan(0);
         expect(typeof metrics.cost_usd).toBe('number');
+    });
+
+    it('progressively emits approved text while retaining a guarded tail', async () => {
+        streamChunks([
+            { delta: 'A'.repeat(400) },
+            { delta: 'B'.repeat(100) },
+            { delta: '', finishReason: 'stop' },
+        ]);
+
+        const result = await runV1ProviderExecution(baseParams({ stream: true }));
+        if (!result.ok) throw new Error('expected ok');
+        const { chunks, sawDone } = await readSSE(result.response);
+        const c = chunks as Array<Record<string, unknown>>;
+        const contentChunks = c.filter((chunk) => typeof chunk.delta === 'string' && chunk.delta);
+
+        expect(sawDone).toBe(true);
+        expect(contentChunks.length).toBeGreaterThan(1);
+        expect(contentChunks.map((chunk) => chunk.delta).join('')).toBe(
+            'A'.repeat(400) + 'B'.repeat(100)
+        );
+        expect(runGatewayOutputGuard).toHaveBeenCalledTimes(3);
+    });
+
+    it('progressively emits OpenAI-compatible content chunks', async () => {
+        streamChunks([
+            { delta: 'A'.repeat(400) },
+            { delta: '', finishReason: 'stop' },
+        ]);
+
+        const result = await runV1ProviderExecution(
+            baseParams({ stream: true, wireFormat: undefined })
+        );
+        if (!result.ok) throw new Error('expected ok');
+        const { chunks, sawDone } = await readSSE(result.response);
+        const c = chunks as Array<{
+            choices?: Array<{
+                delta?: { content?: string };
+                finish_reason?: string | null;
+            }>;
+        }>;
+        const contentChunks = c
+            .map((chunk) => chunk.choices?.[0]?.delta?.content)
+            .filter((content): content is string => Boolean(content));
+
+        expect(sawDone).toBe(true);
+        expect(contentChunks.length).toBeGreaterThan(1);
+        expect(contentChunks.join('')).toBe('A'.repeat(400));
+        expect(c.some((chunk) => chunk.choices?.[0]?.finish_reason === 'stop')).toBe(true);
     });
 
     it('adds fallback metadata on the first content chunk only', async () => {
@@ -326,6 +375,38 @@ describe('cencori wire format — stream', () => {
 
         expect(sawDone).toBe(false); // legacy: no [DONE] after error
         expect(c.some((ch) => ch.error === 'Response blocked')).toBe(true);
+    });
+
+    it('does not release sensitive content split across provider chunks', async () => {
+        (runGatewayOutputGuard as ReturnType<typeof vi.fn>).mockImplementation(
+            async ({ outputText }: { outputText: string }) =>
+                outputText.includes('123-45-6789')
+                    ? {
+                        ok: false,
+                        status: 403,
+                        code: 'output_security_violation',
+                        message: 'Response blocked',
+                        reasons: ['pii_leak'],
+                    }
+                    : { ok: true }
+        );
+        streamChunks([
+            { delta: 'S'.repeat(400) },
+            { delta: '123-' },
+            { delta: '45-6789' },
+            { delta: '', finishReason: 'stop' },
+        ]);
+
+        const result = await runV1ProviderExecution(baseParams({ stream: true }));
+        if (!result.ok) throw new Error('expected ok');
+        const { chunks, sawDone, raw } = await readSSE(result.response);
+        const c = chunks as Array<Record<string, unknown>>;
+
+        expect(sawDone).toBe(false);
+        expect(raw).not.toContain('123-45-6789');
+        expect(c.some((chunk) => chunk.error === 'Response blocked')).toBe(true);
+        expect(c.filter((chunk) => typeof chunk.delta === 'string' && chunk.delta)
+            .map((chunk) => chunk.delta).join('')).toBe('S'.repeat(144));
     });
 
     it('openai mode still emits [DONE] after an output block (unchanged)', async () => {

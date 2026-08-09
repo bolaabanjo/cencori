@@ -152,6 +152,16 @@ function buildOpenAiStreamChunk(model: string, delta: Record<string, unknown>, f
     };
 }
 
+/**
+ * Streaming output is intentionally held back by a small rolling window.
+ * This gives the output guard enough look-behind to catch common secrets and
+ * PII that are split across provider chunks before those characters leave the
+ * gateway. The batch threshold avoids running the cumulative guard for every
+ * one-token provider event while still producing a responsive stream.
+ */
+const STREAM_GUARD_HOLDBACK_CHARS = 256;
+const STREAM_GUARD_EMIT_BATCH_CHARS = 64;
+
 export type V1ExecuteResult =
     | { ok: true; response: NextResponse }
     | { ok: false; status: number; body: Record<string, unknown> };
@@ -379,6 +389,9 @@ export async function runV1ProviderExecution(
                 const encoder = new TextEncoder();
                 let fullText = '';
                 let tokenLimitReached = false;
+                let releasedRawLength = 0;
+                let emittedText = '';
+                let fallbackMetadataEmitted = false;
                 const collectedToolCalls: Record<
                     string,
                     { id: string; type: string; function: { name: string; arguments: string } }
@@ -386,6 +399,103 @@ export async function runV1ProviderExecution(
 
                 const sse = (payload: unknown) =>
                     encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+
+                const detokenize = (text: string) =>
+                    params.tokenMap ? deTokenize(text, params.tokenMap) : text;
+
+                /**
+                 * Do not split a tokenization placeholder (for example
+                 * "[EMAIL_1]") at the release boundary. A partial placeholder
+                 * cannot be detokenized and would leak the internal marker.
+                 */
+                const adjustReleaseEndForTokenPlaceholders = (proposedEnd: number) => {
+                    let safeEnd = proposedEnd;
+                    if (params.tokenMap && proposedEnd < fullText.length) {
+                        const prefix = fullText.slice(0, proposedEnd);
+                        for (const placeholder of params.tokenMap.keys()) {
+                            const maxPartialLength = Math.min(placeholder.length - 1, prefix.length);
+                            for (let partialLength = maxPartialLength; partialLength > 0; partialLength--) {
+                                if (prefix.endsWith(placeholder.slice(0, partialLength))) {
+                                    safeEnd = Math.min(safeEnd, proposedEnd - partialLength);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Avoid emitting half of a UTF-16 surrogate pair.
+                    if (safeEnd > 0) {
+                        const previousCodeUnit = fullText.charCodeAt(safeEnd - 1);
+                        if (previousCodeUnit >= 0xd800 && previousCodeUnit <= 0xdbff) {
+                            safeEnd -= 1;
+                        }
+                    }
+                    return Math.max(releasedRawLength, safeEnd);
+                };
+
+                const emitTextDelta = (
+                    text: string,
+                    meta: {
+                        actualModel: string;
+                        usedFallback: boolean;
+                        originalProvider: string;
+                        originalModel: string;
+                    }
+                ) => {
+                    if (!text) return;
+
+                    if (isCencoriWire) {
+                        const payload: Record<string, unknown> = { delta: text };
+                        if (meta.usedFallback && !fallbackMetadataEmitted) {
+                            payload.fallback_used = true;
+                            payload.original_provider = meta.originalProvider;
+                            payload.original_model = meta.originalModel;
+                            fallbackMetadataEmitted = true;
+                        }
+                        controller.enqueue(sse(payload));
+                    } else {
+                        controller.enqueue(
+                            sse(buildOpenAiStreamChunk(meta.actualModel, { content: text }, null))
+                        );
+                    }
+                };
+
+                const releaseApprovedText = (
+                    meta: {
+                        actualModel: string;
+                        usedFallback: boolean;
+                        originalProvider: string;
+                        originalModel: string;
+                    },
+                    flushAll = false
+                ) => {
+                    const proposedEnd = flushAll
+                        ? fullText.length
+                        : Math.max(releasedRawLength, fullText.length - STREAM_GUARD_HOLDBACK_CHARS);
+                    const releaseEnd = adjustReleaseEndForTokenPlaceholders(proposedEnd);
+                    if (releaseEnd <= releasedRawLength) return;
+
+                    const approvedText = detokenize(fullText.slice(0, releaseEnd));
+                    if (!approvedText.startsWith(emittedText)) {
+                        throw new Error('Streaming detokenization prefix changed after release');
+                    }
+
+                    emitTextDelta(approvedText.slice(emittedText.length), meta);
+                    emittedText = approvedText;
+                    releasedRawLength = releaseEnd;
+                };
+
+                const checkCurrentOutput = () => runGatewayOutputGuard({
+                    supabase: params.supabase,
+                    projectId: params.gatewayCtx.projectId,
+                    apiKeyId: params.gatewayCtx.apiKeyId,
+                    environment: params.gatewayCtx.environment,
+                    outputText: detokenize(fullText),
+                    inputText: params.inputText,
+                    inputSecurity: params.inputSecurity,
+                    conversationHistory: params.messages,
+                    endUserId: params.endUserId,
+                });
 
                 /**
                  * Token/pricing accounting + logging + usage hooks shared by
@@ -493,7 +603,31 @@ export async function runV1ProviderExecution(
                     controller.close();
                 };
 
-                const completeBufferedStream = async (meta: {
+                const closeBlockedStream = async (
+                    meta: {
+                        actualModel: string;
+                        actualProvider: string;
+                        usedFallback: boolean;
+                        finishReason: string;
+                    },
+                    outputCheck: { ok: false; message: string }
+                ) => {
+                    await settleStream({
+                        actualModel: meta.actualModel,
+                        actualProvider: meta.actualProvider,
+                        usedFallback: meta.usedFallback,
+                        finishReason: meta.finishReason,
+                        blocked: true,
+                        errorMessage: outputCheck.message,
+                    });
+                    controller.enqueue(sse({ error: outputCheck.message }));
+                    if (!isCencoriWire) {
+                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    }
+                    controller.close();
+                };
+
+                const completeGuardedStream = async (meta: {
                     actualModel: string;
                     actualProvider: string;
                     usedFallback: boolean;
@@ -501,12 +635,9 @@ export async function runV1ProviderExecution(
                     originalModel: string;
                     finishReason: string;
                 }) => {
-                    const finalText = params.tokenMap
-                        ? deTokenize(fullText, params.tokenMap)
-                        : fullText;
                     const toolCallValues = Object.values(collectedToolCalls);
                     const outputTextForGuard = [
-                        finalText,
+                        detokenize(fullText),
                         ...toolCallValues.map((toolCall) => toolCall.function.arguments),
                     ].filter(Boolean).join('\n');
                     const outputCheck = await runGatewayOutputGuard({
@@ -521,33 +652,31 @@ export async function runV1ProviderExecution(
                         endUserId: params.endUserId,
                     });
 
+                    if (!outputCheck.ok) {
+                        await closeBlockedStream(meta, outputCheck);
+                        return;
+                    }
+
+                    // The final full-output check approved the retained tail.
+                    releaseApprovedText(meta, true);
+
                     const figures = await settleStream({
                         actualModel: meta.actualModel,
                         actualProvider: meta.actualProvider,
                         usedFallback: meta.usedFallback,
                         finishReason: meta.finishReason,
-                        blocked: !outputCheck.ok,
-                        errorMessage: outputCheck.ok ? undefined : outputCheck.message,
                     });
-
-                    if (!outputCheck.ok) {
-                        controller.enqueue(sse({ error: outputCheck.message }));
-                        if (!isCencoriWire) {
-                            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-                        }
-                        controller.close();
-                        return;
-                    }
 
                     if (isCencoriWire) {
                         const payload: Record<string, unknown> = {
-                            delta: figures.finalText,
+                            delta: '',
                             finish_reason: meta.finishReason,
                         };
-                        if (meta.usedFallback) {
+                        if (meta.usedFallback && !fallbackMetadataEmitted) {
                             payload.fallback_used = true;
                             payload.original_provider = meta.originalProvider;
                             payload.original_model = meta.originalModel;
+                            fallbackMetadataEmitted = true;
                         }
                         if (toolCallValues.length > 0) {
                             payload.tool_calls = toolCallValues;
@@ -556,7 +685,6 @@ export async function runV1ProviderExecution(
                         controller.enqueue(sse(payload));
                     } else {
                         const delta: Record<string, unknown> = {};
-                        if (figures.finalText) delta.content = figures.finalText;
                         if (toolCallValues.length > 0) {
                             delta.tool_calls = toolCallValues.map((toolCall, index) => ({
                                 index,
@@ -681,18 +809,34 @@ export async function runV1ProviderExecution(
                         }
 
                         if (tokenLimitReached || chunk.finishReason) {
-                            await completeBufferedStream({
+                            await completeGuardedStream({
                                 ...lastMeta,
                                 finishReason: tokenLimitReached ? 'length' : chunk.finishReason || 'stop',
                             });
                             return;
+                        }
+
+                        const releasableCharacters =
+                            fullText.length
+                            - releasedRawLength
+                            - STREAM_GUARD_HOLDBACK_CHARS;
+                        if (releasableCharacters >= STREAM_GUARD_EMIT_BATCH_CHARS) {
+                            const outputCheck = await checkCurrentOutput();
+                            if (!outputCheck.ok) {
+                                await closeBlockedStream(
+                                    { ...lastMeta, finishReason: 'content_filter' },
+                                    outputCheck
+                                );
+                                return;
+                            }
+                            releaseApprovedText(lastMeta);
                         }
                     }
 
                     // Defensive completion for providers that close without a
                     // terminal finish_reason chunk.
                     if (lastMeta) {
-                        await completeBufferedStream({ ...lastMeta, finishReason: 'stop' });
+                        await completeGuardedStream({ ...lastMeta, finishReason: 'stop' });
                     } else {
                         throw new Error('Provider stream ended without output');
                     }
@@ -718,12 +862,10 @@ export async function runV1ProviderExecution(
 
         const streamHeaders: Record<string, string> = {
             'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
         };
-        if (isCencoriWire) {
-            // Legacy stream headers
-            streamHeaders['Cache-Control'] = 'no-cache';
-            streamHeaders['Connection'] = 'keep-alive';
-        }
 
         return {
             ok: true,
