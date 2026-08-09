@@ -673,7 +673,7 @@ Instructions:
           </Button>
           <Link
             href={activeModalityOption.docsHref}
-            className="text-xs font-semibold text-foreground transition-colors hover:text-emerald-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+            className="text-xs font-semibold text-foreground transition-colors hover:text-foreground/65 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             Read the full guide <span aria-hidden="true">↗</span>
           </Link>

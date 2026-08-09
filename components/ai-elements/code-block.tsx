@@ -11,7 +11,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki";
+import type { BundledLanguage, ShikiTransformer } from "shiki";
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string;
@@ -62,6 +62,8 @@ export async function highlightCode(
     ? [lineNumberTransformer]
     : [];
 
+  const { codeToHtml } = await import("shiki");
+
   return await codeToHtml(code, {
     lang: language,
     themes: {
@@ -81,21 +83,26 @@ export const CodeBlock = ({
   children,
   ...props
 }: CodeBlockProps) => {
-  const [html, setHtml] = useState<string>("");
+  const highlightKey = `${language}:${showLineNumbers ? "lines" : "plain"}:${code}`;
+  const [highlighted, setHighlighted] = useState<{
+    key: string;
+    html: string;
+  } | null>(null);
+  const html = highlighted?.key === highlightKey ? highlighted.html : null;
 
   useEffect(() => {
     let cancelled = false;
 
     highlightCode(code, language, showLineNumbers).then((highlightedHtml) => {
       if (!cancelled) {
-        setHtml(highlightedHtml);
+        setHighlighted({ key: highlightKey, html: highlightedHtml });
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [code, language, showLineNumbers]);
+  }, [code, highlightKey, language, showLineNumbers]);
 
   return (
     <CodeBlockContext.Provider value={{ code }}>
@@ -107,11 +114,19 @@ export const CodeBlock = ({
         {...props}
       >
         <div className="relative">
-          <div
-            className="overflow-x-auto [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          {html ? (
+            <div
+              className="overflow-x-auto [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-4 [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <pre className="m-0 bg-transparent p-4 text-sm text-foreground">
+                <code className="font-mono text-sm">{code}</code>
+              </pre>
+            </div>
+          )}
           {children && (
             <div className="absolute top-2 right-2 flex items-center gap-2">
               {children}
