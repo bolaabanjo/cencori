@@ -9,26 +9,32 @@ order: 5
 
 Rate limiting controls how many requests you can make in a given time period. This protects the platform from abuse and ensures fair usage for all users.
 
-Cencori enforces rate limits at multiple levels: per project, per user, and per organization.
+Cencori enforces rate limits per project (per-minute) and per organization (monthly request cap).
 
 ## Default Rate Limits
 
-| Tier | Requests/Minute | Requests/Day | Burst Limit |
-|------|-----------------|--------------|-------------|
-| **Free** | 10 | 1,000 | 20 |
-| **Starter** | 60 | 10,000 | 100 |
-| **Pro** | 300 | 50,000 | 500 |
-| **Enterprise** | Custom | Custom | Custom |
+| Limit | Scope | Value |
+|-------|-------|-------|
+| Per-minute | Per project | **60 requests** (sliding 60s window) |
+| Monthly | Per organization | `organizations.monthly_request_limit` — free tier starts at 1,000/month; Pro ships 50,000/month |
 
-> [!NOTE]
-> Burst limits allow short spikes above the per-minute limit, useful for handling traffic bursts.
+There are no tiered per-minute limits or burst allowances — all tiers share the same 60/min per-project window. Need more ceiling? Add a second project, or upgrade the organization for a higher monthly cap.
+
+> Warning: to know, these limits are enforced project-wide across **all** AI endpoints (chat, vision, audio, embeddings), not per endpoint.
 
 ## Architecture & Performance
 
-Cencori uses a high-performance **Redis-backed Sliding Window** algorithm for rate limiting.
-- **Microsecond Overhead:** Checks are performed at the edge with < 1ms latency.
-- **Global Consistency:** Limits are enforced globally across all regions.
-- **Fairness:** The sliding window ensures that users cannot "game" the system by dumping requests at the boundary of a minute.
+Cencori uses a **Redis-backed sliding-window** counter keyed by project id (`rate_limit:<projectId>`). Checks run in a single Redis pipeline (INCR + EXPIRE + TTL):
+
+- **Sub-millisecond check:** a single round-trip keeps overhead small.
+- **Sliding window:** the TTL carries the window forward, so limits are enforced continuously, not in fixed wall-clock minutes.
+- **Fail-closed by default:** if the Redis backend is unavailable the request is rejected with `503 rate_limit_unavailable` unless fail-open mode is enabled for the deployment.
+
+## Monthly Request Cap
+
+The organization's `monthly_requests_used` counter increments once per successful request (any AI endpoint). When `used >= limit` the gateway returns `429 monthly_request_limit_reached` with body fields `usage: { used, limit, percentage }`, `current_tier`, and `upgrade_url`.
+
+Resets happen on the monthly cycle (see `cron/reset-usage`).
 
 ## Rate Limit Headers
 
@@ -38,19 +44,20 @@ Every response includes headers showing your current rate limit status:
 |--------|-------------|---------|
 | `X-RateLimit-Limit` | Max requests per window | 60 |
 | `X-RateLimit-Remaining` | Requests left in window | 45 |
-| `X-RateLimit-Reset` | Unix timestamp when limit resets | 1701234567 |
-| `Retry-After` | Seconds to wait (when limited) | 45 |
+| `X-RateLimit-Reset` | Unix timestamp (ms) when window resets | 1701234567000 |
+| `X-Request-Id` | Correlation id for this request | ... |
+| `Retry-After` | Seconds to wait — only on `429` responses | 45 |
 
 ## Handling Rate Limit Errors
 
-When you exceed the rate limit, you'll receive a `429 Too Many Requests` error:
+When you exceed the rate limit you'll receive a `429 Too Many Requests` response with a standards-compliant `Retry-After` header and this body:
 
 ```json
 {
   "error": "Rate limit exceeded",
-  "code": "RATE_LIMIT_EXCEEDED",
-  "status": 429,
-  "retryAfter": 45
+  "message": "60 requests per minute allowed. Try again shortly.",
+  "code": "rate_limit_exceeded",
+  "retry_after_ms": 45000
 }
 ```
 
@@ -62,7 +69,7 @@ async function makeRequestWithRetry(
   maxRetries = 3
 ): Promise<any> {
   let retries = 0;
-  
+
   while (retries < maxRetries) {
     try {
       const response = await cencori.ai.chat({
@@ -73,16 +80,16 @@ async function makeRequestWithRetry(
     } catch (error: any) {
       if (error.status === 429) {
         retries++;
-        
+
         if (retries >= maxRetries) {
           throw error; // Max retries reached
         }
-        
-        // Exponential backoff: 2^retries seconds
-        const waitTime = Math.pow(2, retries) * 1000;
-        console.log(`Rate limited, waiting ${waitTime}ms...`);
-        
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+
+        const retryAfter = Math.max(
+          1,
+          Math.ceil((error.retryAfterMs ?? 60_000) / 1000)
+        );
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
       } else {
         throw error; // Not a rate limit error
       }
@@ -110,7 +117,7 @@ async function makeSmartRequest(messages: any[]) {
 
   if (remaining < 5) {
     console.warn(`Only ${remaining} requests remaining!`);
-    console.warn(`Resets at: ${new Date(resetTime * 1000).toISOString()}`);
+    console.warn(`Resets at: ${new Date(resetTime).toISOString()}`);
     // Maybe slow down or queue requests
   }
 
@@ -123,8 +130,9 @@ async function makeSmartRequest(messages: any[]) {
 1. **Implement Exponential Backoff:** Always retry rate-limited requests with exponential backoff rather than aggressive retries.
 2. **Monitor Headers:** Track `X-RateLimit-Remaining` to know when you're approaching limits.
 3. **Use Request Queues:** Queue requests and process them at a controlled rate to stay under limits.
-4. **Cache Responses:** Cache identical requests to reduce API calls and stay under limits.
-5. **Distribute Load:** If hitting limits, consider using multiple projects or upgrading tier.
+4. **Cache Responses:** Cache identical requests (semantic caching) to reduce request count.
+5. **Distribute Load:** If hitting limits, consider using multiple projects (each has its own 60/min window).
+6. **Audio calls count too:** transcriptions and speech each consume one request per minute window; multiplier projects for heavy audio workloads.
 
 ## Request Queue Implementation
 
@@ -135,22 +143,22 @@ class RequestQueue {
   private requestsPerMinute: number;
   private delay: number;
 
-  constructor(requestsPerMinute: number) {
+  constructor(requestsPerMinute = 60) {
     this.requestsPerMinute = requestsPerMinute;
     this.delay = 60000 / requestsPerMinute; // Time between requests
   }
 
-  async add<T>(requestFn: () => Promise<T>): Promise<T> {
+  async add<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push(async () => {
         try {
-          const result = await requestFn();
+          const result = await fn();
           resolve(result);
         } catch (error) {
           reject(error);
         }
       });
-      
+
       if (!this.processing) {
         this.process();
       }
@@ -159,34 +167,32 @@ class RequestQueue {
 
   private async process() {
     this.processing = true;
-    
     while (this.queue.length > 0) {
-      const request = this.queue.shift();
-      if (request) {
-        await request();
+      const task = this.queue.shift();
+      if (task) {
+        await task();
         await new Promise(resolve => setTimeout(resolve, this.delay));
       }
     }
-    
     this.processing = false;
   }
 }
 
 // Usage
 const queue = new RequestQueue(60); // 60 requests per minute
-
-const response = await queue.add(() =>
-  cencori.ai.chat({
-    model: 'gpt-4o',
-    messages: [{ role: 'user', content: 'Hello' }],
-  })
-);
 ```
 
 ## Upgrading Rate Limits
 
-If you consistently hit rate limits:
-- Upgrade your subscription tier in the dashboard
-- Contact sales for custom enterprise limits
-- Optimize your usage patterns
-- Implement caching and batching
+If you consistently hit limits:
+
+- Create **additional projects** — each project gets its own 60/min window.
+- Raise the **monthly cap** by upgrading the organization's plan.
+- Contact sales for custom Enterprise limits.
+- Optimize usage patterns (batching, caching, queues).
+
+## Recoverability
+
+- `503 rate_limit_unavailable`: transient — retry with backoff.
+- `429 rate_limit_exceeded`: wait `Retry-After` seconds.
+- `429 monthly_request_limit_reached`: wait for the monthly reset or upgrade.

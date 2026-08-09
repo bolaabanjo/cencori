@@ -7,51 +7,88 @@ order: 7
 
 ## Error Response Format
 
-All errors follow a consistent JSON format:
+Every AI Gateway endpoint (chat, vision, audio, embeddings, …) returns errors as flat JSON. The `error` field is always present — for gateway-level failures it is a human-readable phrase, for endpoint-level failures it doubles as a machine code. Machine-readable codes appear in the optional `code` field.
 
 ```json
 {
   "error": "Error message describing what went wrong",
-  "code": "ERROR_CODE",
-  "status": 400,
-  "details": {}
+  "message": "Human-readable details",
+  "code": "machine_code"
 }
 ```
+
+Fields by failure class:
+
+| Field | Present when |
+|-------|--------------|
+| `error` | Always |
+| `message` | Most failures (added to auth failures too) |
+| `code` | Gateway policy failures and endpoint validation failures |
+| `reasons` | A security guard (input/output) blocked the request |
+| `retry_after_ms` | Per-minute rate limit exceeded |
+| `balance` | Credit balance exhausted |
+| `spend` | Spend cap reached |
+| `usage` | Monthly request limit reached |
+| `top_up_url` / `upgrade_url` | Credit/limit failures |
+
+> The error envelope is **not** OpenAI's `{ "error": { "message", "code", "type" } }` shape. Parse `error` as a string.
 
 ## HTTP Status Codes
 
 | Status | Meaning | Typical Cause |
 |--------|---------|---------------|
 | `200` | OK | Request succeeded |
-| `400` | Bad Request | Invalid parameters or malformed request |
+| `400` | Bad Request | Invalid parameters, unsupported format/voice/model, file too large, provider rejected the request |
 | `401` | Unauthorized | Missing or invalid API key |
-| `403` | Forbidden | Security violation or credit exhaustion |
-| `404` | Not Found | Resource doesn't exist |
-| `429` | Too Many Requests | Rate limit exceeded |
+| `402` | Payment Required | Spend cap reached |
+| `403` | Forbidden | Domain not allowed, network policy, frozen billing, credit exhaustion |
+| `429` | Too Many Requests | Per-minute rate limit or monthly request limit exceeded |
 | `500` | Internal Error | Server-side error |
-| `503` | Service Unavailable | Provider is down or overloaded |
+| `502` | Bad Gateway | Provider failed (timeout, upstream 5xx) |
+| `503` | Service Unavailable | Rate-limit backend unavailable (fail-closed) or network policy unavailable |
+| `504` | Gateway Timeout | Provider request exceeded the 55s budget |
 
-## Common Error Codes
+## Gateway-level Codes
 
-### `INVALID_API_KEY` (401)
-The provided API key is invalid, expired, or revoked.
-- **Solution:** Verify the key is correct and active in the dashboard.
+These come from the shared gateway middleware before the endpoint runs:
 
-### `SECURITY_VIOLATION` (403)
-Request blocked due to security filters (PII, injection, etc.).
-- **Solution:** Review the incident in the dashboard and sanitize input.
+| Code | Status | Meaning |
+|------|--------|---------|
+| `missing_api_key` | 401 | No `CENCORI_API_KEY` or `Authorization: Bearer` header |
+| `invalid_api_key` | 401 | Key missing, revoked, or invalid |
+| `domain_not_allowed` | 403 | Publishable key used from an unapproved Origin |
+| `network_access_denied` | 403 | Request source blocked by the project ingress policy |
+| `billing_frozen` | 403 | Organization billing is frozen |
+| `credit_balance_exhausted` | 403 | Credit-gated tier (Pro/Team) with no credits. **Free and Enterprise tiers are not credit-gated.** Top up at `top_up_url` |
+| `monthly_request_limit_reached` | 429 | Organization monthly request cap hit |
+| `rate_limit_exceeded` | 429 | Per-project per-minute limit hit; body carries `retry_after_ms`, header carries `Retry-After` |
+| `rate_limit_unavailable` | 503 | Rate-limit backend down and fail-open is disabled |
+| `spend_cap_reached` | 402 | Monthly spend cap hit |
 
-### `RATE_LIMIT_EXCEEDED` (429)
-Too many requests in a short time period.
-- **Solution:** Implement exponential backoff or upgrade your plan.
+## Endpoint-level Codes
 
-### `INSUFFICIENT_CREDITS` (403)
-Your organization has run out of credits.
-- **Solution:** Top up credits in your organization billing page and retry the request.
+The AI endpoints return these via `error` (and `code` where meaningful):
 
-### `PROVIDER_ERROR` (503)
-The AI provider (OpenAI, Anthropic, etc.) is unavailable.
-- **Solution:** Retry after a delay or try a different model/provider.
+| Code | Status | Meaning |
+|------|--------|---------|
+| `bad_request` | 400 | Unsupported model/voice/format, invalid temperature/speed, missing file, file over 25MB, text over 4096 chars |
+| `provider_not_configured` | 400 | No API key for the provider (BYOK not set, no managed key) |
+| `provider_error` | 400 / 502 | Upstream provider failed (4xx → 400, 5xx → 502) |
+| `provider_timeout` | 504 | Long-running provider job (e.g. AssemblyAI polling) expired |
+| `internal_error` | 500 | Unexpected server failure |
+
+Security guards (input/output) return their own blocked responses with `error`, `message`, and `reasons` in the 4xx range.
+
+## Rate Limit Headers
+
+Every gateway response includes:
+
+- `X-RateLimit-Limit`: Maximum requests per window
+- `X-RateLimit-Remaining`: Requests remaining in the window
+- `X-RateLimit-Reset`: Unix timestamp (ms) when the window resets
+- `X-Request-Id`: Correlation id for every request and response
+
+429 responses also set a standards-compliant `Retry-After` header in seconds. The same value is available as `retry_after_ms` in the body.
 
 ## Error Handling Example
 
@@ -60,16 +97,15 @@ try {
   const response = await cencori.ai.chat({ model: 'gpt-4o', messages });
 } catch (error: any) {
   if (error.status === 429) {
-    const retryAfter = error.retryAfter || 60;
+    const retryAfter = error.retryAfterMs ?? 60_000;
     // Wait and retry...
   }
 }
 ```
 
-## Rate Limit Headers
+## Troubleshooting
 
-When rate limited, check these response headers:
-- `X-RateLimit-Limit`: Maximum requests per window
-- `X-RateLimit-Remaining`: Requests remaining
-- `X-RateLimit-Reset`: Unix timestamp when limit resets
-- `Retry-After`: Seconds to wait before retrying
+- **`credit_balance_exhausted` (403)** — top up in `Organization → Billing`. Free/Enterprise tiers aren't credit-gated.
+- **`rate_limit_exceeded` (429)** — 60 requests/min per project for all tiers. Back off for `Retry-After` seconds or use a second project.
+- **`monthly_request_limit_reached` (429)** — free tier resets on the monthly cycle (see reset-usage cron).
+- **`provider_error` (400)** — read the `message`; the truncated upstream body is included.

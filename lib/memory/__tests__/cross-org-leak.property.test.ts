@@ -58,41 +58,63 @@ function buildDirective(extra: Record<string, unknown>, scopeKey: string): Memor
     return parsed.directive;
 }
 
+/**
+ * Graph fixtures: enough of an entity graph that recall actually walks it, so
+ * the Layer-5 queries are exercised rather than short-circuited.
+ */
+const GRAPH_ENTITY = 'Zap Corp';
+const TABLE_ROWS: Record<string, unknown[]> = {
+    memory_entities: [{ id: 'e-1', name: GRAPH_ENTITY, aliases: [] }],
+    memory_entity_edges: [],
+    memory_entity_mentions: [{ entity_id: 'e-1', memory_id: 'm-1' }],
+    gateway_memories: [
+        { id: 'm-1', content: 'Zap Corp runs a four-day week.', namespace: null, importance: 0.5, created_at: null },
+    ],
+};
+
+/** Every table query made, with the filters it carried. */
+interface RecordedQuery {
+    table: string;
+    filters: Record<string, unknown>;
+}
+
 describe('cross-org leak resistance (app layer)', () => {
     let rpcSpy: ReturnType<typeof vi.fn>;
     let insertedRows: Record<string, unknown>[];
+    let queries: RecordedQuery[];
     let supabase: never;
 
     beforeEach(() => {
         rpcSpy = vi.fn(async () => ({ data: [], error: null }));
         insertedRows = [];
+        queries = [];
         supabase = {
             rpc: rpcSpy,
             from: vi.fn((table: string) => {
-                if (table === 'gateway_memories') {
+                const filters: Record<string, unknown> = {};
+                queries.push({ table, filters });
+
+                const chain: Record<string, unknown> = {};
+                chain.select = () => chain;
+                chain.eq = (column: string, value: unknown) => {
+                    filters[column] = value;
+                    return chain;
+                };
+                chain.in = () => chain;
+                chain.limit = () => chain;
+                // Awaited directly by both the quota count and the graph loads.
+                chain.then = (resolve: (v: unknown) => void) =>
+                    resolve({ data: TABLE_ROWS[table] ?? [], count: 0, error: null });
+                chain.insert = (rows: Record<string, unknown>[]) => {
+                    insertedRows.push(...rows);
                     return {
-                        select: vi.fn(() => ({
-                            // quota count: .eq('project_id').eq('status','active')
-                            eq: vi.fn(() => ({
-                                eq: vi.fn(async () => ({ count: 0, error: null })),
-                            })),
+                        select: vi.fn(async () => ({
+                            data: rows.map((_, i) => ({ id: `id-${i}`, content: 'x', importance: 0.5 })),
+                            error: null,
                         })),
-                        insert: vi.fn((rows: Record<string, unknown>[]) => {
-                            insertedRows.push(...rows);
-                            return {
-                                select: vi.fn(async () => ({
-                                    data: rows.map((_, i) => ({
-                                        id: `id-${i}`,
-                                        content: 'x',
-                                        importance: 0.5,
-                                    })),
-                                    error: null,
-                                })),
-                            };
-                        }),
                     };
-                }
-                throw new Error(`unexpected table ${table}`);
+                };
+                return chain;
             }),
         } as never;
     });
@@ -111,7 +133,6 @@ describe('cross-org leak resistance (app layer)', () => {
                     queryText: 'what do you know about me?',
                 });
 
-                expect(rpcSpy).toHaveBeenCalledTimes(1);
                 const [fn, args] = rpcSpy.mock.calls[0] as [string, Record<string, unknown>];
                 expect(fn).toBe('match_gateway_memories_ranked');
                 expect(args.p_org_id).toBe(CTX_ORG);
@@ -121,6 +142,44 @@ describe('cross-org leak resistance (app layer)', () => {
                 expect(args.p_project_id).not.toBe('88888888-8888-8888-8888-888888888888');
                 // scope_key passes through as data, not as an identifier.
                 expect(args.p_scope_key).toBe(directive.scopeKey);
+            }
+        }
+    });
+
+    it('graph-expanded recall queries only ever carry ctx org/project', async () => {
+        for (const extra of ADVERSARIAL_DIRECTIVE_EXTRAS) {
+            for (const scopeKey of ADVERSARIAL_KEYS) {
+                queries.length = 0;
+                rpcSpy.mockClear();
+                const directive = buildDirective(extra, scopeKey);
+
+                await retrieveMemories({
+                    supabase,
+                    organizationId: CTX_ORG,
+                    projectId: CTX_PROJECT,
+                    directive,
+                    // Names a known entity, so the walk really runs.
+                    queryText: `what do you know about ${GRAPH_ENTITY}?`,
+                });
+
+                const graphQueries = queries.filter(q =>
+                    q.table === 'memory_entities' ||
+                    q.table === 'memory_entity_edges' ||
+                    q.table === 'memory_entity_mentions' ||
+                    q.table === 'gateway_memories'
+                );
+                // The walk must have happened, or this proves nothing.
+                expect(graphQueries.length).toBeGreaterThan(0);
+
+                for (const query of graphQueries) {
+                    expect(query.filters.organization_id).toBe(CTX_ORG);
+                    expect(query.filters.project_id).toBe(CTX_PROJECT);
+                    expect(query.filters.scope_key ?? directive.scopeKey).toBe(directive.scopeKey);
+                }
+
+                // Reinforcement of graph hits is scoped to the ctx org too.
+                const touch = rpcSpy.mock.calls.find(([fn]) => fn === 'touch_gateway_memories');
+                if (touch) expect((touch[1] as Record<string, unknown>).p_org_id).toBe(CTX_ORG);
             }
         }
     });

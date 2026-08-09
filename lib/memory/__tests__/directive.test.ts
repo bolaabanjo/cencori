@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { fromMemoryId, parseMemoryDirective, toMemoryId } from '../types';
 
+describe('parseMemoryDirective — graph expansion', () => {
+    it('walks the entity graph by default', () => {
+        const parsed = parseMemoryDirective({ userId: 'u1' });
+        expect(parsed.ok && parsed.directive.graph).toBe(true);
+    });
+
+    it('honors an explicit opt-out', () => {
+        const parsed = parseMemoryDirective({ userId: 'u1', graph: false });
+        expect(parsed.ok && parsed.directive.graph).toBe(false);
+    });
+
+    it('ignores a non-boolean graph value rather than failing the request', () => {
+        const parsed = parseMemoryDirective({ userId: 'u1', graph: 'yes' as unknown as boolean });
+        expect(parsed.ok && parsed.directive.graph).toBe(true);
+    });
+});
+
 describe('parseMemoryDirective', () => {
     it('applies defaults for a minimal user-scope directive', () => {
         const result = parseMemoryDirective({ userId: 'user_123' });

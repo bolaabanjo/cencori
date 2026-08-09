@@ -24,6 +24,7 @@ import type { SubscriptionTier } from '@/lib/entitlements';
 import { getUsageUnitPricingFromDB } from '@/lib/providers/pricing';
 import {
     generateSpeech,
+    generateSpeechStream,
     listVoiceModels,
     resolveProviderModel,
     SpeechRequestError,
@@ -92,8 +93,11 @@ export async function POST(req: NextRequest) {
         provider = resolved.provider;
         const pricing = await getUsageUnitPricingFromDB(resolved.provider, resolved.model, 'characters');
 
-        // ── Synthesize (validates voice/format, resolves BYOK key) ──
-        const result = await generateSpeech(ctx, { ...body, input: guardedInput });
+        // ── Synthesize (validates voice/format, resolves BYOK key, dispatches) ──
+        const streaming = body.stream === true;
+        const result = streaming
+            ? await generateSpeechStream(ctx, { ...body, input: guardedInput })
+            : await generateSpeech(ctx, { ...body, input: guardedInput });
 
         // ── Cost tracking (per 1,000 characters) ──
         const providerCost = (result.charCount / 1000) * pricing.unitPriceUsd;
@@ -110,16 +114,26 @@ export async function POST(req: NextRequest) {
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
+            metadata: { streaming },
         });
         await incrementUsage(ctx, cencoriCharge);
 
-        return new Response(result.audio, {
-            headers: {
-                'Content-Type': result.contentType,
-                'Content-Length': result.audio.byteLength.toString(),
-                'X-Request-Id': ctx.requestId,
-                'X-Provider': result.provider,
-            },
+        const baseHeaders: Record<string, string> = {
+            'Content-Type': result.contentType,
+            'X-Request-Id': ctx.requestId,
+            'X-Provider': result.provider,
+        };
+
+        // Buffered path: known byte count, so advertise Content-Length.
+        if ('audio' in result) {
+            return new Response(result.audio, {
+                headers: { ...baseHeaders, 'Content-Length': result.audio.byteLength.toString() },
+            });
+        }
+
+        // Streaming path: chunked audio, no Content-Length.
+        return new Response(result.stream, {
+            headers: { ...baseHeaders, 'X-Stream': 'true' },
         });
     } catch (error) {
         if (error instanceof SpeechRequestError) {
@@ -160,5 +174,8 @@ export async function GET() {
     return NextResponse.json({
         models: listVoiceModels(),
         formats: ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'],
+        default_response_format: 'mp3',
+        max_input_chars: 4096,
+        supports_streaming: true,
     });
 }

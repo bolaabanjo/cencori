@@ -2,14 +2,14 @@
 
 import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { importGitHubProject } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, AlertCircle, Loader2, ExternalLink, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { GitHubInstallDialog } from '@/components/github/GitHubInstallDialog';
 import { UpgradeDialog } from '@/components/billing/UpgradeDialog';
@@ -38,6 +38,13 @@ interface GitHubInstallation {
   github_account_name: string | null;
 }
 
+interface ConnectedAccount {
+  installationId: number;
+  login: string;
+  accountType: string;
+  name: string | null;
+}
+
 interface PageProps {
   params: Promise<{ orgSlug: string }>;
 }
@@ -57,6 +64,7 @@ function useGitHubData(orgSlug: string) {
         status: 'installed' | 'not_installed';
         organizationId: string;
         installationId?: number;
+        connectedAccounts?: ConnectedAccount[];
         repositories?: GitHubRepo[];
       };
     },
@@ -64,41 +72,18 @@ function useGitHubData(orgSlug: string) {
   });
 }
 
-// Hook to fetch available installations for the user
-function useAvailableInstallations(organizationId: string | null) {
-  return useQuery({
-    queryKey: ["availableInstallations", organizationId],
-    queryFn: async () => {
-      const response = await fetch(`/api/github/user-installations?organizationId=${organizationId}`);
-      if (!response.ok) return [];
-      const data = await response.json();
-      return (data.installations || []) as GitHubInstallation[];
-    },
-    enabled: !!organizationId,
-    staleTime: 30 * 1000,
-  });
-}
-
 export default function GitHubImportPage({ params }: PageProps) {
   const { orgSlug } = use(params);
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [importingRepoId, setImportingRepoId] = useState<number | null>(null);
   const [showInstallDialog, setShowInstallDialog] = useState(false);
-  const [linkingInstallationId, setLinkingInstallationId] = useState<number | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<number | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-
-
 
   // Fetch GitHub data with caching
   const { data: githubData, isLoading, error, refetch } = useGitHubData(orgSlug);
-
-  // Fetch available installations
-  const { data: availableInstallations = [] } = useAvailableInstallations(
-    githubData?.status === 'not_installed' ? githubData.organizationId : null
-  );
 
   // Handle error params from GitHub OAuth flow
   useEffect(() => {
@@ -175,32 +160,21 @@ export default function GitHubImportPage({ params }: PageProps) {
     window.location.href = url;
   };
 
-  const handleLinkInstallation = async (installation: GitHubInstallation) => {
-    if (!githubData?.organizationId || linkingInstallationId !== null) return;
-
-    setLinkingInstallationId(installation.installation_id);
+  const handleDisconnect = async (installationId: number, login: string) => {
+    if (!githubData?.organizationId || disconnectingId !== null) return;
+    setDisconnectingId(installationId);
     try {
-      const response = await fetch('/api/github/link-installation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organizationId: githubData.organizationId,
-          installationId: installation.installation_id,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to link installation');
-
-      toast.success(`Linked GitHub account: ${installation.github_account_login}`);
-      // router.refresh() forces a full server-side revalidation so the
-      // organization_github_installations row is visible to the next query
-      router.refresh();
+      const res = await fetch(
+        `/api/github/installations/${installationId}?organizationId=${githubData.organizationId}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) throw new Error('Failed to disconnect');
+      toast.success(`Disconnected @${login}`);
       await refetch();
-    } catch (error) {
-      console.error('Error linking installation:', error);
-      toast.error('Failed to link GitHub account. Please try again.');
+    } catch {
+      toast.error('Failed to disconnect account. Please try again.');
     } finally {
-      setLinkingInstallationId(null);
+      setDisconnectingId(null);
     }
   };
 
@@ -270,61 +244,18 @@ export default function GitHubImportPage({ params }: PageProps) {
           <div className="w-12 h-12 rounded-md bg-secondary flex items-center justify-center mx-auto mb-4">
             <GitHubLogo className="h-6 w-6 text-muted-foreground" />
           </div>
-          <h2 className="text-sm font-medium mb-1">GitHub App not installed</h2>
-          <p className="text-xs text-muted-foreground mb-6">
-            To import projects from GitHub, you need to install the Cencori GitHub App.
+          <h2 className="text-sm font-medium mb-1">Connect GitHub</h2>
+          <p className="text-xs text-muted-foreground mb-6 max-w-sm mx-auto">
+            Install the Cencori GitHub App to import repos and host agents. You can connect
+            one or more GitHub accounts to this organization and pull repos from any of them.
           </p>
-
-          {availableInstallations.length > 0 ? (
-            <>
-              <p className="text-[11px] text-muted-foreground mb-3">
-                You have existing GitHub installations. Link one to this organization:
-              </p>
-              <div className="space-y-2 mb-4">
-                {availableInstallations.map((installation) => (
-                  <Button
-                    key={installation.installation_id}
-                    size="sm"
-                    className="h-7 text-xs px-3 w-fit"
-                    onClick={() => handleLinkInstallation(installation)}
-                    disabled={linkingInstallationId !== null}
-                  >
-                    {linkingInstallationId === installation.installation_id ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                        Linking...
-                      </>
-                    ) : (
-                      <>
-                        Link @{installation.github_account_login}
-                      </>
-                    )}
-                  </Button>
-                ))}
-              </div>
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border/40" />
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or</span>
-                </div>
-              </div>
-              <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setShowInstallDialog(true)}>
-                Install new GitHub App
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button size="sm" className="h-7 text-xs px-4" onClick={() => setShowInstallDialog(true)}>
-                <GitHubLogo className="mr-1.5 h-3 w-3" />
-                Install GitHub App
-              </Button>
-              <p className="text-[11px] text-muted-foreground mt-3">
-                You&apos;ll be guided through the installation process
-              </p>
-            </>
-          )}
+          <Button size="sm" className="h-7 text-xs px-4" onClick={() => setShowInstallDialog(true)}>
+            <GitHubLogo className="mr-1.5 h-3 w-3" />
+            Install GitHub App
+          </Button>
+          <p className="text-[11px] text-muted-foreground mt-3">
+            You&apos;ll be guided through the installation process
+          </p>
         </div>
 
         <GitHubInstallDialog
@@ -372,17 +303,42 @@ export default function GitHubImportPage({ params }: PageProps) {
             className="w-48 sm:w-64 h-7 pl-7 text-xs rounded border-border/50 bg-transparent placeholder:text-muted-foreground/60"
           />
         </div>
-        {githubData?.installationId && (
-          <Button size="sm" variant="outline" className="h-7 text-xs px-3" asChild>
-            <a
-              href={`https://github.com/settings/installations/${githubData.installationId}`}
-              target="_blank"
-              rel="noopener noreferrer"
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {(githubData?.connectedAccounts ?? []).map((acct) => (
+            <div
+              key={acct.installationId}
+              className="flex items-center gap-1 h-7 pl-2 pr-1 rounded border border-border/50 text-xs"
             >
-              Manage installation
-            </a>
+              <GitHubLogo className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="font-mono">@{acct.login}</span>
+              <a
+                href={`https://github.com/settings/installations/${acct.installationId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Manage on GitHub"
+                className="p-1 text-muted-foreground hover:text-foreground"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <button
+                onClick={() => handleDisconnect(acct.installationId, acct.login)}
+                disabled={disconnectingId !== null}
+                title="Disconnect from this organization"
+                className="p-1 text-muted-foreground hover:text-red-500 disabled:opacity-50"
+              >
+                {disconnectingId === acct.installationId ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+          ))}
+          <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setShowInstallDialog(true)}>
+            <GitHubLogo className="mr-1.5 h-3 w-3" />
+            Add account
           </Button>
-        )}
+        </div>
       </div>
 
       {/* Repositories Table */}
@@ -449,6 +405,14 @@ export default function GitHubImportPage({ params }: PageProps) {
           </Table>
         </div>
       )}
+
+      {/* Install the App on another GitHub account and bind it to this org. */}
+      <GitHubInstallDialog
+        open={showInstallDialog}
+        onOpenChange={setShowInstallDialog}
+        orgSlug={orgSlug}
+        onConfirm={handleInstallConfirm}
+      />
 
       {githubData?.organizationId && (
         <UpgradeDialog

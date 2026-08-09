@@ -3,6 +3,7 @@ import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
+import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
 
 interface RouteParams {
     params: Promise<{
@@ -14,6 +15,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const { projectId } = await params;
     const projectAccess = await requireProjectAccess(projectId);
     if (!projectAccess.ok) return projectAccess.response;
+    const gate = await requireTierFeatureForProject(projectId, 'customDataRules');
+    if (gate) return gate;
     const supabase = createAdminClient();
 
     try {
@@ -40,6 +43,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const { projectId } = await params;
     const projectAccess = await requireProjectAccess(projectId);
     if (!projectAccess.ok) return projectAccess.response;
+    const gate = await requireTierFeatureForProject(projectId, 'customDataRules');
+    if (gate) return gate;
     const supabase = createAdminClient();
 
     try {

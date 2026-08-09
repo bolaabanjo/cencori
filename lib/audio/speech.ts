@@ -34,6 +34,8 @@ export interface SpeechRequest {
     speed?: number;
     /** Spitch only: ISO code (en/yo/ha/ig/am). Ignored by other providers. */
     language?: string;
+    /** Stream the upstream audio body as it arrives instead of buffering it. */
+    stream?: boolean;
 }
 
 export interface SpeechResult {
@@ -162,7 +164,9 @@ export function listVoiceModels() {
         provider: info.provider,
         description: info.description,
         voices: info.voices,
+        default_voice: info.defaultVoice,
         formats: info.formats,
+        max_input_chars: MAX_INPUT_CHARS,
     }));
 }
 
@@ -193,7 +197,22 @@ async function getProviderKey(ctx: GatewayContext, provider: TTSProvider): Promi
 
 // ── Public entry point ──────────────────────────────────────────
 
-export async function generateSpeech(ctx: GatewayContext, req: SpeechRequest): Promise<SpeechResult> {
+interface ResolvedSpeech {
+    provider: TTSProvider;
+    model: string;
+    voice: string;
+    response_format: ResponseFormat;
+    speed: number;
+    apiKey: string;
+    input: string;
+    params: SynthParams;
+}
+
+/**
+ * Shared validation for both the buffered and streaming paths: input length,
+ * model, provider agreement, format, voice, speed — then provider key lookup.
+ */
+async function resolveSpeechRequest(ctx: GatewayContext, req: SpeechRequest): Promise<ResolvedSpeech> {
     const input = typeof req.input === 'string' ? req.input : '';
     if (!input.trim()) {
         throw new SpeechRequestError('bad_request', 'Input text is required');
@@ -237,7 +256,21 @@ export async function generateSpeech(ctx: GatewayContext, req: SpeechRequest): P
         throw new SpeechRequestError('provider_not_configured', `No ${provider} API key configured`, 400);
     }
 
-    const params = { input, model, voice, response_format, speed, language: req.language };
+    return {
+        provider,
+        model,
+        voice,
+        response_format,
+        speed,
+        apiKey,
+        input,
+        params: { input, model, voice, response_format, speed, language: req.language },
+    };
+}
+
+export async function generateSpeech(ctx: GatewayContext, req: SpeechRequest): Promise<SpeechResult> {
+    const { provider, model, voice, response_format, apiKey, input, params } = await resolveSpeechRequest(ctx, req);
+
     let audio: ArrayBuffer;
     switch (provider) {
         case 'openai':
@@ -267,6 +300,54 @@ export async function generateSpeech(ctx: GatewayContext, req: SpeechRequest): P
         voice,
         charCount: input.length,
     };
+}
+
+export interface SpeechStreamResult {
+    /** Audio bytes piped from the upstream provider as they arrive. */
+    stream: ReadableStream<Uint8Array>;
+    contentType: string;
+    provider: TTSProvider;
+    model: string;
+    voice: string;
+    charCount: number;
+}
+
+/**
+ * Streaming variant of generateSpeech: the upstream response body is piped
+ * through without buffering, so the caller receives chunked audio and can
+ * start playback as bytes arrive. Validation and billing run identically to
+ * the buffered path — errors before the response is sent still surface as
+ * JSON errors; errors after the first byte cannot change the status.
+ */
+export async function generateSpeechStream(ctx: GatewayContext, req: SpeechRequest): Promise<SpeechStreamResult> {
+    const { provider, model, voice, response_format, apiKey, input, params } = await resolveSpeechRequest(ctx, req);
+
+    const stream = await streamSynth(provider, apiKey, params);
+    return {
+        stream,
+        contentType: CONTENT_TYPES[response_format],
+        provider,
+        model,
+        voice,
+        charCount: input.length,
+    };
+}
+
+async function streamSynth(provider: TTSProvider, apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    switch (provider) {
+        case 'openai':
+            return streamOpenAI(apiKey, p);
+        case 'deepgram':
+            return streamDeepgram(apiKey, p);
+        case 'cartesia':
+            return streamCartesia(apiKey, p);
+        case 'spitch':
+            return streamSpitch(apiKey, p);
+        case 'elevenlabs':
+            return streamElevenLabs(apiKey, p);
+        default:
+            throw new SpeechRequestError('bad_request', `Unsupported provider: ${provider}`);
+    }
 }
 
 // ── Provider adapters ───────────────────────────────────────────
@@ -389,4 +470,100 @@ async function synthElevenLabs(apiKey: string, p: SynthParams): Promise<ArrayBuf
     });
     if (!res.ok) return upstreamError('elevenlabs', res);
     return res.arrayBuffer();
+}
+
+// ── Streaming provider adapters ─────────────────────────────────
+//
+// Each mirrors the buffered adapter's request but returns the upstream
+// response body as a stream. The provider still synthesizes fully before
+// responding (none of them emit partial audio), so the win is network-level:
+// the client receives chunked audio and can begin playback while bytes are
+// still in transit, and there is no large ArrayBuffer held in memory.
+
+async function streamOpenAI(apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: p.model,
+            input: p.input,
+            voice: p.voice,
+            response_format: p.response_format,
+            speed: p.speed,
+        }),
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return upstreamError('openai', res);
+    return res.body as ReadableStream<Uint8Array>;
+}
+
+async function streamDeepgram(apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    const query = new URLSearchParams({ model: p.model });
+    if (p.response_format === 'wav') {
+        query.set('encoding', 'linear16');
+        query.set('container', 'wav');
+        query.set('sample_rate', '24000');
+    } else {
+        query.set('encoding', 'mp3');
+    }
+    const res = await fetch(`https://api.deepgram.com/v1/speak?${query.toString()}`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: p.input }),
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return upstreamError('deepgram', res);
+    return res.body as ReadableStream<Uint8Array>;
+}
+
+async function streamCartesia(apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    const output_format =
+        p.response_format === 'wav'
+            ? { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 }
+            : p.response_format === 'pcm'
+                ? { container: 'raw', encoding: 'pcm_s16le', sample_rate: 44100 }
+                : { container: 'mp3', encoding: 'mp3', sample_rate: 44100 };
+    const res = await fetch('https://api.cartesia.ai/tts/bytes', {
+        method: 'POST',
+        headers: {
+            'X-API-Key': apiKey,
+            'Cartesia-Version': '2024-06-10',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model_id: p.model,
+            transcript: p.input,
+            voice: { mode: 'id', id: p.voice },
+            output_format,
+        }),
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return upstreamError('cartesia', res);
+    return res.body as ReadableStream<Uint8Array>;
+}
+
+async function streamSpitch(apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    const res = await fetch('https://api.spi-tch.com/v1/speech', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            text: p.input,
+            language: p.language ?? 'en',
+            voice: p.voice,
+        }),
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return upstreamError('spitch', res);
+    return res.body as ReadableStream<Uint8Array>;
+}
+
+async function streamElevenLabs(apiKey: string, p: SynthParams): Promise<ReadableStream<Uint8Array>> {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(p.voice)}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: p.input, model_id: p.model }),
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    if (!res.ok) return upstreamError('elevenlabs', res);
+    return res.body as ReadableStream<Uint8Array>;
 }

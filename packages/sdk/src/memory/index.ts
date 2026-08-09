@@ -100,16 +100,27 @@ export interface SearchScopedMemoryOptions {
      * including facts later superseded. Omit for current state.
      */
     asOf?: string;
+    /**
+     * Graph-aware recall (default true): when the query names an entity we know,
+     * also walk its relations and return facts about the connected entities that
+     * similarity alone would miss. Set false for strictly vector search.
+     */
+    graph?: boolean;
 }
 
 export interface ScopedSearchResult {
     results: Array<{
         id: string;
         content: string;
+        /** Cosine similarity, or 0 for a memory reached across the graph. */
         score: number;
         namespace: string | null;
         importance: number;
         createdAt: string | null;
+        /** 'vector' (matched), 'graph' (walked to), or 'session'. */
+        source?: 'vector' | 'graph' | 'session';
+        /** Hops from the query's entity, for graph-reached memories. */
+        hops?: number;
     }>;
     count: number;
     latencyMs: number;
@@ -146,6 +157,11 @@ export interface RecallOptions {
     threshold?: number;
     /** Temporal recall: memory as it was valid at this instant (ISO 8601). */
     asOf?: string;
+    /**
+     * Graph-aware recall (default true): also walk the entity graph from the
+     * entities the query names, pulling in connected facts.
+     */
+    graph?: boolean;
     /**
      * 'inject' (default) returns an inject-ready block of full memory contents.
      * 'index' returns a compact table of contents (`- [id] summary`) — fetch a
@@ -515,6 +531,7 @@ export class MemoryClient {
             threshold: options.threshold,
             namespace: options.namespace,
             asOf: options.asOf,
+            graph: options.graph,
         });
 
         if (results.length === 0) return '';

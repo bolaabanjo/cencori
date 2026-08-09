@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { useOrganizationProject, type Organization, type Project } from "@/lib/contexts/OrganizationProjectContext";
+import { normalizeProjectId } from "@/lib/project-id";
 
 // Query keys for cache management
 export const queryKeys = {
@@ -15,6 +16,8 @@ export const queryKeys = {
     apiKeys: (projectId: string) => ["apiKeys", projectId] as const,
     logs: (projectId: string, filters?: object) => ["logs", projectId, filters] as const,
     analytics: (projectId: string, range?: string) => ["analytics", projectId, range] as const,
+    projectIdBySlug: (orgSlug: string, projectSlug: string) => ["projectId", orgSlug, projectSlug] as const,
+    projectDetailsBySlug: (orgSlug: string, projectSlug: string) => ["projectDetailsBySlug", orgSlug, projectSlug] as const,
 };
 
 // Fetch all organizations for current user
@@ -134,8 +137,8 @@ export function useProjectIdBySlug(orgSlug: string, projectSlug: string) {
         ))?.id;
     }, [organizations, projects, orgSlug, projectSlug]);
 
-    const query = useQuery<string>({
-        queryKey: ["projectId", orgSlug, projectSlug],
+    const query = useQuery<unknown, Error, string | undefined>({
+        queryKey: queryKeys.projectIdBySlug(orgSlug, projectSlug),
         queryFn: async () => {
             const { data: organization, error: organizationError } = await supabase
                 .from("organizations")
@@ -155,6 +158,10 @@ export function useProjectIdBySlug(orgSlug: string, projectSlug: string) {
             if (projectError) throw projectError;
             return project.id;
         },
+        // A previous Edge page implementation used this same cache key for
+        // { projectId, projectName }. Normalize that shape so warm sessions
+        // recover immediately while the newly separated keys take effect.
+        select: normalizeProjectId,
         enabled: Boolean(orgSlug && projectSlug),
         initialData: cachedProjectId,
         initialDataUpdatedAt: cachedProjectId ? 0 : undefined,

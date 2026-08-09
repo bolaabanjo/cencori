@@ -36,6 +36,15 @@ const FEATURE_NAMES: Record<keyof TierFeatures, string> = {
   teams: 'Team collaboration',
 };
 
+const LOCAL_SECURITY_PREVIEW_FEATURES = new Set<keyof TierFeatures>([
+  'security',
+  'piiMasking',
+  'customDataRules',
+  'outputScanning',
+  'securityIncidents',
+  'auditTrails',
+]);
+
 /** The standard 403 body returned when a plan doesn't include a feature. */
 export function featureGateResponse(
   feature: keyof TierFeatures,
@@ -96,6 +105,12 @@ export async function requireTierFeatureForProject(
   projectId: string,
   feature: keyof TierFeatures
 ): Promise<NextResponse | null> {
+  // Let developers preview and redesign the complete paid Security surface
+  // against local sessions. Production always follows the entitlement matrix.
+  if (process.env.NODE_ENV === 'development' && LOCAL_SECURITY_PREVIEW_FEATURES.has(feature)) {
+    return null;
+  }
+
   const tier = await getProjectTier(projectId);
 
   if (!tier) {

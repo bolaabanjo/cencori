@@ -180,13 +180,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.redirect(buildRedirect(`/${orgSlug}/~/projects?error=installation_failed`));
       }
 
-      // Installation saved to github_app_installations.
-      // We do NOT auto-link to any org here — the user-installations API
-      // will surface this installation (matched by github_account_login or
-      // installed_by_user_id) as a linkable option in each org's import page,
-      // allowing explicit per-org linking instead of bulk assignment.
+      // Installation saved to github_app_installations. In the org-scoped
+      // (Vercel-style) model, installing IS connecting: the dashboard install
+      // carries orgSlug in its signed state, so we bind the installation to
+      // that org right here — no separate "link an existing account" step.
+      // org↔installation is many-to-many: an org can connect multiple GitHub
+      // accounts (repos aggregate across all), and an account can back several
+      // orgs. Each connection is an explicit per-org install/authorize.
 
-      // For dashboard source: link to specific org
+      // For dashboard source: bind the installation to the initiating org.
       if (orgSlug && !isScanSource) {
         // Use live session user, fall back to signed stateUserId
         const effectiveUserId = linkedUserId;

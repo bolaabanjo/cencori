@@ -27,16 +27,18 @@ export async function GET(
     const gate = await requireTierFeatureForProject(projectId, 'securityIncidents');
     if (gate) return gate;
 
+    const requestedRange = req.nextUrl.searchParams.get('range');
+    const periodDays = requestedRange === '7d' ? 7 : requestedRange === '90d' ? 90 : 30;
+    const period = `${periodDays}d` as '7d' | '30d' | '90d';
     const now = new Date();
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const periodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: severityCounts } = await supabase
+    const { data: incidents } = await supabase
         .from('security_incidents')
-        .select('severity')
+        .select('severity, incident_type, reviewed, action_taken, blocked_at, created_at')
         .eq('project_id', projectId)
-        .gte('created_at', last30d);
+        .gte('created_at', periodStart);
 
     const severityBreakdown = {
         critical: 0,
@@ -45,21 +47,19 @@ export async function GET(
         low: 0,
     };
 
-    severityCounts?.forEach(inc => {
-        severityBreakdown[inc.severity as keyof typeof severityBreakdown]++;
+    incidents?.forEach((incident) => {
+        const severity = incident.severity as keyof typeof severityBreakdown;
+        if (severity in severityBreakdown) severityBreakdown[severity]++;
     });
 
-    const { count: blocked24h } = await supabase
-        .from('security_incidents')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', projectId)
-        .gte('created_at', last24h);
+    const isBlocked = (incident: { action_taken: string | null; blocked_at: string | null }) =>
+        incident.action_taken === 'blocked' || Boolean(incident.blocked_at);
 
-    const { count: blocked7d } = await supabase
-        .from('security_incidents')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', projectId)
-        .gte('created_at', last7d);
+    const blocked24h = incidents?.filter((incident) =>
+        isBlocked(incident) && incident.created_at >= last24h
+    ).length || 0;
+
+    const blockedPeriod = incidents?.filter(isBlocked).length || 0;
 
     const { count: pendingReviews } = await supabase
         .from('security_incidents')
@@ -67,68 +67,79 @@ export async function GET(
         .eq('project_id', projectId)
         .eq('reviewed', false);
 
-    const { count: totalRequests7d } = await supabase
+    const { count: totalRequestsPeriod } = await supabase
         .from('ai_requests')
         .select('id', { count: 'exact', head: true })
         .eq('project_id', projectId)
-        .gte('created_at', last7d);
+        .gte('created_at', periodStart);
 
-    const totalIncidents30d = severityCounts?.length || 0;
-    const threatScore = totalIncidents30d > 0
+    const totalIncidentsPeriod = incidents?.length || 0;
+    const threatScore = totalIncidentsPeriod > 0
         ? Math.min(100, Math.round(
             ((severityBreakdown.critical * 4) +
                 (severityBreakdown.high * 3) +
                 (severityBreakdown.medium * 2) +
-                (severityBreakdown.low * 1)) / totalIncidents30d * 10
+                (severityBreakdown.low * 1)) / totalIncidentsPeriod * 10
         ))
         : 0;
 
-    const { data: typeCounts } = await supabase
-        .from('security_incidents')
-        .select('incident_type')
-        .eq('project_id', projectId)
-        .gte('created_at', last30d);
-
     const typeBreakdown: Record<string, number> = {};
-    typeCounts?.forEach(inc => {
-        typeBreakdown[inc.incident_type] = (typeBreakdown[inc.incident_type] || 0) + 1;
+    incidents?.forEach((incident) => {
+        typeBreakdown[incident.incident_type] = (typeBreakdown[incident.incident_type] || 0) + 1;
     });
 
-    const trendData: { date: string; count: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-        const dayStart = new Date();
+    const severityWeights = { critical: 4, high: 3, medium: 2, low: 1 } as const;
+    const trendData: {
+        date: string;
+        riskScore: number;
+        blocked: number;
+        signals: number;
+        needsReview: number;
+    }[] = [];
+
+    for (let i = periodDays - 1; i >= 0; i--) {
+        const dayStart = new Date(now);
         dayStart.setUTCDate(dayStart.getUTCDate() - i);
         dayStart.setUTCHours(0, 0, 0, 0);
 
         const dayEnd = new Date(dayStart);
         dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
-        const { count } = await supabase
-            .from('security_incidents')
-            .select('id', { count: 'exact', head: true })
-            .eq('project_id', projectId)
-            .gte('created_at', dayStart.toISOString())
-            .lt('created_at', dayEnd.toISOString());
+        const dayIncidents = incidents?.filter((incident) => {
+            const createdAt = new Date(incident.created_at).getTime();
+            return createdAt >= dayStart.getTime() && createdAt < dayEnd.getTime();
+        }) || [];
+
+        const dailySeverityTotal = dayIncidents.reduce((total, incident) => {
+            const severity = incident.severity as keyof typeof severityWeights;
+            return total + (severityWeights[severity] || 0);
+        }, 0);
 
         trendData.push({
             date: dayStart.toISOString().split('T')[0],
-            count: count || 0,
+            riskScore: dayIncidents.length
+                ? Math.min(100, Math.round((dailySeverityTotal / dayIncidents.length) * 10))
+                : 0,
+            blocked: dayIncidents.filter(isBlocked).length,
+            signals: dayIncidents.length,
+            needsReview: dayIncidents.filter((incident) => !incident.reviewed).length,
         });
     }
 
     return NextResponse.json({
         stats: {
+            period,
             threatScore,
-            blocked24h: blocked24h || 0,
-            blocked7d: blocked7d || 0,
+            blocked24h,
+            blockedPeriod,
             pendingReviews: pendingReviews || 0,
-            blockedRate: totalRequests7d && blocked7d
-                ? ((blocked7d / totalRequests7d) * 100).toFixed(2)
+            blockedRate: totalRequestsPeriod && blockedPeriod
+                ? ((blockedPeriod / totalRequestsPeriod) * 100).toFixed(2)
                 : '0.00',
             severityBreakdown,
             typeBreakdown,
             trendData,
-            totalIncidents30d,
+            totalIncidentsPeriod,
         }
     });
 }

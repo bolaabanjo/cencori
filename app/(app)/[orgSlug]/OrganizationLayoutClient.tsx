@@ -30,6 +30,7 @@ import Analytics01Icon from "@hugeicons/core-free-icons/Analytics01Icon";
 import Activity03Icon from "@hugeicons/core-free-icons/Activity03Icon";
 import DiscoverSquareIcon from "@hugeicons/core-free-icons/DiscoverSquareIcon";
 import AiLockIcon from "@hugeicons/core-free-icons/AiLockIcon";
+import AiBrain02Icon from "@hugeicons/core-free-icons/AiBrain02Icon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import CreditCardAcceptIcon from "@hugeicons/core-free-icons/CreditCardAcceptIcon";
 import AirdropIcon from "@hugeicons/core-free-icons/AirdropIcon";
@@ -38,6 +39,7 @@ import Configuration02Icon from "@hugeicons/core-free-icons/Configuration02Icon"
 import AiChat01Icon from "@hugeicons/core-free-icons/AiChat01Icon";
 import AiCloudIcon from "@hugeicons/core-free-icons/AiCloudIcon";
 import AiChipIcon from "@hugeicons/core-free-icons/AiChipIcon";
+import ThreeDMoveIcon from "@hugeicons/core-free-icons/ThreeDMoveIcon";
 import AiSettingIcon from "@hugeicons/core-free-icons/AiSettingIcon";
 import Blockchain03Icon from "@hugeicons/core-free-icons/Blockchain03Icon";
 import AiChemistry01Icon from "@hugeicons/core-free-icons/AiChemistry01Icon";
@@ -206,7 +208,7 @@ export default function OrganizationLayoutClient({
     //   2. Observability toggle           — expands to observabilitySubItems
     //   3. projectItems                  — Logs
     //   4. AI Gateway toggle             — expands to projectSubItems
-    //   5. projectSecondaryItems         — Security, Edge, Monetization
+    //   5. projectSecondaryItems         — Security, Memory, Edge, Deployments, Monetization
     //   6. orgItems                      — Billing, Usage, Integrations, Teams, Audit Log
     //   7. bottomItems                   — Webhooks, Settings
 
@@ -250,7 +252,15 @@ export default function OrganizationLayoutClient({
 
     const projectSecondaryItems = [
         { href: isInsideProject ? `${basePath}/security` : `${orgBase}/~/security`, icon: <HugeiconsIcon icon={AiLockIcon} className="!h-5 !w-5" />, label: "Security" },
+        // Memory is per-project (a memory belongs to one project's end-users),
+        // so there is no org-scope view to fall back to — hide it outside a project.
+        ...(isInsideProject
+            ? [{ href: `${basePath}/memory`, icon: <HugeiconsIcon icon={AiBrain02Icon} className="!h-5 !w-5" />, label: "Memory" }]
+            : []),
         { href: isInsideProject ? `${basePath}/edge` : `${orgBase}/~/edge`, icon: <HugeiconsIcon icon={PuzzleIcon} className="!h-5 !w-5" />, label: "Edge" },
+        // Compute — agent hosting. Project scope = that agent's version history;
+        // org scope = the agent fleet (one row per agent-project). See ~/deployments.
+        { href: isInsideProject ? `${basePath}/deployments` : `${orgBase}/~/deployments`, icon: <HugeiconsIcon icon={ThreeDMoveIcon} className="!h-5 !w-5" />, label: "Deployments" },
         { href: isInsideProject ? `${basePath}/monetization` : `${orgBase}/~/monetization`, icon: <HugeiconsIcon icon={CreditCardAcceptIcon} className="!h-5 !w-5" />, label: "Monetization" },
     ];
 

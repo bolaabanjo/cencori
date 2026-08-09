@@ -7,10 +7,11 @@
  * on pull_request events. Verifies HMAC-SHA256 signatures.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { verifyWebhookSignature } from '@/lib/scan/webhook-verify';
 import { scanPullRequest } from '@/lib/scan/pr-scan';
+import { handleComputePush, handleComputePullRequest, handleComputeRepository } from '@/lib/compute/webhook';
 
 // Allow up to 5 minutes for PR scans
 export const maxDuration = 300;
@@ -67,6 +68,33 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: 'pong' });
     }
 
+    // Compute — push → auto-deploy any agent watching this repo+branch.
+    if (eventType === 'push') {
+        let payload;
+        try {
+            payload = JSON.parse(rawBody);
+        } catch {
+            return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+        }
+        const tasks = await handleComputePush(payload);
+        after(() =>
+            Promise.all(tasks.map((run) => run().catch((e) => console.error('[compute push] build error:', e)))),
+        );
+        return NextResponse.json({ message: `Compute: ${tasks.length} agent(s) redeploying` });
+    }
+
+    // Compute — repo rename/transfer keeps the agent's binding in sync; delete archives it.
+    if (eventType === 'repository') {
+        let payload;
+        try {
+            payload = JSON.parse(rawBody);
+        } catch {
+            return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+        }
+        const result = await handleComputeRepository(payload);
+        return NextResponse.json({ message: `Compute repo: synced ${result.synced}, archived ${result.archived}` });
+    }
+
     // 4. Handle pull_request events
     if (eventType === 'pull_request') {
         let payload: PRWebhookPayload;
@@ -74,6 +102,14 @@ export async function POST(req: NextRequest) {
             payload = JSON.parse(rawBody);
         } catch {
             return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+        }
+
+        // Compute — preview deploys run independently of Scan's PR handling.
+        const previewTasks = await handleComputePullRequest(JSON.parse(rawBody));
+        if (previewTasks.length > 0) {
+            after(() =>
+                Promise.all(previewTasks.map((run) => run().catch((e) => console.error('[compute preview] build error:', e)))),
+            );
         }
 
         const { action, pull_request: pr, repository, installation } = payload;

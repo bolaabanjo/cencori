@@ -9,10 +9,12 @@
 
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import { embedForMemory, type MemoryEmbeddingResult } from './embeddings';
+import { retrieveGraphMemories } from './graph-recall';
 import { rankMemories, type RankableMemory } from './rank';
 import { listSessionMemories } from './session-store';
 import {
     DEFAULT_RETRIEVAL_THRESHOLD,
+    fromMemoryId,
     toMemoryId,
     type MemoryDirective,
     type MemoryRetrievalMode,
@@ -28,6 +30,13 @@ export type MemoryEmbeddingUsage = Omit<MemoryEmbeddingResult, 'embeddings'>;
  */
 const RANK_POOL_MULTIPLIER = 5;
 const RANK_POOL_MIN = 30;
+
+/**
+ * Ceiling on graph-expanded memories added to a recall. Graph hits supplement
+ * vector recall — a walk that floods context with everything two hops from a
+ * name is worse than no walk at all.
+ */
+const GRAPH_RECALL_LIMIT = 3;
 
 export async function retrieveMemories(params: {
     supabase: SupabaseAdmin;
@@ -116,22 +125,19 @@ export async function retrieveMemories(params: {
                 p_namespace: directive.namespace,
             });
 
-        if (error || !data) {
-            // On error: for current-state recall, fall back to the legacy RPC so
-            // recall never goes dark if the Layer-2 migration isn't applied. For
-            // as-of recall there is no legacy equivalent — fail open to empty.
-            if (error) {
-                if (isAsOf) {
-                    console.warn('[Memory] As-of retrieval RPC failed:', error.message);
-                    return [];
-                }
-                console.warn('[Memory] Ranked RPC failed, falling back to legacy retrieval:', error.message);
-                return legacyRetrieve(supabase, organizationId, projectId, directive, embeddingResult.embeddings[0], effectiveThreshold);
+        if (error) {
+            // For current-state recall, fall back to the legacy RPC so recall
+            // never goes dark if the Layer-2 migration isn't applied. For as-of
+            // recall there is no legacy equivalent — fail open to empty.
+            if (isAsOf) {
+                console.warn('[Memory] As-of retrieval RPC failed:', error.message);
+                return [];
             }
-            return [];
+            console.warn('[Memory] Ranked RPC failed, falling back to legacy retrieval:', error.message);
+            return legacyRetrieve(supabase, organizationId, projectId, directive, embeddingResult.embeddings[0], effectiveThreshold);
         }
 
-        const pool: RankableMemory[] = (data as Array<{
+        const pool: RankableMemory[] = ((data ?? []) as Array<{
             id: string;
             content: string;
             namespace: string | null;
@@ -153,28 +159,51 @@ export async function retrieveMemories(params: {
 
         const ranked = rankMemories(pool, { topK: directive.topK, now: rankNow });
 
-        // Reinforce ONLY the memories that survived rerank (not the whole pool),
-        // so access_count tracks what actually proved useful. Best-effort. Skip
-        // for as-of recall — inspecting history must not reinforce a memory.
-        if (ranked.length > 0 && !isAsOf) {
-            try {
-                await supabase.rpc('touch_gateway_memories', {
-                    p_org_id: organizationId,
-                    p_ids: ranked.map(m => m.id),
-                });
-            } catch (touchErr) {
-                console.warn('[Memory] Access-count touch failed (non-fatal):', touchErr);
-            }
-        }
-
-        return ranked.map(m => ({
+        const vectorResults: RetrievedMemory[] = ranked.map(m => ({
             id: toMemoryId(m.id),
             content: m.content,
             similarity: m.similarity,
             namespace: m.namespace,
             importance: m.importance,
             createdAt: m.createdAt,
+            source: 'vector' as const,
         }));
+
+        // Layer 5: walk the entity graph for facts the query's vector can't
+        // reach — the second hop of "who does Sarah report to, and where do
+        // they work". Skipped for as-of recall, which is a question about
+        // history rather than about connections.
+        const graphResults = directive.graph && !isAsOf
+            ? await retrieveGraphMemories({
+                supabase,
+                organizationId,
+                projectId,
+                scope: directive.scope,
+                scopeKey: directive.scopeKey,
+                namespace: directive.namespace,
+                queryText,
+                excludeIds: new Set(ranked.map(m => m.id)),
+                limit: Math.min(GRAPH_RECALL_LIMIT, directive.topK),
+            })
+            : [];
+
+        // Reinforce ONLY the memories that survived rerank (not the whole pool),
+        // plus anything the graph surfaced — access_count tracks what actually
+        // proved useful. Best-effort. Skip for as-of recall: inspecting history
+        // must not reinforce a memory.
+        const touchIds = [...ranked.map(m => m.id), ...graphResults.map(m => fromMemoryId(m.id))];
+        if (touchIds.length > 0 && !isAsOf) {
+            try {
+                await supabase.rpc('touch_gateway_memories', {
+                    p_org_id: organizationId,
+                    p_ids: touchIds,
+                });
+            } catch (touchErr) {
+                console.warn('[Memory] Access-count touch failed (non-fatal):', touchErr);
+            }
+        }
+
+        return [...vectorResults, ...graphResults];
     } catch (error) {
         console.warn('[Memory] Retrieval failed (fail-open):', error);
         return [];

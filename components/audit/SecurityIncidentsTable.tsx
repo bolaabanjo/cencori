@@ -5,10 +5,8 @@ import { SeverityBadge } from './SeverityBadge';
 import { IncidentDetailModal } from './IncidentDetailModal';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle, ShieldAlert } from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
-
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface SecurityIncident {
@@ -42,9 +40,11 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
     const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [summary, setSummary] = useState({ critical: 0, high: 0, medium: 0, low: 0 });
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const fetchIncidents = useCallback(async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             const params = new URLSearchParams({
                 page: page.toString(),
@@ -57,7 +57,10 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
             });
 
             const response = await fetch(`/api/projects/${projectId}/security/incidents?${params}`);
-            if (!response.ok) throw new Error('Failed to fetch incidents');
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error || 'We could not load security incidents.');
+            }
 
             const data = await response.json();
             setIncidents(data.incidents);
@@ -65,7 +68,9 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
             setTotalPages(data.pagination.total_pages);
         } catch (error) {
             console.error('Error fetching incidents:', error);
-            toast.error('Failed to load security incidents');
+            const message = error instanceof Error ? error.message : 'We could not load security incidents.';
+            setLoadError(message);
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -108,136 +113,141 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
         fetchIncidents();
     };
 
+    const totalIncidents = Object.values(summary).reduce((total, count) => total + count, 0);
+    const severitySummary = [
+        { key: 'critical', label: 'Critical', count: summary.critical, color: 'bg-red-500', text: 'text-red-500' },
+        { key: 'high', label: 'High', count: summary.high, color: 'bg-orange-500', text: 'text-orange-500' },
+        { key: 'medium', label: 'Medium', count: summary.medium, color: 'bg-amber-400', text: 'text-amber-500' },
+        { key: 'low', label: 'Low', count: summary.low, color: 'bg-foreground/30', text: 'text-foreground' },
+    ];
+    const hasNarrowingFilters =
+        (!!filters.severity && filters.severity !== 'all') ||
+        (!!filters.type && filters.type !== 'all') ||
+        (!!filters.reviewed && filters.reviewed !== 'all');
+
     if (loading && incidents.length === 0) {
-        return (
-            <div className="space-y-4">
-                {/* Summary skeleton */}
-                <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                    <div className="grid grid-cols-4 divide-x divide-border/30">
-                        {[1, 2, 3, 4].map(i => (
-                            <div key={i} className="px-5 py-4">
-                                <Skeleton className="h-3 w-14 mb-2.5" />
-                                <Skeleton className="h-6 w-10" />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                {/* Table skeleton */}
-                <div className="bg-card border border-border/40 rounded-md overflow-hidden">
-                    <div className="border-b border-border/40 px-4 py-2">
-                        <div className="grid grid-cols-6 gap-4">
-                            {[1, 2, 3, 4, 5, 6].map(i => <Skeleton key={i} className="h-3 w-14" />)}
-                        </div>
-                    </div>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="border-b border-border/40 px-4 py-3 last:border-b-0">
-                            <div className="grid grid-cols-6 gap-4 items-center">
-                                <Skeleton className="h-5 w-16" />
-                                <Skeleton className="h-3 w-24" />
-                                <Skeleton className="h-3 w-16" />
-                                <Skeleton className="h-4 w-12" />
-                                <Skeleton className="h-3 w-10 ml-auto" />
-                                <Skeleton className="h-4 w-16 ml-auto" />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
+        return <SecurityIncidentsSkeleton />;
     }
 
     return (
         <>
-            {/* Summary */}
-            <div className="rounded-md border border-border/40 bg-card overflow-hidden mb-4">
-                <div className="grid grid-cols-4 divide-x divide-border/30">
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Critical</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1 text-red-500">{summary.critical}</p>
+            <section className="overflow-hidden rounded-lg border border-border/25 bg-[#f3f3f1] dark:bg-[#111111]">
+                <header className="border-b border-border/25 px-5 py-6 sm:px-7 sm:py-7">
+                    <div className="flex items-start justify-between gap-6">
+                        <div>
+                            <h3 className="text-sm font-medium tracking-[-0.01em]">Severity distribution</h3>
+                            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                Incident exposure within the selected time range.
+                            </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                            <p className="font-mono text-[2rem] font-medium leading-none tracking-[-0.05em] tabular-nums">
+                                {totalIncidents}
+                            </p>
+                            <p className="mt-2 text-[10px] text-muted-foreground">total incidents</p>
+                        </div>
                     </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">High</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1 text-amber-500">{summary.high}</p>
-                    </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Medium</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1 text-yellow-500">{summary.medium}</p>
-                    </div>
-                    <div className="px-5 py-4">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Low</span>
-                        <p className="text-xl font-semibold font-mono tracking-tight mt-1">{summary.low}</p>
-                    </div>
-                </div>
-            </div>
 
-            {incidents.length === 0 ? (
-                <div className="text-center py-16 flex flex-col items-center rounded-md border border-border/40 bg-card">
-                    <div className="w-10 h-10 rounded-md bg-secondary flex items-center justify-center mb-3">
-                        <ShieldAlert className="h-5 w-5 text-muted-foreground" />
+                    <div className="mt-7 flex h-2 overflow-hidden rounded-[2px] bg-foreground/[0.07]" aria-label={`${totalIncidents} incidents grouped by severity`}>
+                        {totalIncidents > 0 && severitySummary.map((item) => item.count > 0 && (
+                            <span
+                                key={item.key}
+                                className={item.color}
+                                style={{ width: `${(item.count / totalIncidents) * 100}%` }}
+                                title={`${item.label}: ${item.count}`}
+                            />
+                        ))}
                     </div>
-                    <p className="text-sm font-medium mb-1">No incidents found</p>
-                    <p className="text-xs text-muted-foreground">
-                        {filters.severity !== 'all' || filters.type !== 'all'
-                            ? 'Try adjusting your filters'
-                            : 'Your project is secure!'
-                        }
-                    </p>
-                </div>
-            ) : (
-                <>
-                    <div className="bg-card border border-border/40 rounded-md overflow-hidden">
-                        {/* Desktop view */}
-                        <div className="hidden md:block overflow-x-auto">
+
+                    <dl className="mt-5 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
+                        {severitySummary.map((item) => (
+                            <div key={item.key} className="flex min-w-0 items-center justify-between gap-3 sm:block">
+                                <dt className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <span className={`size-1.5 rounded-full ${item.color}`} />
+                                    {item.label}
+                                </dt>
+                                <dd className={`font-mono text-sm font-medium tabular-nums sm:mt-2 ${item.text}`}>{item.count}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                </header>
+
+                {loadError ? (
+                    <div className="flex min-h-72 flex-col items-center justify-center px-6 py-14 text-center">
+                        <p className="text-sm font-medium">Incident data is unavailable</p>
+                        <p className="mt-1 max-w-sm text-[11px] leading-5 text-muted-foreground">{loadError}</p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-5 h-8 gap-2 text-xs"
+                            onClick={() => void fetchIncidents()}
+                        >
+                            <RotateCw className="size-3" />
+                            Try again
+                        </Button>
+                    </div>
+                ) : incidents.length === 0 ? (
+                    <div className="flex min-h-72 flex-col items-center justify-center px-6 py-14 text-center">
+                        <span className="mb-5 h-px w-10 bg-emerald-500/70" />
+                        <p className="text-sm font-medium">
+                            {hasNarrowingFilters ? 'No incidents match these filters' : 'No incidents in this period'}
+                        </p>
+                        <p className="mt-1 max-w-sm text-[11px] leading-5 text-muted-foreground">
+                            {hasNarrowingFilters
+                                ? 'Adjust the severity, type, or review status to widen the incident queue.'
+                                : 'New security detections will appear here with their enforcement and review status.'}
+                        </p>
+                    </div>
+                ) : (
+                    <div className={loading ? 'opacity-55 transition-opacity' : 'transition-opacity'}>
+                        <div className="hidden overflow-x-auto md:block">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="hover:bg-transparent border-b border-border/40">
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 px-4">Severity</TableHead>
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Type</TableHead>
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Time</TableHead>
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8">Blocked At</TableHead>
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 text-right">Risk</TableHead>
-                                        <TableHead className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider h-8 text-right pr-4">Status</TableHead>
+                                    <TableRow className="h-10 border-b border-border/25 hover:bg-transparent">
+                                        <TableHead className="px-5 text-[10px] font-medium text-muted-foreground sm:px-7">Severity</TableHead>
+                                        <TableHead className="text-[10px] font-medium text-muted-foreground">Detection</TableHead>
+                                        <TableHead className="text-[10px] font-medium text-muted-foreground">Observed</TableHead>
+                                        <TableHead className="text-[10px] font-medium text-muted-foreground">Enforcement</TableHead>
+                                        <TableHead className="text-right text-[10px] font-medium text-muted-foreground">Risk</TableHead>
+                                        <TableHead className="pr-7 text-right text-[10px] font-medium text-muted-foreground">Review status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {incidents.map((incident) => (
                                         <TableRow
                                             key={incident.id}
-                                            className="cursor-pointer hover:bg-secondary/30 border-b border-border/40 last:border-b-0 transition-colors"
+                                            tabIndex={0}
+                                            className="cursor-pointer border-b border-border/20 transition-colors last:border-b-0 hover:bg-muted/65 focus-visible:bg-muted/65 focus-visible:outline-none"
                                             onClick={() => handleRowClick(incident.id)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    handleRowClick(incident.id);
+                                                }
+                                            }}
                                         >
-                                            <TableCell className="py-2.5 px-4">
+                                            <TableCell className="px-5 py-3.5 sm:px-7">
                                                 <SeverityBadge severity={incident.severity} />
                                             </TableCell>
-                                            <TableCell className="py-2.5 text-xs">
+                                            <TableCell className="py-3.5 text-xs font-medium">
                                                 {formatIncidentType(incident.incident_type)}
                                             </TableCell>
-                                            <TableCell className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                            <TableCell className="whitespace-nowrap py-3.5 text-[11px] text-muted-foreground">
                                                 {formatDate(incident.created_at)}
                                             </TableCell>
-                                            <TableCell className="py-2.5">
-                                                {incident.blocked_at ? (
-                                                    <Badge variant="outline" className="text-[10px] h-5">
-                                                        {incident.blocked_at}
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground">—</span>
-                                                )}
+                                            <TableCell className="py-3.5 font-mono text-[10px] capitalize text-muted-foreground">
+                                                {incident.blocked_at ? `${incident.blocked_at} block` : 'Observed'}
                                             </TableCell>
-                                            <TableCell className="py-2.5 text-right text-xs font-mono text-muted-foreground">
-                                                {(incident.risk_score * 100).toFixed(0)}%
+                                            <TableCell className="py-3.5 text-right">
+                                                <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                                                    {(incident.risk_score * 100).toFixed(0)}%
+                                                </span>
                                             </TableCell>
-                                            <TableCell className="py-2.5 text-right pr-4">
-                                                {incident.reviewed ? (
-                                                    <Badge variant="outline" className="text-[10px] h-5 text-emerald-500 border-emerald-500/20 gap-1">
-                                                        <CheckCircle className="h-2.5 w-2.5" />
-                                                        Reviewed
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="outline" className="text-[10px] h-5 text-muted-foreground">
-                                                        Pending
-                                                    </Badge>
-                                                )}
+                                            <TableCell className="py-3.5 pr-7 text-right">
+                                                <span className={`inline-flex items-center gap-2 text-[11px] ${incident.reviewed ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                                    <span className="size-1.5 rounded-full bg-current" />
+                                                    {incident.reviewed ? 'Reviewed' : 'Pending'}
+                                                </span>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -245,65 +255,59 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
                             </Table>
                         </div>
 
-                        {/* Mobile view */}
-                        <div className="md:hidden divide-y divide-border/40">
+                        <div className="divide-y divide-border/20 md:hidden">
                             {incidents.map((incident) => (
-                                <div
+                                <button
+                                    type="button"
                                     key={incident.id}
-                                    className="p-3 cursor-pointer hover:bg-secondary/30 transition-colors"
+                                    className="w-full p-4 text-left transition-colors hover:bg-muted/65 focus-visible:bg-muted/65 focus-visible:outline-none"
                                     onClick={() => handleRowClick(incident.id)}
                                 >
-                                    <div className="flex items-start justify-between mb-1.5">
-                                        <div className="flex items-center gap-2">
-                                            <SeverityBadge severity={incident.severity} />
-                                            {incident.reviewed && (
-                                                <Badge variant="outline" className="text-[9px] h-4 text-emerald-500">✓</Badge>
-                                            )}
-                                        </div>
+                                    <div className="flex items-start justify-between gap-4">
+                                        <SeverityBadge severity={incident.severity} />
                                         <span className="text-[10px] text-muted-foreground">
                                             {formatDate(incident.created_at)}
                                         </span>
                                     </div>
-                                    <p className="text-xs mb-1.5">{formatIncidentType(incident.incident_type)}</p>
-                                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                                    <p className="mt-3 text-xs font-medium">{formatIncidentType(incident.incident_type)}</p>
+                                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
                                         <span>{incident.blocked_at ? `${incident.blocked_at} block` : '—'}</span>
                                         <span className="font-mono">Risk: {(incident.risk_score * 100).toFixed(0)}%</span>
                                     </div>
-                                </div>
+                                </button>
                             ))}
                         </div>
-                    </div>
 
-                    {/* Pagination */}
-                    <div className="flex items-center justify-between py-3">
-                        <p className="text-xs text-muted-foreground">
-                            Page {page} of {totalPages}
-                        </p>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1 || loading}
-                            >
-                                Previous
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                disabled={page === totalPages || loading}
-                            >
-                                Next
-                            </Button>
-                        </div>
+                        <footer className="flex items-center justify-between border-t border-border/25 px-5 py-3.5 sm:px-7">
+                            <p className="text-[11px] text-muted-foreground">
+                                Page <span className="font-mono tabular-nums text-foreground">{page}</span> of{' '}
+                                <span className="font-mono tabular-nums text-foreground">{totalPages}</span>
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 border-border/30 bg-transparent px-3 text-xs shadow-none"
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1 || loading}
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 border-border/30 bg-transparent px-3 text-xs shadow-none"
+                                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={page === totalPages || loading}
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </footer>
                     </div>
-                </>
-            )}
+                )}
+            </section>
 
-            {/* Detail Modal */}
             {selectedIncident && (
                 <IncidentDetailModal
                     projectId={projectId}
@@ -314,5 +318,47 @@ export function SecurityIncidentsTable({ projectId, environment, filters }: Secu
                 />
             )}
         </>
+    );
+}
+
+function SecurityIncidentsSkeleton() {
+    return (
+        <div className="overflow-hidden rounded-lg border border-border/25 bg-[#f3f3f1] dark:bg-[#111111]">
+            <div className="border-b border-border/25 px-5 py-6 sm:px-7 sm:py-7">
+                <div className="flex items-start justify-between gap-6">
+                    <div>
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="mt-2 h-3 w-52" />
+                    </div>
+                    <Skeleton className="h-10 w-16" />
+                </div>
+                <Skeleton className="mt-7 h-2 w-full rounded-sm" />
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {[1, 2, 3, 4].map((item) => (
+                        <div key={item}>
+                            <Skeleton className="h-3 w-16" />
+                            <Skeleton className="mt-2 h-5 w-8" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="border-b border-border/25 px-5 py-3 sm:px-7">
+                <div className="grid grid-cols-6 gap-5">
+                    {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-3 w-14" />)}
+                </div>
+            </div>
+            {[1, 2, 3, 4, 5].map((item) => (
+                <div key={item} className="border-b border-border/20 px-5 py-4 last:border-b-0 sm:px-7">
+                    <div className="grid grid-cols-6 items-center gap-5">
+                        <Skeleton className="h-5 w-16" />
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-3 w-14" />
+                        <Skeleton className="h-3 w-16" />
+                        <Skeleton className="ml-auto h-3 w-10" />
+                        <Skeleton className="ml-auto h-3 w-16" />
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 }

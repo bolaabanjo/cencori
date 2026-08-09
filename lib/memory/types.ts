@@ -76,6 +76,13 @@ export interface MemoryDirectiveInput {
      *   agents/sessions — avoids burying the signal under full-text every turn.
      */
     mode?: 'inject' | 'index';
+    /**
+     * Graph-aware recall (Layer 5). When the query names an entity the memory
+     * graph knows, recall also walks its relations and pulls in facts about the
+     * connected entities that pure similarity would miss. Defaults on; set
+     * false for strictly vector recall.
+     */
+    graph?: boolean;
 }
 
 export type MemoryRetrievalMode = 'inject' | 'index';
@@ -104,15 +111,29 @@ export interface MemoryDirective {
     asOf: string | null;
     /** How recalled memories are surfaced: full inject vs compact index (TOC). */
     mode: MemoryRetrievalMode;
+    /** Expand recall across the entity graph (Layer 5). Default true. */
+    graph: boolean;
 }
+
+/** How a memory got into the recall set. */
+export type MemorySource = 'vector' | 'graph' | 'session';
 
 export interface RetrievedMemory {
     id: string;          // mem_-prefixed
     content: string;
-    similarity: number;  // 1.0 for session-scope entries (no ranking)
+    /**
+     * Cosine similarity to the query. 1.0 for session-scope entries (no
+     * ranking) and 0 for graph-expanded hits — those were reached by walking
+     * relations, not by matching the query vector.
+     */
+    similarity: number;
     namespace: string | null;
     importance: number;
     createdAt: string | null;
+    /** Present when the memory came from somewhere other than vector search. */
+    source?: MemorySource;
+    /** Hops from the query's seed entity, for graph-expanded hits. */
+    hops?: number;
 }
 
 export interface WrittenMemory {
@@ -133,6 +154,12 @@ export interface MemorySettings {
     minImportance: number;
     maxMemoriesPerExchange: number;
     sessionTtlSeconds: number;
+    /**
+     * Maintain the entity graph on write (a second extraction call per
+     * exchange). Off means memory still works as a semantic store, without
+     * multi-hop recall.
+     */
+    graphEnabled: boolean;
 }
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
@@ -144,6 +171,7 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     minImportance: 0.5,
     maxMemoriesPerExchange: 5,
     sessionTtlSeconds: 86400,
+    graphEnabled: true,
 };
 
 /** Metering unit: a single memory's content is capped at 10KB. */
@@ -228,6 +256,9 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
     // Surfacing mode: 'index' opts into the compact TOC; anything else = inject.
     const mode: MemoryRetrievalMode = input.mode === 'index' ? 'index' : 'inject';
 
+    // Graph expansion is on unless explicitly disabled.
+    const graph = input.graph !== false;
+
     return {
         ok: true,
         directive: {
@@ -245,6 +276,7 @@ export function parseMemoryDirective(raw: unknown): ParseDirectiveResult {
             extract,
             asOf,
             mode,
+            graph,
         },
     };
 }

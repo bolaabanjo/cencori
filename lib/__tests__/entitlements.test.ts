@@ -4,6 +4,20 @@ import { hasFeature } from "@/lib/entitlements";
 import { featureGateResponse } from "@/lib/require-tier-feature";
 
 describe("subscription entitlements", () => {
+    it.each([
+        "security",
+        "piiMasking",
+        "customDataRules",
+        "outputScanning",
+        "securityIncidents",
+        "auditTrails",
+    ] as const)("reserves %s for paid plans", (feature) => {
+        expect(hasFeature("free", feature)).toBe(false);
+        expect(hasFeature("pro", feature)).toBe(true);
+        expect(hasFeature("team", feature)).toBe(true);
+        expect(hasFeature("enterprise", feature)).toBe(true);
+    });
+
     it("gates team collaboration from the free tier", () => {
         expect(hasFeature("free", "teams")).toBe(false);
     });

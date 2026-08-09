@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
 import { SeverityBadge } from './SeverityBadge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, ExternalLink, CheckCircle2, XCircle, ShieldAlert, Clock } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ExternalLink, RotateCw, Clock } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import Link from 'next/link';
 
@@ -56,34 +57,44 @@ export function IncidentDetailModal({ projectId, incidentId, open, onOpenChange,
     const [loading, setLoading] = useState(true);
     const [reviewNotes, setReviewNotes] = useState('');
     const [reviewing, setReviewing] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [reviewError, setReviewError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (open && incidentId) {
-            fetchIncidentDetail();
-        }
-    }, [open, incidentId]);
-
-    const fetchIncidentDetail = async () => {
+    const fetchIncidentDetail = useCallback(async (resetIncident = false) => {
         setLoading(true);
+        setLoadError(null);
+        if (resetIncident) setIncident(null);
+
         try {
             const response = await fetch(`/api/projects/${projectId}/security/incidents/${incidentId}`);
-            if (!response.ok) throw new Error('Failed to fetch incident details');
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error || 'We could not load this incident.');
+            }
 
             const data = await response.json();
             setIncident(data);
             setReviewNotes(data.review_notes || '');
         } catch (error) {
             console.error('Error fetching incident details:', error);
-            toast.error('Failed to load incident details');
+            const message = error instanceof Error ? error.message : 'We could not load this incident.';
+            setLoadError(message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [incidentId, projectId]);
+
+    useEffect(() => {
+        if (open && incidentId) {
+            void fetchIncidentDetail(true);
+        }
+    }, [open, incidentId, fetchIncidentDetail]);
 
     const handleMarkReviewed = async () => {
         if (!incident) return;
 
         setReviewing(true);
+        setReviewError(null);
         try {
             const response = await fetch(`/api/projects/${projectId}/security/incidents/${incidentId}`, {
                 method: 'PATCH',
@@ -94,14 +105,18 @@ export function IncidentDetailModal({ projectId, incidentId, open, onOpenChange,
                 }),
             });
 
-            if (!response.ok) throw new Error('Failed to update incident');
+            if (!response.ok) {
+                const body = await response.json().catch(() => null);
+                throw new Error(body?.error || 'We could not update this incident.');
+            }
 
             toast.success(incident.reviewed ? 'Marked as unreviewed' : 'Marked as reviewed');
             onReviewed?.();
-            fetchIncidentDetail();
+            await fetchIncidentDetail();
         } catch (error) {
             console.error('Error updating incident:', error);
-            toast.error('Failed to update incident');
+            const message = error instanceof Error ? error.message : 'We could not update this incident.';
+            setReviewError(message);
         } finally {
             setReviewing(false);
         }
@@ -123,12 +138,38 @@ export function IncidentDetailModal({ projectId, incidentId, open, onOpenChange,
         ).join(' ');
     };
 
-    if (loading || !incident) {
+    if (loading && !incident) {
         return (
             <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-lg">
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <DialogContent className="max-w-[calc(100%-2rem)] gap-0 overflow-hidden border-border/25 bg-[#f3f3f1] p-0 shadow-none dark:bg-[#111111] sm:max-w-2xl">
+                    <IncidentDetailSkeleton />
+                </DialogContent>
+            </Dialog>
+        );
+    }
+
+    if (loadError || !incident) {
+        return (
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent className="max-w-[calc(100%-2rem)] gap-0 overflow-hidden border-border/25 bg-[#f3f3f1] p-0 shadow-none dark:bg-[#111111] sm:max-w-xl">
+                    <DialogHeader className="border-b border-border/25 px-6 py-6 pr-14 text-left">
+                        <DialogTitle className="text-lg font-medium tracking-[-0.025em]">Incident unavailable</DialogTitle>
+                        <DialogDescription className="mt-1 text-xs leading-5">
+                            The incident detail could not be retrieved.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex min-h-56 flex-col items-center justify-center px-8 py-12 text-center">
+                        <span className="mb-5 h-px w-10 bg-red-500/70" />
+                        <p className="max-w-sm text-xs leading-5 text-muted-foreground">{loadError}</p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-5 h-8 gap-2 border-border/30 bg-transparent text-xs shadow-none"
+                            onClick={() => void fetchIncidentDetail(true)}
+                        >
+                            <RotateCw className="size-3" />
+                            Try again
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -138,104 +179,120 @@ export function IncidentDetailModal({ projectId, incidentId, open, onOpenChange,
     const riskPercent = Math.round((incident.risk_score || 0) * 100);
     const hasPatterns = incident.details?.patterns_detected && incident.details.patterns_detected.length > 0;
     const hasReasons = incident.details?.reasons && incident.details.reasons.length > 0;
+    const blockedExamples = incident.details?.blocked_content?.examples || [];
+    const hasEvidence = hasPatterns || hasReasons || blockedExamples.length > 0;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden">
-                {/* Header */}
-                <DialogHeader className="px-5 pt-5 pb-4 pr-12 border-b border-border/40">
-                    <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                            <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                                Security Incident
+            <DialogContent className="max-w-[calc(100%-2rem)] gap-0 overflow-hidden border-border/25 bg-[#f3f3f1] p-0 shadow-none dark:bg-[#111111] sm:max-w-2xl">
+                <DialogHeader className="border-b border-border/25 px-6 py-6 pr-14 text-left sm:px-7 sm:py-7 sm:pr-14">
+                    <div className="flex items-start justify-between gap-6">
+                        <div className="min-w-0">
+                            <p className="mb-2 text-[10px] font-medium tracking-[0.14em] text-muted-foreground">INCIDENT DETAIL</p>
+                            <DialogTitle className="text-xl font-medium leading-tight tracking-[-0.035em] text-balance">
+                                {formatIncidentType(incident.incident_type)}
                             </DialogTitle>
-                            <p className="text-xs text-muted-foreground">
-                                {formatDate(incident.created_at)}
-                            </p>
+                            <DialogDescription className="mt-2 font-mono text-[10px] tabular-nums">
+                                {formatDate(incident.created_at)} · {incident.id.slice(0, 8)}
+                            </DialogDescription>
                         </div>
-                        <SeverityBadge severity={incident.severity} />
+                        <SeverityBadge severity={incident.severity} className="mt-0.5 shrink-0" />
                     </div>
                 </DialogHeader>
 
-                <div className="px-5 py-4 space-y-4">
-                    {/* Metrics Grid */}
-                    <div className="grid grid-cols-4 gap-2">
-                        <div className="bg-secondary/50 rounded-md p-2.5 text-center">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Risk</p>
-                            <p className="text-lg font-semibold font-mono">{riskPercent}%</p>
-                        </div>
-                        <div className="bg-secondary/50 rounded-md p-2.5 text-center">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Type</p>
-                            <p className="text-xs font-medium capitalize truncate">{incident.incident_type}</p>
-                        </div>
-                        <div className="bg-secondary/50 rounded-md p-2.5 text-center">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Blocked</p>
-                            <p className="text-xs font-medium capitalize">{incident.blocked_at || '—'}</p>
-                        </div>
-                        <div className="bg-secondary/50 rounded-md p-2.5 text-center">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Status</p>
-                            <p className={`text-xs font-medium ${incident.reviewed ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                {incident.reviewed ? 'Reviewed' : 'Pending'}
+                <dl className="grid grid-cols-2 border-b border-border/25 sm:grid-cols-4">
+                    <IncidentMetric label="Risk score" value={`${riskPercent}%`} mono />
+                    <IncidentMetric label="Confidence" value={`${Math.round((incident.confidence || 0) * 100)}%`} mono />
+                    <IncidentMetric label="Enforcement" value={incident.blocked_at ? `${incident.blocked_at} block` : 'Observed'} />
+                    <IncidentMetric
+                        label="Review status"
+                        value={incident.reviewed ? 'Reviewed' : 'Pending review'}
+                        tone={incident.reviewed ? 'success' : 'warning'}
+                    />
+                </dl>
+
+                <div className="max-h-[58vh] overflow-y-auto">
+                    <section className="border-b border-border/25 px-6 py-6 sm:px-7">
+                        <div className="mb-4">
+                            <h3 className="text-sm font-medium tracking-[-0.01em]">Detection evidence</h3>
+                            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                Signals and content that contributed to this security decision.
                             </p>
                         </div>
-                    </div>
 
-                    {/* Detection Details */}
-                    {(hasPatterns || hasReasons) && (
-                        <div className="rounded-md border border-border/40 bg-card overflow-hidden">
-                            <div className="px-3 py-2 border-b border-border/40 bg-secondary/30">
-                                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Detection Details</p>
-                            </div>
-                            <div className="p-3 space-y-2">
-                                {hasPatterns && incident.details.patterns_detected!.map((pattern, i) => (
-                                    <div key={i} className="flex items-start gap-2">
-                                        <XCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
-                                        <span className="text-xs text-muted-foreground">{pattern}</span>
-                                    </div>
+                        {hasEvidence ? (
+                            <div className="overflow-hidden rounded-md border border-border/20 bg-background/30">
+                                {hasPatterns && incident.details.patterns_detected!.map((pattern, index) => (
+                                    <EvidenceRow key={`pattern-${index}`} label="Pattern" value={pattern} />
                                 ))}
-                                {hasReasons && incident.details.reasons!.map((reason, i) => (
-                                    <div key={`reason-${i}`} className="flex items-start gap-2">
-                                        <XCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                                        <span className="text-xs text-muted-foreground">{reason}</span>
-                                    </div>
+                                {hasReasons && incident.details.reasons!.map((reason, index) => (
+                                    <EvidenceRow key={`reason-${index}`} label="Reason" value={reason} />
+                                ))}
+                                {blockedExamples.map((example, index) => (
+                                    <EvidenceRow key={`example-${index}`} label="Excerpt" value={example} mono />
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="flex min-h-28 items-center justify-center rounded-md border border-border/20 bg-background/25 px-6 text-center">
+                                <p className="text-[11px] leading-5 text-muted-foreground">
+                                    The detector did not attach additional evidence to this incident.
+                                </p>
+                            </div>
+                        )}
+                    </section>
 
-                    {/* Related Request */}
                     {incident.related_request && (
-                        <div className="rounded-md border border-border/40 bg-card p-3">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="text-[10px] h-5">{incident.related_request.model}</Badge>
-                                    <span className="text-[10px] text-muted-foreground">{formatDate(incident.related_request.created_at)}</span>
+                        <section className="border-b border-border/25 px-6 py-6 sm:px-7">
+                            <div className="mb-4 flex items-start justify-between gap-5">
+                                <div>
+                                    <h3 className="text-sm font-medium tracking-[-0.01em]">Related request</h3>
+                                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                        The AI request associated with this detection.
+                                    </p>
                                 </div>
                                 <Link
                                     href={`?view=logs&request=${incident.related_request.id}`}
-                                    className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                                    className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-sky-500 transition-opacity hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 >
-                                    View <ExternalLink className="h-2.5 w-2.5" />
+                                    Open request <ExternalLink className="size-3" />
                                 </Link>
                             </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">{incident.related_request.preview || 'No preview'}</p>
-                        </div>
+
+                            <div className="overflow-hidden rounded-md border border-border/20 bg-background/30">
+                                <div className="grid grid-cols-2 border-b border-border/20 sm:grid-cols-3">
+                                    <RequestMeta label="Model" value={incident.related_request.model} />
+                                    <RequestMeta label="Status" value={incident.related_request.status} />
+                                    <RequestMeta label="Observed" value={formatDate(incident.related_request.created_at)} className="col-span-2 sm:col-span-1" />
+                                </div>
+                                <p className="px-4 py-4 text-xs leading-5 text-muted-foreground">
+                                    {incident.related_request.preview || 'No request preview is available.'}
+                                </p>
+                            </div>
+                        </section>
                     )}
 
-                    {/* Review Section */}
-                    <div className="space-y-3 pt-2 border-t border-border/40">
+                    <section className="px-6 py-6 sm:px-7">
+                        <div className="mb-4">
+                            <h3 className="text-sm font-medium tracking-[-0.01em]">Review decision</h3>
+                            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                                Record operator context and update this incident&apos;s review state.
+                            </p>
+                        </div>
                         <Textarea
-                            placeholder="Add review notes (optional)..."
+                            placeholder="Add review notes…"
                             value={reviewNotes}
                             onChange={(e) => setReviewNotes(e.target.value)}
-                            rows={2}
-                            className="text-xs resize-none"
+                            rows={3}
+                            className="resize-none border-border/25 bg-background/35 text-xs shadow-none focus-visible:ring-1"
                         />
-                        <div className="flex items-center justify-between">
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        {reviewError && (
+                            <p className="mt-2 text-[11px] leading-4 text-red-500" role="alert">{reviewError}</p>
+                        )}
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-h-4 items-center gap-1.5 text-[10px] text-muted-foreground">
                                 {incident.reviewed && incident.reviewed_at && (
                                     <>
-                                        <Clock className="h-3 w-3" />
+                                        <Clock className="size-3" />
                                         <span>Reviewed {formatDate(incident.reviewed_at)}</span>
                                     </>
                                 )}
@@ -245,19 +302,80 @@ export function IncidentDetailModal({ projectId, incidentId, open, onOpenChange,
                                 disabled={reviewing}
                                 size="sm"
                                 variant={incident.reviewed ? 'outline' : 'default'}
-                                className="h-8 text-xs gap-1.5"
+                                className="h-9 min-w-32 text-xs shadow-none active:translate-y-px"
                             >
-                                {reviewing ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                )}
-                                {reviewing ? 'Saving...' : incident.reviewed ? 'Mark Unreviewed' : 'Mark Reviewed'}
+                                {reviewing ? 'Saving…' : incident.reviewed ? 'Mark unreviewed' : 'Mark reviewed'}
                             </Button>
                         </div>
-                    </div>
+                    </section>
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function IncidentMetric({
+    label,
+    value,
+    mono = false,
+    tone,
+}: {
+    label: string;
+    value: string;
+    mono?: boolean;
+    tone?: 'success' | 'warning';
+}) {
+    const toneClass = tone === 'success' ? 'text-emerald-500' : tone === 'warning' ? 'text-amber-500' : 'text-foreground';
+
+    return (
+        <div className="min-w-0 border-b border-border/25 px-5 py-4 even:border-l sm:border-b-0 sm:border-l sm:first:border-l-0">
+            <dt className="text-[10px] text-muted-foreground">{label}</dt>
+            <dd className={`mt-2 truncate text-xs font-medium capitalize ${mono ? 'font-mono tabular-nums' : ''} ${toneClass}`}>
+                {value}
+            </dd>
+        </div>
+    );
+}
+
+function EvidenceRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+    return (
+        <div className="grid grid-cols-[5rem_1fr] gap-4 border-b border-border/20 px-4 py-3 last:border-b-0">
+            <p className="text-[10px] text-muted-foreground">{label}</p>
+            <p className={`min-w-0 text-xs leading-5 text-foreground/85 ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</p>
+        </div>
+    );
+}
+
+function RequestMeta({ label, value, className = '' }: { label: string; value: string; className?: string }) {
+    return (
+        <div className={`min-w-0 border-r border-border/20 px-4 py-3 last:border-r-0 ${className}`}>
+            <p className="text-[10px] text-muted-foreground">{label}</p>
+            <p className="mt-1 truncate font-mono text-[10px] text-foreground/85">{value || '—'}</p>
+        </div>
+    );
+}
+
+function IncidentDetailSkeleton() {
+    return (
+        <div>
+            <div className="border-b border-border/25 px-6 py-7 sm:px-7">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="mt-3 h-6 w-52" />
+                <Skeleton className="mt-3 h-3 w-40" />
+            </div>
+            <div className="grid grid-cols-2 border-b border-border/25 sm:grid-cols-4">
+                {[1, 2, 3, 4].map((item) => (
+                    <div key={item} className="border-b border-border/25 px-5 py-4 even:border-l sm:border-b-0 sm:border-l sm:first:border-l-0">
+                        <Skeleton className="h-3 w-14" />
+                        <Skeleton className="mt-2 h-4 w-20" />
+                    </div>
+                ))}
+            </div>
+            <div className="px-6 py-7 sm:px-7">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="mt-2 h-3 w-72 max-w-full" />
+                <Skeleton className="mt-5 h-32 w-full rounded-md" />
+            </div>
+        </div>
     );
 }
