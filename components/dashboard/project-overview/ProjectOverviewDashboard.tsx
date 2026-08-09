@@ -157,7 +157,7 @@ function MetricCell({
           </p>
           <div className="relative mt-auto h-[13rem] pt-6">
             <ChartContainer config={chartConfig} className="h-full w-full aspect-auto">
-              <AreaChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
+              <AreaChart data={data} margin={{ left: 24, right: 24, top: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.18} />
@@ -215,6 +215,86 @@ function MetricCell({
         </>
       )}
     </div>
+  );
+}
+
+export function ProjectOverviewCharts({
+  stats,
+  chartData,
+  period,
+  loading,
+}: {
+  stats: ProjectOverviewStats | null;
+  chartData: ProjectOverviewChartPoint[];
+  period: string;
+  loading: boolean;
+}) {
+  const reduceMotion = useReducedMotion();
+  const totalRequests = stats?.totalRequests ?? 0;
+  const successRate = totalRequests
+    ? ((stats?.successfulRequests ?? 0) / totalRequests) * 100
+    : 0;
+  const totalCost = Number(stats?.totalCost ?? 0);
+  const periodLabel = PERIODS.find((option) => option.value === period)?.label ?? "7 days";
+  const metricChartData = useMemo<MetricChartPoint[]>(
+    () => chartData.map((point) => ({
+      ...point,
+      successRate: point.count > 0 ? (point.successful / point.count) * 100 : 0,
+    })),
+    [chartData],
+  );
+  const hasMetricData = metricChartData.some((point) => point.count > 0);
+  const metrics = [
+    {
+      label: "Requests",
+      value: totalRequests.toLocaleString(),
+      detail: `${(stats?.successfulRequests ?? 0).toLocaleString()} successful`,
+      dataKey: "count" as const,
+      color: "#22d3ee",
+      formatValue: (metricValue: number) => metricValue.toLocaleString(),
+    },
+    {
+      label: "Success rate",
+      value: `${successRate.toFixed(1)}%`,
+      detail: `${(stats?.errorRequests ?? 0).toLocaleString()} errors`,
+      dataKey: "successRate" as const,
+      color: "#34d399",
+      formatValue: (metricValue: number) => `${metricValue.toFixed(1)}%`,
+    },
+    {
+      label: "Spend",
+      value: formatCost(totalCost),
+      detail: `${periodLabel.toLowerCase()} total`,
+      dataKey: "cost" as const,
+      color: "#fb923c",
+      formatValue: formatCost,
+    },
+    {
+      label: "Tokens",
+      value: compactNumber.format(stats?.totalTokens ?? 0),
+      detail: `${compactNumber.format(stats?.totalPromptTokens ?? 0)} in · ${compactNumber.format(stats?.totalCompletionTokens ?? 0)} out`,
+      dataKey: "tokens" as const,
+      color: "#a78bfa",
+      formatValue: (metricValue: number) => compactNumber.format(metricValue),
+    },
+  ];
+
+  return (
+    <section
+      aria-label="Project usage charts"
+      className="grid overflow-hidden rounded-lg border border-border/40 bg-muted/50 md:grid-cols-2"
+    >
+      {metrics.map((metric) => (
+        <MetricCell
+          key={metric.label}
+          {...metric}
+          loading={loading}
+          data={metricChartData}
+          hasData={hasMetricData}
+          reduceMotion={reduceMotion}
+        />
+      ))}
+    </section>
   );
 }
 
