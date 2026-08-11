@@ -6,23 +6,31 @@ import {
   basecodeSignInPath,
   isBasecodeChallenge,
   isBasecodeState,
+  noStoreHeaders,
   sha256,
 } from "@/lib/basecode-auth";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { createServerClient } from "@/lib/supabaseServer";
 
-function pageError(request: NextRequest, challenge: string, state: string, message: string) {
-  const url = new URL(basecodeSignInPath(challenge, state), request.nextUrl.origin);
-  url.searchParams.set("error", message);
-  return NextResponse.redirect(url, 303);
-}
-
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
-  const challenge = String(form.get("code_challenge") ?? "");
-  const state = String(form.get("state") ?? "");
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid Basecode sign-in request." },
+      { status: 400, headers: noStoreHeaders() },
+    );
+  }
+
+  const body = payload && typeof payload === "object" ? payload : {};
+  const challenge = String("code_challenge" in body ? body.code_challenge : "");
+  const state = String("state" in body ? body.state : "");
   if (!isBasecodeChallenge(challenge) || !isBasecodeState(state)) {
-    return NextResponse.json({ error: "Invalid Basecode sign-in request." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid Basecode sign-in request." },
+      { status: 400, headers: noStoreHeaders() },
+    );
   }
 
   const supabase = await createServerClient();
@@ -30,9 +38,12 @@ export async function POST(request: NextRequest) {
   const user = data.user;
   if (!user?.email) {
     const returnTo = basecodeSignInPath(challenge, state);
-    return NextResponse.redirect(
-      new URL(`/login?redirect=${encodeURIComponent(returnTo)}`, request.nextUrl.origin),
-      303,
+    return NextResponse.json(
+      {
+        error: "Your Cencori session expired.",
+        login_url: `/login?redirect=${encodeURIComponent(returnTo)}`,
+      },
+      { status: 401, headers: noStoreHeaders() },
     );
   }
 
@@ -49,7 +60,10 @@ export async function POST(request: NextRequest) {
   const token = actionLink ? new URL(actionLink).searchParams.get("token") : null;
   if (linkError || !token) {
     console.error("[BasecodeAuth] Could not create session handoff", linkError);
-    return pageError(request, challenge, state, "Cencori could not start Basecode sign in.");
+    return NextResponse.json(
+      { error: "Cencori could not start Basecode sign in." },
+      { status: 500, headers: noStoreHeaders() },
+    );
   }
 
   const code = randomBytes(32).toString("base64url");
@@ -64,11 +78,17 @@ export async function POST(request: NextRequest) {
   });
   if (insertError) {
     console.error("[BasecodeAuth] Could not store session handoff", insertError);
-    return pageError(request, challenge, state, "Cencori could not start Basecode sign in.");
+    return NextResponse.json(
+      { error: "Cencori could not start Basecode sign in." },
+      { status: 500, headers: noStoreHeaders() },
+    );
   }
 
   const callback = new URL(BASECODE_CALLBACK_URL);
   callback.searchParams.set("code", code);
   callback.searchParams.set("state", state);
-  return NextResponse.redirect(callback, 303);
+  return NextResponse.json(
+    { callback_url: callback.toString() },
+    { headers: noStoreHeaders() },
+  );
 }

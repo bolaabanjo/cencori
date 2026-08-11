@@ -7,6 +7,7 @@ import {
 } from "@/lib/basecode-auth";
 import { createServerClient } from "@/lib/supabaseServer";
 import { useAnotherCencoriAccount } from "./actions";
+import { ContinueToBasecode } from "./continue-to-basecode";
 
 type BasecodeSignInPageProps = {
   searchParams: Promise<{
@@ -83,16 +84,7 @@ export default async function BasecodeSignInPage({ searchParams }: BasecodeSignI
           </p>
         ) : null}
 
-        <form action="/api/basecode/auth/authorize" method="post">
-          <input name="code_challenge" type="hidden" value={challenge} />
-          <input name="state" type="hidden" value={state} />
-          <button
-            className="h-12 w-full rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90"
-            type="submit"
-          >
-            Continue to Basecode
-          </button>
-        </form>
+        <ContinueToBasecode challenge={challenge} state={state} />
 
         <form action={useAnotherCencoriAccount}>
           <input name="code_challenge" type="hidden" value={challenge} />
