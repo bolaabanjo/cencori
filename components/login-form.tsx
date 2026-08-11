@@ -47,10 +47,10 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
+  const isBasecodeSignIn = redirectParam?.startsWith("/basecode/sign-in?") ?? false;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ssoInfo, setSsoInfo] = useState<{ sso: boolean; enforce?: boolean; organization?: string; domain?: string } | null>(null);
-  const [checkingSSO, setCheckingSSO] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const checkSSO = async (email: string) => {
@@ -59,7 +59,6 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
       setSsoInfo(null);
       return;
     }
-    setCheckingSSO(true);
     try {
       const res = await fetch("/api/auth/sso/lookup", {
         method: "POST",
@@ -71,7 +70,6 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
     } catch {
       setSsoInfo(null);
     }
-    setCheckingSSO(false);
   };
 
   const handleSSOLogin = async (email: string) => {
@@ -181,9 +179,13 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
         </Link>
       </div>
       <div className="text-center">
-        <h1 className="text-lg font-medium">Welcome back!</h1>
+        <h1 className="text-lg font-medium">
+          {isBasecodeSignIn ? "Sign in to Basecode" : "Welcome back!"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enter your email below to login to your account
+          {isBasecodeSignIn
+            ? "Continue with your Cencori account"
+            : "Enter your email below to login to your account"}
         </p>
       </div>
 
@@ -236,12 +238,12 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
                 <label htmlFor="password" className="text-sm font-medium">
                   Password
                 </label>
-                <a
+                <Link
                   href="/forgot"
                   className="text-sm text-primary underline underline-offset-4"
                 >
                   Forgot your password?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <Input id="password" name="password" type={showPassword ? "text" : "password"} className="pr-10" />
@@ -257,7 +259,7 @@ export function LoginForm({ className, ...props }: LoginFormProps) {
             </div>
 
             <Button type="submit" disabled={loading}>
-              {loading ? "Working\u2026" : "Login"}
+              {loading ? "Working\u2026" : isBasecodeSignIn ? "Continue with email" : "Login"}
             </Button>
           </>
         )}

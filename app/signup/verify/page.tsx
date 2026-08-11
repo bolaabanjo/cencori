@@ -11,6 +11,8 @@ function VerifyContent() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const userId = searchParams.get("userId") ?? "";
+  const redirectParam = searchParams.get("redirect") ?? "";
+  const isBasecodeSignUp = redirectParam.startsWith("/basecode/sign-in?");
   const preview = searchParams.get("preview") === "true";
 
   const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
@@ -101,7 +103,7 @@ function VerifyContent() {
       const res = await fetch("/api/verify/confirm-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, userId }),
+        body: JSON.stringify({ email, code, redirect: redirectParam, userId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -177,7 +179,7 @@ function VerifyContent() {
             <h1 className="text-xl font-medium">Your email has been verified</h1>
           </div>
           <div className="text-base text-muted-foreground mt-8">
-            <p>Moving you to your workspace…</p>
+            <p>{isBasecodeSignUp ? "Returning you to Basecode…" : "Moving you to your workspace…"}</p>
             <p className="mt-1.5 text-xs text-muted-foreground/60">
               By continuing, you agree to our{" "}
               <Link href="/legal/terms" className="underline hover:text-foreground transition-colors">Terms</Link>{" "}
@@ -208,7 +210,9 @@ function VerifyContent() {
         <div className="w-full max-w-md flex flex-col items-center text-center gap-8">
         <Logo variant="mark" className="h-6" />
         <div className="space-y-2">
-          <h1 className="text-xl font-medium">Check your email</h1>
+          <h1 className="text-xl font-medium">
+            {isBasecodeSignUp ? "Verify to continue to Basecode" : "Check your email"}
+          </h1>
           <p className="text-base text-muted-foreground">
             We sent a 6-digit code to{" "}
             <span className="text-foreground font-medium">{email}</span>
@@ -257,7 +261,10 @@ function VerifyContent() {
         <div className="text-sm text-muted-foreground">
           <p>
             Wrong email?{" "}
-            <Link href="/signup" className="text-primary underline underline-offset-2 hover:text-foreground">
+            <Link
+              href={redirectParam ? `/signup?redirect=${encodeURIComponent(redirectParam)}` : "/signup"}
+              className="text-primary underline underline-offset-2 hover:text-foreground"
+            >
               Go back
             </Link>
           </p>

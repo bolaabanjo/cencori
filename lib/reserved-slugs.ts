@@ -71,6 +71,7 @@ export const RESERVED_ORG_SLUGS: ReadonlySet<string> = new Set([
     "newsletter",
     "og",
     "onboarding",
+    "basecode",
     "pitch",
     "playground",
     "preview",

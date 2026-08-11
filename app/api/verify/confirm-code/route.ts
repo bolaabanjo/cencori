@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createAdminClient } from "@/lib/supabaseAdmin";
+import { resolveAuthRedirectTargets } from "@/lib/auth-redirect";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
@@ -21,8 +22,12 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
  */
 export async function POST(req: NextRequest) {
   try {
-    const { email, code, userId } = await req.json();
+    const { email, code, redirect: redirectParam, userId } = await req.json();
     const origin = req.nextUrl.origin;
+    const { navigationTarget } = resolveAuthRedirectTargets(
+      typeof redirectParam === "string" ? redirectParam : null,
+      { currentOrigin: origin, defaultPath: "/onboarding" },
+    );
 
     if (!email || !code) {
       return NextResponse.json({ error: "Email and code are required" }, { status: 400 });
@@ -82,17 +87,18 @@ export async function POST(req: NextRequest) {
       .update({ used_at: new Date().toISOString(), attempts: record.attempts + 1 })
       .eq("id", record.id);
 
-    const baseUrl = origin;
-
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: email.toLowerCase(),
-      options: { redirectTo: `${baseUrl}/onboarding` },
+      options: { redirectTo: new URL(navigationTarget, origin).toString() },
     });
 
     // The email is verified either way; only the auto sign-in can fail from
     // here, so every fallback sends them to /login rather than erroring out.
-    const signInFallback = NextResponse.json({ success: true, redirectTo: "/login" });
+    const signInFallback = NextResponse.json({
+      success: true,
+      redirectTo: `/login?redirect=${encodeURIComponent(navigationTarget)}`,
+    });
 
     if (linkError || !linkData?.properties?.action_link) {
       console.error("Error generating magic link:", linkError);
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
 
     // Build the success response first so session cookies attach to it.
     const isProduction = req.nextUrl.hostname.endsWith("cencori.com");
-    const response = NextResponse.json({ success: true, redirectTo: "/onboarding" });
+    const response = NextResponse.json({ success: true, redirectTo: navigationTarget });
 
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {

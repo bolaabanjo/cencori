@@ -35,19 +35,12 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
+  const isBasecodeSignUp = redirectParam?.startsWith("/basecode/sign-in?") ?? false;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const navigateAfterAuth = (target: string) => {
-    if (/^https?:\/\//i.test(target)) {
-      window.location.assign(target);
-      return;
-    }
-    router.push(target);
-  };
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -109,7 +102,9 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         body: JSON.stringify({ email, userId }),
       });
 
-      router.push(`/signup/verify?email=${encodeURIComponent(email)}&userId=${userId}`);
+      const verifyParams = new URLSearchParams({ email, userId });
+      if (redirectParam) verifyParams.set("redirect", redirectParam);
+      router.push(`/signup/verify?${verifyParams.toString()}`);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -157,9 +152,13 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         </Link>
       </div>
       <div className="text-center">
-        <h1 className="text-lg font-medium">Create an account</h1>
+        <h1 className="text-lg font-medium">
+          {isBasecodeSignUp ? "Create your Cencori account" : "Create an account"}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enter your details below to get started
+          {isBasecodeSignUp
+            ? "You’ll return to Basecode after verification"
+            : "Enter your details below to get started"}
         </p>
       </div>
 
@@ -234,7 +233,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
         </div>
 
         <Button type="submit" disabled={loading}>
-          {loading ? "Creating\u2026" : "Create Account"}
+          {loading ? "Creating\u2026" : isBasecodeSignUp ? "Create and continue" : "Create Account"}
         </Button>
 
         <div className="relative">
