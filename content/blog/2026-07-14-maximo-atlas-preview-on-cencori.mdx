@@ -11,9 +11,11 @@ published: true
 
 **Maximo Atlas Preview** is live on Cencori.
 
+> **Update — August 11, 2026:** The preview model has been retired. Use the production model ID `maximo-atlas-1.1` for new requests. The examples below have been updated to the production slug.
+
 Built by Maximo AI in Nigeria, Atlas is an Opus-class proprietary coding and agent model available now — completely free during the preview period. It delivers competitive benchmark results across software engineering, browsing, tool use, and reasoning, at a fraction of the cost of comparable frontier models.
 
-From today, you can target `maximo-atlas-preview` across the entire Cencori stack.
+The original preview used `maximo-atlas-preview`; current integrations should target `maximo-atlas-1.1` across the Cencori stack.
 
 ## Why This Matters
 
@@ -43,7 +45,7 @@ import { Cencori } from 'cencori';
 const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
 
 const response = await cencori.ai.chat({
-  model: 'maximo-atlas-preview',
+  model: 'maximo-atlas-1.1',
   messages: [
     { role: 'system', content: 'You are a senior software engineer.' },
     { role: 'user', content: 'Review this pull request for potential issues.' }
@@ -58,7 +60,7 @@ curl -X POST https://cencori.com/api/ai/chat \
   -H "CENCORI_API_KEY: $CENCORI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "maximo-atlas-preview",
+    "model": "maximo-atlas-1.1",
     "messages": [
       {"role": "user", "content": "Write a Python script to analyze server logs."}
     ]
@@ -80,7 +82,7 @@ curl -X POST https://cencori.com/api/ai/chat \
 ## What We Shipped in Cencori
 
 - Maximo AI registered as a native provider in our model catalog
-- `maximo-atlas-preview` available across the Cencori gateway — no custom provider setup needed
+- `maximo-atlas-1.1` available across the Cencori gateway — no custom provider setup needed
 - Full support for streaming, tool calling, structured outputs, and reasoning
 - Cencori's security logging, data rules, and observability apply automatically
 
@@ -88,7 +90,7 @@ curl -X POST https://cencori.com/api/ai/chat \
 
 - The preview is free until July 21, 2026 at 00:00 UTC. After that, pricing is $0.20/1M input tokens and $1.00/1M output tokens.
 - Atlas is an OpenAI-compatible provider. If you already call Cencori chat endpoints, switch the model ID and go.
-- The API model ID is `maximo-atlas-preview`.
+- The current API model ID is `maximo-atlas-1.1`.
 
 ## References
 
