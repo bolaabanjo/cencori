@@ -5,6 +5,7 @@ import {
   BASECODE_CALLBACK_URL,
   basecodeSignInPath,
   isBasecodeChallenge,
+  isBasecodeRedirectUri,
   isBasecodeState,
   noStoreHeaders,
   sha256,
@@ -25,8 +26,15 @@ export async function POST(request: NextRequest) {
 
   const body = payload && typeof payload === "object" ? payload : {};
   const challenge = String("code_challenge" in body ? body.code_challenge : "");
+  const redirectUri = String(
+    "redirect_uri" in body ? body.redirect_uri : BASECODE_CALLBACK_URL,
+  );
   const state = String("state" in body ? body.state : "");
-  if (!isBasecodeChallenge(challenge) || !isBasecodeState(state)) {
+  if (
+    !isBasecodeChallenge(challenge) ||
+    !isBasecodeState(state) ||
+    !isBasecodeRedirectUri(redirectUri)
+  ) {
     return NextResponse.json(
       { error: "Invalid Basecode sign-in request." },
       { status: 400, headers: noStoreHeaders() },
@@ -37,7 +45,7 @@ export async function POST(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   if (!user?.email) {
-    const returnTo = basecodeSignInPath(challenge, state);
+    const returnTo = basecodeSignInPath(challenge, state, redirectUri);
     return NextResponse.json(
       {
         error: "Your Cencori session expired.",
@@ -56,8 +64,7 @@ export async function POST(request: NextRequest) {
     email: user.email.toLowerCase(),
     type: "magiclink",
   });
-  const actionLink = link?.properties?.action_link;
-  const token = actionLink ? new URL(actionLink).searchParams.get("token") : null;
+  const token = link?.properties?.hashed_token;
   if (linkError || !token) {
     console.error("[BasecodeAuth] Could not create session handoff", linkError);
     return NextResponse.json(
@@ -84,7 +91,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const callback = new URL(BASECODE_CALLBACK_URL);
+  const callback = new URL(redirectUri);
   callback.searchParams.set("code", code);
   callback.searchParams.set("state", state);
   return NextResponse.json(

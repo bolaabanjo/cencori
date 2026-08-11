@@ -1,9 +1,11 @@
 import { randomBytes } from "crypto";
 import { describe, expect, test } from "vitest";
 import {
+  BASECODE_CALLBACK_URL,
   basecodeSignInPath,
   isBasecodeChallenge,
   isBasecodeCode,
+  isBasecodeRedirectUri,
   isBasecodeState,
   isBasecodeVerifier,
   sameValue,
@@ -39,6 +41,31 @@ describe("Basecode desktop authentication contract", () => {
 
     expect(path).toBe(
       `/basecode/sign-in?code_challenge=${challenge}&state=${state}`,
+    );
+  });
+
+  test("accepts only the packaged callback or an exact loopback callback", () => {
+    expect(isBasecodeRedirectUri(BASECODE_CALLBACK_URL)).toBe(true);
+    expect(isBasecodeRedirectUri("http://127.0.0.1:49152/auth/callback")).toBe(true);
+
+    for (const value of [
+      "http://localhost:49152/auth/callback",
+      "http://127.0.0.1:80/auth/callback",
+      "http://127.0.0.1:49152/other",
+      "http://127.0.0.1:49152/auth/callback?next=https://example.com",
+      "https://127.0.0.1:49152/auth/callback",
+      "https://example.com/auth/callback",
+    ]) {
+      expect(isBasecodeRedirectUri(value)).toBe(false);
+    }
+  });
+
+  test("preserves a validated loopback callback through sign in", () => {
+    const redirectUri = "http://127.0.0.1:49152/auth/callback";
+    const path = basecodeSignInPath("C".repeat(43), "D".repeat(43), redirectUri);
+
+    expect(new URL(path, "https://cencori.com").searchParams.get("redirect_uri")).toBe(
+      redirectUri,
     );
   });
 });

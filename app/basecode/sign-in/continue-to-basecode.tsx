@@ -4,6 +4,7 @@ import { useState } from "react";
 
 type ContinueToBasecodeProps = {
   challenge: string;
+  redirectUri: string;
   state: string;
 };
 
@@ -13,7 +14,7 @@ type AuthorizeResponse = {
   login_url?: string;
 };
 
-export function ContinueToBasecode({ challenge, state }: ContinueToBasecodeProps) {
+export function ContinueToBasecode({ challenge, redirectUri, state }: ContinueToBasecodeProps) {
   const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +32,7 @@ export function ContinueToBasecode({ challenge, state }: ContinueToBasecodeProps
       const response = await fetch("/api/basecode/auth/authorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code_challenge: challenge, state }),
+        body: JSON.stringify({ code_challenge: challenge, redirect_uri: redirectUri, state }),
       });
       const result = (await response.json()) as AuthorizeResponse;
 

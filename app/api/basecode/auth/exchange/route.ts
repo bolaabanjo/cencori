@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
   const { data: handoff } = await admin
     .from("basecode_auth_codes")
-    .select("id, code_challenge, email, magic_link_token")
+    .select("id, code_challenge, magic_link_token")
     .eq("code_hash", sha256(code))
     .gt("expires_at", now)
     .maybeSingle();
@@ -49,6 +49,18 @@ export async function POST(request: NextRequest) {
     return errorResponse();
   }
 
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+  });
+  const { data, error } = await supabase.auth.verifyOtp({
+    token_hash: handoff.magic_link_token,
+    type: "magiclink",
+  });
+  if (error || !data.session || !data.user) {
+    console.error("[BasecodeAuth] Session exchange failed", error);
+    return errorResponse(401);
+  }
+
   const { data: consumed } = await admin
     .from("basecode_auth_codes")
     .delete()
@@ -56,19 +68,6 @@ export async function POST(request: NextRequest) {
     .select("id")
     .maybeSingle();
   if (!consumed) return errorResponse();
-
-  const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
-  });
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: handoff.email,
-    token: handoff.magic_link_token,
-    type: "magiclink",
-  });
-  if (error || !data.session || !data.user) {
-    console.error("[BasecodeAuth] Session exchange failed", error);
-    return errorResponse(401);
-  }
 
   return NextResponse.json(
     {

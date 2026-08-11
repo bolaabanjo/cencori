@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
 import {
+  BASECODE_CALLBACK_URL,
   basecodeSignInPath,
   isBasecodeChallenge,
+  isBasecodeRedirectUri,
   isBasecodeState,
 } from "@/lib/basecode-auth";
 import { createServerClient } from "@/lib/supabaseServer";
@@ -13,6 +15,7 @@ type BasecodeSignInPageProps = {
   searchParams: Promise<{
     code_challenge?: string;
     error?: string;
+    redirect_uri?: string;
     state?: string;
   }>;
 };
@@ -21,15 +24,20 @@ export default async function BasecodeSignInPage({ searchParams }: BasecodeSignI
   const params = await searchParams;
   const challenge = params.code_challenge;
   const state = params.state;
+  const redirectUri = params.redirect_uri ?? BASECODE_CALLBACK_URL;
 
-  if (!isBasecodeChallenge(challenge) || !isBasecodeState(state)) {
+  if (
+    !isBasecodeChallenge(challenge) ||
+    !isBasecodeState(state) ||
+    !isBasecodeRedirectUri(redirectUri)
+  ) {
     return <InvalidRequest />;
   }
 
   const supabase = await createServerClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) {
-    const returnTo = basecodeSignInPath(challenge, state);
+    const returnTo = basecodeSignInPath(challenge, state, redirectUri);
     redirect(`/login?redirect=${encodeURIComponent(returnTo)}`);
   }
 
@@ -84,10 +92,11 @@ export default async function BasecodeSignInPage({ searchParams }: BasecodeSignI
           </p>
         ) : null}
 
-        <ContinueToBasecode challenge={challenge} state={state} />
+        <ContinueToBasecode challenge={challenge} redirectUri={redirectUri} state={state} />
 
         <form action={useAnotherCencoriAccount}>
           <input name="code_challenge" type="hidden" value={challenge} />
+          <input name="redirect_uri" type="hidden" value={redirectUri} />
           <input name="state" type="hidden" value={state} />
           <button
             className="mt-4 inline-flex h-10 items-center px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"

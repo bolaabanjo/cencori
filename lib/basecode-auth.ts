@@ -20,6 +20,30 @@ export function isBasecodeState(value: unknown): value is string {
   return typeof value === "string" && STATE_PATTERN.test(value);
 }
 
+export function isBasecodeRedirectUri(value: unknown): value is string {
+  if (value === BASECODE_CALLBACK_URL) return true;
+  if (typeof value !== "string" || value.length > 200) return false;
+
+  try {
+    const url = new URL(value);
+    const port = Number(url.port);
+    return (
+      url.protocol === "http:" &&
+      url.hostname === "127.0.0.1" &&
+      Number.isInteger(port) &&
+      port >= 1024 &&
+      port <= 65535 &&
+      url.pathname === "/auth/callback" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isBasecodeVerifier(value: unknown): value is string {
   return typeof value === "string" && VERIFIER_PATTERN.test(value);
 }
@@ -34,8 +58,15 @@ export function sameValue(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-export function basecodeSignInPath(challenge: string, state: string): string {
+export function basecodeSignInPath(
+  challenge: string,
+  state: string,
+  redirectUri?: string,
+): string {
   const params = new URLSearchParams({ code_challenge: challenge, state });
+  if (redirectUri && redirectUri !== BASECODE_CALLBACK_URL) {
+    params.set("redirect_uri", redirectUri);
+  }
   return `/basecode/sign-in?${params.toString()}`;
 }
 
