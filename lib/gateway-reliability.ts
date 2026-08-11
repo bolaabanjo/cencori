@@ -3,6 +3,7 @@ import {
     ContentFilterError,
     InvalidRequestError,
     ModelNotFoundError,
+    ModelAccessDeniedError,
     normalizeProviderError,
     PricingUnavailableError,
     ProviderError,
@@ -183,6 +184,15 @@ export function mapProviderErrorToHttpResponse(
         return {
             status: 403,
             error: 'provider_content_filtered',
+            message,
+            provider: providerError.provider,
+        };
+    }
+
+    if (providerError instanceof ModelAccessDeniedError) {
+        return {
+            status: 403,
+            error: 'model_access_denied',
             message,
             provider: providerError.provider,
         };

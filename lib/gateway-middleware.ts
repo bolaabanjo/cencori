@@ -18,6 +18,7 @@ import { logGatewayEvent } from '@/lib/gateway-reliability';
 import { getCachedApiKeyConfig, setCachedApiKeyConfig } from '@/lib/config-cache';
 import { processUsageQueue } from '@/lib/queue';
 import { recordGatewayGovernanceDecision } from '@/lib/governance/record-decision';
+import { isFullySponsoredApiKey } from '@/lib/gateway/model-access';
 import {
     isProjectIngressAllowed,
     loadProjectNetworkPolicy,
@@ -32,6 +33,9 @@ export interface GatewayContext {
     projectId: string;
     organizationId: string;
     apiKeyId: string | null;
+    allowedModels: string[] | null;
+    sponsoredModels: string[] | null;
+    fullySponsoredKey: boolean;
     environment: string;
     keyType: string;
     tier: string;
@@ -291,6 +295,9 @@ return {
             projectId: project.id,
             organizationId: organization.id,
             apiKeyId: null,
+            allowedModels: null,
+            sponsoredModels: null,
+            fullySponsoredKey: false,
             environment: 'production',
             keyType: 'public_playground',
             tier: 'free',
@@ -387,6 +394,9 @@ return {
                             projectId: project.id,
                             organizationId,
                             apiKeyId: activeKey?.id || null,
+                            allowedModels: null,
+                            sponsoredModels: null,
+                            fullySponsoredKey: false,
                             environment: playgroundEnv,
                             keyType: 'session',
                             tier,
@@ -443,6 +453,8 @@ return {
                 environment,
                 key_type,
                 allowed_domains,
+                allowed_models,
+                sponsored_models,
                 projects!inner(
                     id,
                     name,
@@ -524,6 +536,13 @@ return {
     const organizationId = organization.id;
     const tier = organization.subscription_tier || 'free';
     const billingFrozen = Boolean(organization.billing_frozen);
+    const allowedModels = Array.isArray(keyData.allowed_models)
+        ? keyData.allowed_models.filter((model: unknown): model is string => typeof model === 'string')
+        : null;
+    const sponsoredModels = Array.isArray(keyData.sponsored_models)
+        ? keyData.sponsored_models.filter((model: unknown): model is string => typeof model === 'string')
+        : null;
+    const fullySponsoredKey = isFullySponsoredApiKey(allowedModels, sponsoredModels);
 
     const networkDenial = await enforceProjectIngressPolicy({
         supabase,
@@ -534,7 +553,7 @@ return {
     if (networkDenial) return { success: false, response: networkDenial };
     
     // ── Credits Fast-Path (Redis) ──
-    const shouldEnforceCredits = tier !== 'free' && tier !== 'enterprise';
+    const shouldEnforceCredits = tier !== 'free' && tier !== 'enterprise' && !fullySponsoredKey;
     let creditsBalance = Number(organization.credits_balance ?? 0);
 
     if (shouldEnforceCredits) {
@@ -545,7 +564,7 @@ return {
         }
     }
 
-    if (billingFrozen) {
+    if (billingFrozen && !fullySponsoredKey) {
         return {
             success: false,
             response: addGatewayHeaders(
@@ -585,7 +604,7 @@ return {
     const currentUsage = organization.monthly_requests_used || 0;
     const limit = organization.monthly_request_limit || 1000;
 
-    if (currentUsage >= limit) {
+    if (currentUsage >= limit && !fullySponsoredKey) {
         return {
             success: false,
             response: addGatewayHeaders(
@@ -654,7 +673,7 @@ return {
         };
     }
 
-    if (!spendCapResult.allowed) {
+    if (!spendCapResult.allowed && !fullySponsoredKey) {
         return {
             success: false,
             response: addGatewayHeaders(
@@ -682,6 +701,9 @@ return {
         projectId: project.id,
         organizationId,
         apiKeyId: keyData.id,
+        allowedModels,
+        sponsoredModels,
+        fullySponsoredKey,
         environment: keyData.environment || 'production',
         keyType: keyData.key_type || 'secret',
         tier,

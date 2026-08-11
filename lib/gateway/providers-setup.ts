@@ -12,6 +12,10 @@ import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
 import { resolveCustomProviderForProject } from '@/lib/providers/custom-provider-routing';
 import type { AIProvider } from '@/lib/providers/base';
+import {
+    assertApiKeyModelAccess,
+    type GatewayBillingMode,
+} from '@/lib/gateway/model-access';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -159,6 +163,7 @@ export type ResolvedGatewayProvider = {
     providerName: string;
     model: string;
     provider: AIProvider;
+    billingMode: GatewayBillingMode;
     customProviderTag?: string;
 };
 
@@ -167,6 +172,8 @@ export async function resolveGatewayProvider(params: {
     projectId: string;
     organizationId: string;
     requestedModel: string;
+    allowedModels?: string[] | null;
+    sponsoredModels?: string[] | null;
 }): Promise<ResolvedGatewayProvider> {
     const router = new ProviderRouter();
     registerDefaultProviders(router);
@@ -233,6 +240,13 @@ export async function resolveGatewayProvider(params: {
         ? router.getProvider(providerName)
         : router.getProviderForModel(params.requestedModel);
 
+    const billingMode = assertApiKeyModelAccess({
+        allowedModels: params.allowedModels,
+        sponsoredModels: params.sponsoredModels,
+        provider: providerName,
+        model,
+    });
+
     // Verify exact billing configuration before any upstream request is made.
     // This prevents a successful provider call from later becoming an
     // unbillable response because a model was only covered by a guessed
@@ -244,6 +258,7 @@ export async function resolveGatewayProvider(params: {
         providerName,
         model,
         provider,
+        billingMode,
         customProviderTag: customProvider?.providerTag,
     };
 }

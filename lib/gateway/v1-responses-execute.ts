@@ -16,6 +16,7 @@ import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import type { SubscriptionTier } from '@/lib/entitlements';
+import { calculateGatewayCharge } from '@/lib/gateway/model-access';
 import type { QuotaCheckResult } from '@/lib/end-user-billing';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
@@ -334,6 +335,8 @@ export async function runV1ResponsesExecution(
             projectId: gatewayCtx.projectId,
             organizationId: gatewayCtx.organizationId,
             requestedModel: model,
+            allowedModels: gatewayCtx.allowedModels,
+            sponsoredModels: gatewayCtx.sponsoredModels,
         });
 
         // Separate function tools from built-in tools
@@ -485,6 +488,8 @@ export async function runV1ResponsesExecution(
                 supabase: params.supabase,
                 projectId: gatewayCtx.projectId,
                 organizationId: gatewayCtx.organizationId,
+                allowedModels: gatewayCtx.allowedModels,
+                sponsoredModels: gatewayCtx.sponsoredModels,
                 tier,
                 request: chatRequest,
                 resolved,
@@ -654,6 +659,8 @@ export async function runV1ResponsesExecution(
                         supabase: params.supabase,
                         projectId: gatewayCtx.projectId,
                         organizationId: gatewayCtx.organizationId,
+                        allowedModels: gatewayCtx.allowedModels,
+                        sponsoredModels: gatewayCtx.sponsoredModels,
                         tier,
                         request: chatRequest,
                         resolved,
@@ -736,9 +743,11 @@ export async function runV1ResponsesExecution(
                                 completionTokens,
                                 pricing
                             );
-                            const cencoriChargeUsd =
-                                providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
-                                + (pricing.fixedFeePerRequest ?? 0);
+                            const { cencoriChargeUsd, markupPercentage } = calculateGatewayCharge(
+                                providerCostUsd,
+                                pricing,
+                                chunk.billingMode,
+                            );
 
                             if (!outputCheck.ok) {
                                 const providerLogName = resolved.customProviderTag || chunk.actualProvider;
@@ -751,7 +760,7 @@ export async function runV1ResponsesExecution(
                                     totalTokens,
                                     providerCostUsd,
                                     cencoriChargeUsd,
-                                    markupPercentage: pricing.cencoriMarkupPercentage,
+                                    markupPercentage,
                                     errorMessage: outputCheck.message,
                                 });
                                 params.incrementUsage(cencoriChargeUsd);
@@ -761,7 +770,7 @@ export async function runV1ResponsesExecution(
                                     totalTokens,
                                     providerCostUsd,
                                     cencoriChargeUsd,
-                                    markupPercentage: pricing.cencoriMarkupPercentage,
+                                    markupPercentage,
                                 });
 
                                 const failedResponse = buildResponsesJson({
@@ -885,7 +894,7 @@ export async function runV1ResponsesExecution(
                                 totalTokens,
                                 providerCostUsd,
                                 cencoriChargeUsd,
-                                markupPercentage: pricing.cencoriMarkupPercentage,
+                                markupPercentage,
                             });
                             params.incrementUsage(cencoriChargeUsd);
                             params.recordEndUserUsage({
@@ -894,7 +903,7 @@ export async function runV1ResponsesExecution(
                                 totalTokens,
                                 providerCostUsd,
                                 cencoriChargeUsd,
-                                markupPercentage: pricing.cencoriMarkupPercentage,
+                                markupPercentage,
                             });
 
                             const annotations = buildAnnotations(fullText, collectedBuiltinToolOutputs);

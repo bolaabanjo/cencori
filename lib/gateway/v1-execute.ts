@@ -18,6 +18,10 @@ import { buildCencoriChatResponse } from '@/lib/gateway/ai-chat-support';
 import { estimateTokenCount } from '@/lib/providers/utils';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import type { ToolCallPayload } from '@/lib/gateway/v1-types';
+import {
+    calculateGatewayCharge,
+    type GatewayBillingMode,
+} from '@/lib/gateway/model-access';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -195,6 +199,8 @@ export async function runV1ProviderExecution(
             projectId: params.gatewayCtx.projectId,
             organizationId: params.gatewayCtx.organizationId,
             requestedModel: params.model,
+            allowedModels: params.gatewayCtx.allowedModels,
+            sponsoredModels: params.gatewayCtx.sponsoredModels,
         });
 
         const chatRequest: UnifiedChatRequest = {
@@ -229,6 +235,8 @@ export async function runV1ProviderExecution(
                 supabase: params.supabase,
                 projectId: params.gatewayCtx.projectId,
                 organizationId: params.gatewayCtx.organizationId,
+                allowedModels: params.gatewayCtx.allowedModels,
+                sponsoredModels: params.gatewayCtx.sponsoredModels,
                 tier,
                 request: chatRequest,
                 resolved,
@@ -506,6 +514,7 @@ export async function runV1ProviderExecution(
                     actualModel: string;
                     actualProvider: string;
                     usedFallback: boolean;
+                    billingMode: GatewayBillingMode;
                     finishReason: string;
                     blocked?: boolean;
                     errorMessage?: string;
@@ -532,9 +541,11 @@ export async function runV1ProviderExecution(
                         completionTokens,
                         pricing
                     );
-                    const cencoriChargeUsd =
-                        providerCostUsd * (1 + pricing.cencoriMarkupPercentage / 100)
-                        + (pricing.fixedFeePerRequest ?? 0);
+                    const { cencoriChargeUsd, markupPercentage } = calculateGatewayCharge(
+                        providerCostUsd,
+                        pricing,
+                        meta.billingMode,
+                    );
 
                     const finalText = params.tokenMap
                         ? deTokenize(fullText, params.tokenMap)
@@ -552,7 +563,7 @@ export async function runV1ProviderExecution(
                         totalTokens,
                         providerCostUsd,
                         cencoriChargeUsd,
-                        markupPercentage: pricing.cencoriMarkupPercentage,
+                        markupPercentage,
                         responseText: finalText,
                         finishReason: meta.finishReason,
                         errorMessage: meta.errorMessage,
@@ -564,7 +575,7 @@ export async function runV1ProviderExecution(
                         totalTokens,
                         providerCostUsd,
                         cencoriChargeUsd,
-                        markupPercentage: pricing.cencoriMarkupPercentage,
+                        markupPercentage,
                     });
 
                     return {
@@ -608,6 +619,7 @@ export async function runV1ProviderExecution(
                         actualModel: string;
                         actualProvider: string;
                         usedFallback: boolean;
+                        billingMode: GatewayBillingMode;
                         finishReason: string;
                     },
                     outputCheck: { ok: false; message: string }
@@ -616,6 +628,7 @@ export async function runV1ProviderExecution(
                         actualModel: meta.actualModel,
                         actualProvider: meta.actualProvider,
                         usedFallback: meta.usedFallback,
+                        billingMode: meta.billingMode,
                         finishReason: meta.finishReason,
                         blocked: true,
                         errorMessage: outputCheck.message,
@@ -631,6 +644,7 @@ export async function runV1ProviderExecution(
                     actualModel: string;
                     actualProvider: string;
                     usedFallback: boolean;
+                    billingMode: GatewayBillingMode;
                     originalProvider: string;
                     originalModel: string;
                     finishReason: string;
@@ -664,6 +678,7 @@ export async function runV1ProviderExecution(
                         actualModel: meta.actualModel,
                         actualProvider: meta.actualProvider,
                         usedFallback: meta.usedFallback,
+                        billingMode: meta.billingMode,
                         finishReason: meta.finishReason,
                     });
 
@@ -755,22 +770,32 @@ export async function runV1ProviderExecution(
                         usedFallback: boolean;
                         originalProvider: string;
                         originalModel: string;
+                        billingMode: GatewayBillingMode;
                     } | null = null;
                     for await (const chunk of streamGatewayChat({
                         supabase: params.supabase,
                         projectId: params.gatewayCtx.projectId,
                         organizationId: params.gatewayCtx.organizationId,
+                        allowedModels: params.gatewayCtx.allowedModels,
+                        sponsoredModels: params.gatewayCtx.sponsoredModels,
                         tier,
                         request: chatRequest,
                         resolved,
                         requestId: params.gatewayCtx.requestId,
                     })) {
-                        lastMeta ??= {
+                        const originalProvider: string = lastMeta?.usedFallback && chunk.usedFallback
+                            ? lastMeta.originalProvider
+                            : chunk.originalProvider;
+                        const originalModel: string = lastMeta?.usedFallback && chunk.usedFallback
+                            ? lastMeta.originalModel
+                            : chunk.originalModel;
+                        lastMeta = {
                             actualModel: chunk.actualModel,
                             actualProvider: chunk.actualProvider,
                             usedFallback: chunk.usedFallback,
-                            originalProvider: chunk.originalProvider,
-                            originalModel: chunk.originalModel,
+                            originalProvider,
+                            originalModel,
+                            billingMode: chunk.billingMode,
                         };
                         if (chunk.delta) {
                             fullText += chunk.delta;

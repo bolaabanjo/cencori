@@ -74,6 +74,13 @@ export class PricingUnavailableError extends ProviderError {
     }
 }
 
+export class ModelAccessDeniedError extends ProviderError {
+    constructor(provider: string, model: string) {
+        super(provider, `API key is not authorized to use ${provider}/${model}.`, undefined, false);
+        this.name = 'ModelAccessDeniedError';
+    }
+}
+
 /**
  * Convert provider-specific errors to unified error types
  */

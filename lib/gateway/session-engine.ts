@@ -25,6 +25,7 @@ import { recordSessionApprovalRequested } from '@/lib/governance/record-session'
 import { applyPolicyRedactions } from '@/lib/governance/policy-enforcement';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
+import { calculateGatewayCharge } from '@/lib/gateway/model-access';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 export type { SupabaseAdmin };
@@ -227,7 +228,8 @@ function makeStream(params: {
 
                 for await (const chunk of streamGatewayChat({
                     supabase, projectId: gatewayCtx.projectId,
-                    organizationId: gatewayCtx.organizationId, tier,
+                    organizationId: gatewayCtx.organizationId,
+                    allowedModels: gatewayCtx.allowedModels, sponsoredModels: gatewayCtx.sponsoredModels, tier,
                     request: {
                         messages, model: resolved.model,
                         temperature, maxTokens: max_output_tokens, stream: true,
@@ -301,8 +303,11 @@ function makeStream(params: {
                         const tt = pt + ct;
                         const pricing = await streamProvider.getPricing(chunk.actualModel);
                         const pc = calculateProviderTokenCost(pt, ct, pricing);
-                        const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100)
-                            + (pricing.fixedFeePerRequest ?? 0);
+                        const { cencoriChargeUsd: cc, markupPercentage } = calculateGatewayCharge(
+                            pc,
+                            pricing,
+                            chunk.billingMode,
+                        );
                         const pn = resolved.customProviderTag || chunk.actualProvider;
 
                         if (!outputCheck.ok) {
@@ -320,11 +325,11 @@ function makeStream(params: {
                                 totalTokens: tt,
                                 providerCostUsd: pc,
                                 cencoriChargeUsd: cc,
-                                markupPercentage: pricing.cencoriMarkupPercentage,
+                                markupPercentage,
                                 errorMessage: outputCheck.message,
                             });
                             incrementUsage(cc);
-                            if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                            if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                             controller.close();
                             return;
                         }
@@ -376,9 +381,9 @@ function makeStream(params: {
                                     actionIds: callValues.map(tc => tc.id),
                                     model: resolved.model,
                                 });
-                                logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                                logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                                 incrementUsage(cc);
-                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                                 controller.close();
                                 return;
                             }
@@ -393,9 +398,9 @@ function makeStream(params: {
                             cc,
                         );
 
-                        logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                        logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                         incrementUsage(cc);
-                        if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                        if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
 
                         void maybeCreateCheckpoint(supabase, sessionId, turnNumber, messages, fullText);
 
@@ -486,6 +491,7 @@ export async function executeSessionTurn(params: TurnExecuteParams): Promise<Tur
     try {
         const resolved = await resolveGatewayProvider({
             supabase, projectId: gatewayCtx.projectId, organizationId: gatewayCtx.organizationId, requestedModel: model,
+            allowedModels: gatewayCtx.allowedModels, sponsoredModels: gatewayCtx.sponsoredModels,
         });
 
         const { functionTools, builtInTools } = extractTools(tools);
@@ -639,6 +645,7 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
 
         const resolved = await resolveGatewayProvider({
             supabase, projectId: gatewayCtx.projectId, organizationId: gatewayCtx.organizationId, requestedModel: model,
+            allowedModels: gatewayCtx.allowedModels, sponsoredModels: gatewayCtx.sponsoredModels,
         });
 
         // Reconstruct assistant text and tool calls from events
@@ -756,7 +763,8 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
 
                     for await (const chunk of streamGatewayChat({
                         supabase, projectId: gatewayCtx.projectId,
-                        organizationId: gatewayCtx.organizationId, tier,
+                        organizationId: gatewayCtx.organizationId,
+                        allowedModels: gatewayCtx.allowedModels, sponsoredModels: gatewayCtx.sponsoredModels, tier,
                         request: {
                             messages: messages as never,
                             model: resolved.model,
@@ -807,8 +815,11 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                             const tt = pt + ct;
                             const pricing = await streamProvider.getPricing(chunk.actualModel);
                             const pc = calculateProviderTokenCost(pt, ct, pricing);
-                            const cc = pc * (1 + pricing.cencoriMarkupPercentage / 100)
-                                + (pricing.fixedFeePerRequest ?? 0);
+                            const { cencoriChargeUsd: cc, markupPercentage } = calculateGatewayCharge(
+                                pc,
+                                pricing,
+                                chunk.billingMode,
+                            );
 
                             if (!outputCheck.ok) {
                                 await terminal('turn.failed', {
@@ -817,9 +828,9 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                                     usage: { input_tokens: pt, output_tokens: ct, total_tokens: tt },
                                 }, cc);
                                 const pn = resolved.customProviderTag || chunk.actualProvider;
-                                logSuccess({ provider: pn, model: chunk.actualModel, status: 'error', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage, errorMessage: outputCheck.message });
+                                logSuccess({ provider: pn, model: chunk.actualModel, status: 'error', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage, errorMessage: outputCheck.message });
                                 incrementUsage(cc);
-                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                                if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                                 controller.close();
                                 return;
                             }
@@ -837,9 +848,9 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                             );
 
                             const pn = resolved.customProviderTag || chunk.actualProvider;
-                            logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                            logSuccess({ provider: pn, model: chunk.actualModel, status: chunk.usedFallback ? 'success_fallback' : 'success', promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
                             incrementUsage(cc);
-                            if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage: pricing.cencoriMarkupPercentage });
+                            if (recordEndUserUsage) recordEndUserUsage({ promptTokens: pt, completionTokens: ct, totalTokens: tt, providerCostUsd: pc, cencoriChargeUsd: cc, markupPercentage });
 
                             void maybeCreateCheckpoint(supabase, sessionId, turnNumber + 1, messages, fullText);
 

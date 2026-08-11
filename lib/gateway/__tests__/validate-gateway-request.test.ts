@@ -69,6 +69,8 @@ function buildKeyData(overrides?: {
     monthlyLimit?: number;
     keyType?: string;
     allowedDomains?: string[] | null;
+    allowedModels?: string[] | null;
+    sponsoredModels?: string[] | null;
 }) {
     return {
         id: 'key-val-1',
@@ -76,6 +78,8 @@ function buildKeyData(overrides?: {
         environment: 'production',
         key_type: overrides?.keyType ?? 'secret',
         allowed_domains: overrides?.allowedDomains ?? null,
+        allowed_models: overrides?.allowedModels ?? null,
+        sponsored_models: overrides?.sponsoredModels ?? null,
         projects: {
             id: 'proj-val-1',
             name: 'Validation Project',
@@ -229,6 +233,35 @@ describe('validateGatewayRequest', () => {
             expect(result.response.status).toBe(403);
             const body = await result.response.json();
             expect(body.error).toMatch(/frozen/i);
+        }
+    });
+
+    it('bypasses customer billing gates for an Atlas-only sponsored key', async () => {
+        const model = 'maximo:maximo-atlas-1.1';
+        mockGetCachedApiKeyConfig.mockResolvedValue({
+            data: buildKeyData({
+                billingFrozen: true,
+                creditsBalance: 0,
+                monthlyUsed: 10000,
+                monthlyLimit: 10000,
+                allowedModels: [model],
+                sponsoredModels: [model],
+            }),
+            fromCache: true,
+        });
+        mockCheckSpendCap.mockResolvedValue({
+            allowed: false,
+            reason: 'cap reached',
+            status: { currentSpend: 1000, spendCap: 1000 },
+        });
+
+        const result = await validateGatewayRequest(authRequest('/api/v1/chat/completions'));
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.context.fullySponsoredKey).toBe(true);
+            expect(result.context.allowedModels).toEqual([model]);
+            expect(result.context.sponsoredModels).toEqual([model]);
         }
     });
 

@@ -200,6 +200,8 @@ export async function POST(
             projectId: gatewayCtx.projectId,
             organizationId: gatewayCtx.organizationId,
             requestedModel: resumeModel,
+            allowedModels: gatewayCtx.allowedModels,
+            sponsoredModels: gatewayCtx.sponsoredModels,
         });
 
         const { data: resolutionRows, error: resolutionError } = await adminClient.rpc(

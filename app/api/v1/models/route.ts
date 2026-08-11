@@ -7,6 +7,7 @@ import { extractGatewayCallerIdentity, logApiGatewayRequest } from '@/lib/api-ga
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
 import { getManagedProviderNames } from '@/lib/gateway/providers-setup';
 import { hasStaticPricing } from '@/lib/providers/pricing';
+import { resolveApiKeyModelAccess } from '@/lib/gateway/model-access';
 
 /**
  * GET /api/v1/models
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
     const startedAt = Date.now();
     const callerIdentity = extractGatewayCallerIdentity(req.headers);
     let apiLogContext: { projectId: string; apiKeyId: string; environment: string | null } | null = null;
+    let apiKeyModelAccess: { allowedModels: string[] | null; sponsoredModels: string[] | null } = {
+        allowedModels: null,
+        sponsoredModels: null,
+    };
 
     const respond = (response: NextResponse, errorCode?: string, errorMessage?: string) => {
         if (apiLogContext) {
@@ -85,7 +90,7 @@ export async function GET(req: NextRequest) {
         const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
         const { data: keyData, error: keyError } = await supabase
             .from('api_keys')
-            .select('id, project_id, environment')
+            .select('id, project_id, environment, allowed_models, sponsored_models')
             .eq('key_hash', keyHash)
             .is('revoked_at', null)
             .single();
@@ -108,6 +113,10 @@ export async function GET(req: NextRequest) {
             projectId: keyData.project_id,
             apiKeyId: keyData.id,
             environment: keyData.environment || null,
+        };
+        apiKeyModelAccess = {
+            allowedModels: Array.isArray(keyData.allowed_models) ? keyData.allowed_models : null,
+            sponsoredModels: Array.isArray(keyData.sponsored_models) ? keyData.sponsored_models : null,
         };
 
         isAuthenticated = true;
@@ -254,14 +263,27 @@ export async function GET(req: NextRequest) {
     const filterProvider = url.searchParams.get('provider');
     const filterType = url.searchParams.get('type');
 
+    const visibleCustomModels = customModels.filter((model) =>
+        resolveApiKeyModelAccess({
+            ...apiKeyModelAccess,
+            provider: model.owned_by,
+            model: model.id,
+        }).allowed
+    );
+
     let filteredModels = [
         ...MODELS.filter((model) =>
             availableProviderIds.has(model.owned_by)
+            && resolveApiKeyModelAccess({
+                ...apiKeyModelAccess,
+                provider: model.owned_by,
+                model: model.id,
+            }).allowed
             && (
                 pricedModels.has(`${model.owned_by}:${model.id}`)
                 || hasStaticPricing(model.owned_by, model.id)
             )),
-        ...customModels,
+        ...visibleCustomModels,
     ];
     if (filterProvider) {
         filteredModels = filteredModels.filter(m => m.owned_by === filterProvider);
@@ -286,10 +308,10 @@ export async function GET(req: NextRequest) {
                         model_count: filteredModels.filter(model => model.owned_by === provider.id).length,
                     }))
                     .filter(provider => provider.model_count > 0),
-                ...Array.from(new Set(customModels.map(model => model.owned_by))).map((providerId) => ({
+                ...Array.from(new Set(visibleCustomModels.map(model => model.owned_by))).map((providerId) => ({
                     id: providerId,
                     name: providerId,
-                    model_count: customModels.filter(model => model.owned_by === providerId).length,
+                    model_count: visibleCustomModels.filter(model => model.owned_by === providerId).length,
                 })),
             ],
         })

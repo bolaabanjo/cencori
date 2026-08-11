@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
     AuthenticationError,
+    ModelAccessDeniedError,
     RateLimitError,
     ServiceUnavailableError,
 } from '@/lib/providers/errors';
@@ -69,6 +70,11 @@ describe('gateway reliability helpers', () => {
             status: 503,
             error: 'provider_unavailable',
             provider: 'anthropic',
+        });
+        expect(mapProviderErrorToHttpResponse(new ModelAccessDeniedError('maximo', 'maximo-atlas-1.1'))).toMatchObject({
+            status: 403,
+            error: 'model_access_denied',
+            provider: 'maximo',
         });
     });
 

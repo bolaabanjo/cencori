@@ -302,11 +302,15 @@ export async function POST(req: NextRequest) {
             projectId: ctx.projectId,
             organizationId: ctx.organizationId,
             requestedModel,
+            allowedModels: ctx.allowedModels,
+            sponsoredModels: ctx.sponsoredModels,
         });
         const response = await executeGatewayChat({
             supabase: ctx.supabase,
             projectId: ctx.projectId,
             organizationId: ctx.organizationId,
+            allowedModels: ctx.allowedModels,
+            sponsoredModels: ctx.sponsoredModels,
             tier,
             resolved,
             requestId: ctx.requestId,

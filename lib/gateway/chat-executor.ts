@@ -2,9 +2,7 @@ import type { createAdminClient } from '@/lib/supabaseAdmin';
 import {
     type UnifiedChatRequest,
     type UnifiedChatResponse,
-    type UnifiedMessage,
     type StreamChunk,
-    type ToolCall,
 } from '@/lib/providers/base';
 import { isCircuitOpen, recordSuccess, recordFailure, type CircuitBreakerConfig } from '@/lib/providers/circuit-breaker';
 import { getFallbackChain, getFallbackModel, isNonRetryableError } from '@/lib/providers/failover';
@@ -16,6 +14,11 @@ import {
     type ResolvedGatewayProvider,
 } from '@/lib/gateway/providers-setup';
 import { GeminiProvider, OpenAICompatibleProvider } from '@/lib/providers';
+import {
+    applyResponseBillingMode,
+    assertApiKeyModelAccess,
+    type GatewayBillingMode,
+} from '@/lib/gateway/model-access';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -25,6 +28,7 @@ export type GatewayChatExecutionMeta = {
     usedFallback: boolean;
     originalProvider: string;
     originalModel: string;
+    billingMode: GatewayBillingMode;
 };
 
 export type GatewayStreamChunk = StreamChunk & GatewayChatExecutionMeta;
@@ -106,6 +110,8 @@ export async function executeGatewayChat(params: {
     supabase: SupabaseAdmin;
     projectId: string;
     organizationId: string;
+    allowedModels?: string[] | null;
+    sponsoredModels?: string[] | null;
     tier: SubscriptionTier;
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
@@ -138,6 +144,8 @@ export async function executeGatewayChat(params: {
             projectId: params.projectId,
             organizationId: params.organizationId,
             requestedModel: params.request.model,
+            allowedModels: params.allowedModels,
+            sponsoredModels: params.sponsoredModels,
         }));
 
     // Dedicated per-provider memory key override (Cerebras/Groq/Google), so the
@@ -164,9 +172,9 @@ export async function executeGatewayChat(params: {
     const settings = await loadFailoverSettings(params.supabase, params.projectId);
     const cbConfig = settings.circuitBreakerConfig;
 
-    let actualProvider = providerName;
-    let actualModel = model;
-    let usedFallback = false;
+    const actualProvider = providerName;
+    const actualModel = model;
+    const usedFallback = false;
     let lastError: Error | null = null;
     const fallbackErrors: string[] = [];
 
@@ -176,12 +184,13 @@ export async function executeGatewayChat(params: {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                const response = await withTimeout(
+                const providerResponse = await withTimeout(
                     provider.chat(chatRequest),
                     PROVIDER_TIMEOUT_MS,
                     `${providerName} primary`
                 );
                 await recordSuccess(providerName);
+                const response = applyResponseBillingMode(providerResponse, resolved.billingMode);
                 return {
                     ...response,
                     actualProvider,
@@ -189,6 +198,7 @@ export async function executeGatewayChat(params: {
                     usedFallback,
                     originalProvider: providerName,
                     originalModel: model,
+                    billingMode: resolved.billingMode,
                 };
             } catch (error) {
                 lastError = error instanceof Error ? error : new Error(String(error));
@@ -228,12 +238,19 @@ export async function executeGatewayChat(params: {
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
             const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
+            const fallbackBillingMode = assertApiKeyModelAccess({
+                allowedModels: params.allowedModels,
+                sponsoredModels: params.sponsoredModels,
+                provider: fallbackProviderName,
+                model: fallbackModel,
+            });
             await fallbackProvider.getPricing(fallbackModel);
-            const response = await withTimeout(
+            const providerResponse = await withTimeout(
                 fallbackProvider.chat({ ...chatRequest, model: fallbackModel }),
                 PROVIDER_TIMEOUT_MS,
                 `${fallbackProviderName} fallback`
             );
+            const response = applyResponseBillingMode(providerResponse, fallbackBillingMode);
             await recordSuccess(fallbackProviderName);
 
             void triggerFallbackWebhook(params.projectId, {
@@ -252,6 +269,7 @@ export async function executeGatewayChat(params: {
                 usedFallback: true,
                 originalProvider: providerName,
                 originalModel: model,
+                billingMode: fallbackBillingMode,
             };
         } catch (fallbackError) {
             const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -278,6 +296,8 @@ export async function* streamGatewayChat(params: {
     supabase: SupabaseAdmin;
     projectId: string;
     organizationId: string;
+    allowedModels?: string[] | null;
+    sponsoredModels?: string[] | null;
     tier: SubscriptionTier;
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
@@ -290,6 +310,8 @@ export async function* streamGatewayChat(params: {
             projectId: params.projectId,
             organizationId: params.organizationId,
             requestedModel: params.request.model,
+            allowedModels: params.allowedModels,
+            sponsoredModels: params.sponsoredModels,
         }));
 
     const { providerName, model, provider, router } = resolved;
@@ -316,6 +338,7 @@ export async function* streamGatewayChat(params: {
                         usedFallback: false,
                         originalProvider: providerName,
                         originalModel: model,
+                        billingMode: resolved.billingMode,
                     };
                 }
                 await recordSuccess(providerName);
@@ -362,6 +385,12 @@ export async function* streamGatewayChat(params: {
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
             const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
+            const fallbackBillingMode = assertApiKeyModelAccess({
+                allowedModels: params.allowedModels,
+                sponsoredModels: params.sponsoredModels,
+                provider: fallbackProviderName,
+                model: fallbackModel,
+            });
             await fallbackProvider.getPricing(fallbackModel);
             const stream = fallbackProvider.stream({ ...chatRequest, model: fallbackModel });
 
@@ -374,6 +403,7 @@ export async function* streamGatewayChat(params: {
                     usedFallback: true,
                     originalProvider: providerName,
                     originalModel: model,
+                    billingMode: fallbackBillingMode,
                 };
             }
 

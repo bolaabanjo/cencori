@@ -123,6 +123,35 @@ describe('executeGatewayChat failover', () => {
         expect(primaryChat).toHaveBeenCalledTimes(1);
     });
 
+    it('zeroes the customer charge but preserves provider cost for sponsored access', async () => {
+        const primaryChat = vi.fn().mockResolvedValue({
+            ...mockResponse('sponsored'),
+            cost: { providerCostUsd: 0.25, cencoriChargeUsd: 0.375, markupPercentage: 50 },
+        });
+
+        const result = await executeGatewayChat({
+            supabase: createMockSupabaseForExecutor() as never,
+            projectId: 'proj-ex',
+            organizationId: 'org-ex',
+            tier: 'pro',
+            request: { messages: [], model: 'maximo-atlas-1.1', stream: false } as UnifiedChatRequest,
+            resolved: {
+                providerName: 'maximo',
+                model: 'maximo-atlas-1.1',
+                billingMode: 'sponsored',
+                provider: { chat: primaryChat, stream: vi.fn(), countTokens: vi.fn(), getPricing: vi.fn() },
+                router: { hasProvider: () => true, getProvider: vi.fn() },
+            } as never,
+        });
+
+        expect(result.cost).toEqual({
+            providerCostUsd: 0.25,
+            cencoriChargeUsd: 0,
+            markupPercentage: 0,
+        });
+        expect(result.billingMode).toBe('sponsored');
+    });
+
     it('falls back to secondary provider when primary fails', async () => {
         const primaryChat = vi.fn().mockRejectedValue(new Error('openai down'));
         const fallbackChat = vi.fn().mockResolvedValue(mockResponse('fallback ok'));
