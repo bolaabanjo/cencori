@@ -5,6 +5,7 @@ import { Redis } from '@upstash/redis';
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 let redis: Redis | null | undefined;
+const localProviders = new Map<string, { providers: CustomProviderLookupRow[]; expiresAt: number }>();
 
 function getRedisClient(): Redis | null {
     if (redis !== undefined) return redis;
@@ -133,13 +134,18 @@ export async function resolveCustomProviderForProject(params: {
     // Try Redis cache first (~10ms vs ~100ms DB query)
     const client = getRedisClient();
     const cacheKey = `cfg:cprov:${projectId}`;
-    let providers: CustomProviderLookupRow[] | null = null;
+    const local = localProviders.get(projectId);
+    let providers: CustomProviderLookupRow[] | null = local && local.expiresAt > Date.now()
+        ? local.providers
+        : null;
+    if (local && local.expiresAt <= Date.now()) localProviders.delete(projectId);
 
     if (client) {
         try {
             const cached = await client.get<CustomProviderLookupRow[]>(cacheKey);
             if (cached) {
                 providers = cached;
+                localProviders.set(projectId, { providers, expiresAt: Date.now() + 60_000 });
             }
         } catch {
             // Fall through to DB
@@ -172,9 +178,10 @@ export async function resolveCustomProviderForProject(params: {
         }
 
         providers = ((data || []) as CustomProviderLookupRow[]).filter((provider) => !!provider.base_url);
+        localProviders.set(projectId, { providers, expiresAt: Date.now() + 60_000 });
 
         // Cache for 60s (providers change rarely)
-        if (client && providers.length > 0) {
+        if (client) {
             // Cache without encrypted keys for safety — we re-decrypt below anyway
             void client.set(cacheKey, providers, { ex: 60 }).catch(() => {});
         }

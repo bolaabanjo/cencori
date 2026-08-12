@@ -110,28 +110,19 @@ export async function lookupCache(params: {
         try {
             const cached = await redis.get<string>(`${REDIS_PREFIX}${cacheKey}`);
             if (cached) {
-                // Look up entry ID for hit tracking
-                const supabase = createAdminClient();
-                const { data: entry } = await supabase
-                    .from('prompt_cache_entries')
-                    .select('id, estimated_tokens, estimated_cost_usd')
-                    .eq('project_id', projectId)
-                    .eq('environment', environment)
-                    .eq('cache_key', cacheKey)
-                    .gt('expires_at', new Date().toISOString())
-                    .single();
-
-                const response = typeof cached === 'string' ? JSON.parse(cached) : cached;
+                const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
+                const envelope = parsed && parsed.__cencori_cache_v2 === true ? parsed : null;
+                const response = envelope ? envelope.response : parsed;
 
                 return {
                     hit: true,
                     hitType: 'exact',
                     response,
-                    entryId: entry?.id || null,
+                    entryId: envelope?.entryId || null,
                     similarityScore: 1.0,
                     embedding: null,
-                    estimatedTokens: Number(entry?.estimated_tokens) || Number(response?.usage?.total_tokens) || 0,
-                    estimatedCostUsd: Number(entry?.estimated_cost_usd) || Number(response?.cost_usd) || 0,
+                    estimatedTokens: Number(envelope?.estimatedTokens) || Number(response?.usage?.total_tokens) || 0,
+                    estimatedCostUsd: Number(envelope?.estimatedCostUsd) || Number(response?.cost_usd) || 0,
                 };
             }
         } catch (error) {
@@ -206,18 +197,12 @@ export async function storeInCache(params: CacheStoreParams): Promise<void> {
         }
 
         try {
-            // 1. Redis exact-match store
-            await redis.set(
-                `${REDIS_PREFIX}${cacheKey}`,
-                JSON.stringify(response),
-                { ex: ttlSeconds }
-            );
-
-            // 2. Supabase persistent store
+            // Persist first so the Redis envelope can carry the entry ID and
+            // exact hits never need a second database round trip.
             const supabase = createAdminClient();
             const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
-            const { error: upsertError } = await supabase
+            const { data: storedEntry, error: upsertError } = await supabase
                 .from('prompt_cache_entries')
                 .upsert({
                     project_id: projectId,
@@ -235,8 +220,22 @@ export async function storeInCache(params: CacheStoreParams): Promise<void> {
                     updated_at: new Date().toISOString(),
                 }, {
                     onConflict: 'project_id,cache_key',
-                });
+                })
+                .select('id')
+                .single();
             if (upsertError) throw upsertError;
+
+            await redis.set(
+                `${REDIS_PREFIX}${cacheKey}`,
+                JSON.stringify({
+                    __cencori_cache_v2: true,
+                    response,
+                    entryId: storedEntry?.id || null,
+                    estimatedTokens,
+                    estimatedCostUsd,
+                }),
+                { ex: ttlSeconds }
+            );
 
             // Enforce the configured per-project bound. Keep the newest rows
             // and evict overflow from both persistent and exact-match stores.

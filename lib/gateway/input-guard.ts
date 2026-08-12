@@ -95,11 +95,18 @@ export async function runGatewayInputPipeline(
     const lastUser = params.messages.slice().reverse().find((m) => m.role === 'user');
     const inputText = lastUser?.content || '';
 
-    const securityConfig = await getProjectSecurityConfig(
-        params.supabase,
-        params.projectId,
-        params.tier
-    );
+    const [securityConfig, customRules] = await Promise.all([
+        getProjectSecurityConfig(
+            params.supabase,
+            params.projectId,
+            params.tier
+        ),
+        fetchAndProcessCustomRules(
+            params.supabase,
+            params.projectId,
+            inputText
+        ),
+    ]);
 
     const inputSecurity = checkInputSecurity(inputText, params.messages, securityConfig);
 
@@ -116,12 +123,6 @@ export async function runGatewayInputPipeline(
         };
         return block;
     }
-
-    const customRules = await fetchAndProcessCustomRules(
-        params.supabase,
-        params.projectId,
-        inputText
-    );
 
     if (customRules.inputResult.shouldBlock) {
         const blockRule = customRules.inputResult.matchedRules.find((r) => r.rule.action === 'block');

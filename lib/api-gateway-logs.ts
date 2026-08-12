@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import type { GatewayPerformanceMetrics } from '@/lib/gateway/performance';
 
 export type GatewayLogEnvironment = 'production' | 'test';
 
@@ -92,5 +93,32 @@ export async function logApiGatewayRequest(params: LogApiGatewayRequestParams): 
     } catch (error) {
         // Non-blocking telemetry path: failing to write logs should not break API responses.
         console.error('[API Gateway Logs] Failed to persist request log:', error);
+    }
+}
+
+/** Persist measurements that only become known after a streaming body ends. */
+export async function updateApiGatewayRequestPerformance(
+    requestId: string,
+    metrics: GatewayPerformanceMetrics
+): Promise<void> {
+    try {
+        const supabase = createAdminClient();
+        const value = (metric: number | null) => metric === null ? null : Math.max(0, metric);
+        const { error } = await supabase
+            .from('api_gateway_request_logs')
+            .update({
+                gateway_preflight_ms: value(metrics.gatewayPreflightMs),
+                provider_ttft_ms: value(metrics.providerTtftMs),
+                client_ttft_ms: value(metrics.clientTtftMs),
+                total_completion_ms: value(metrics.totalCompletionMs),
+                tokens_per_second: value(metrics.tokensPerSecond),
+            })
+            .eq('request_id', requestId);
+
+        if (error) {
+            console.error('[GatewayLogs] Failed to update performance metrics:', error);
+        }
+    } catch (error) {
+        console.error('[GatewayLogs] Performance telemetry failed:', error);
     }
 }

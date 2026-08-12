@@ -19,6 +19,12 @@ import {
     assertApiKeyModelAccess,
     type GatewayBillingMode,
 } from '@/lib/gateway/model-access';
+import type { GatewayPerformanceTracker } from '@/lib/gateway/performance';
+import {
+    getCachedFailoverConfig,
+    setCachedFailoverConfig,
+} from '@/lib/config-cache';
+import { hedgedStream } from '@/lib/gateway/hedged-stream';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -88,11 +94,17 @@ interface FailoverSettings {
 }
 
 async function loadFailoverSettings(supabase: SupabaseAdmin, projectId: string): Promise<FailoverSettings> {
-    const { data } = await supabase
-        .from('project_settings')
-        .select('enable_fallback, fallback_provider, fallback_model, max_retries_before_fallback, circuit_breaker_enabled, circuit_breaker_failure_threshold, circuit_breaker_timeout_seconds')
-        .eq('project_id', projectId)
-        .single();
+    const cached = await getCachedFailoverConfig(projectId);
+    let data = cached;
+    if (!cached) {
+        const result = await supabase
+            .from('project_settings')
+            .select('enable_fallback, fallback_provider, fallback_model, max_retries_before_fallback, circuit_breaker_enabled, circuit_breaker_failure_threshold, circuit_breaker_timeout_seconds')
+            .eq('project_id', projectId)
+            .single();
+        data = result.data || {};
+        void setCachedFailoverConfig(projectId, data);
+    }
 
     return {
         enableFallback: data?.enable_fallback ?? true,
@@ -136,6 +148,7 @@ export async function executeGatewayChat(params: {
      * fallback): a failure should fail open, not route through an unfunded key.
      */
     googleOnly?: boolean;
+    performance?: GatewayPerformanceTracker;
 }): Promise<UnifiedChatResponse & GatewayChatExecutionMeta> {
     let resolved =
         params.resolved ??
@@ -184,6 +197,7 @@ export async function executeGatewayChat(params: {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
+                params.performance?.markProviderStart();
                 const providerResponse = await withTimeout(
                     provider.chat(chatRequest),
                     PROVIDER_TIMEOUT_MS,
@@ -302,6 +316,8 @@ export async function* streamGatewayChat(params: {
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
     requestId?: string;
+    performance?: GatewayPerformanceTracker;
+    hedgeDelayMs?: number;
 }): AsyncGenerator<GatewayStreamChunk> {
     const resolved =
         params.resolved ??
@@ -323,11 +339,119 @@ export async function* streamGatewayChat(params: {
     let lastError: Error | null = null;
     const fallbackErrors: string[] = [];
 
+    // Speed-profile hedging: the secondary request is not created unless the
+    // primary misses the first-token threshold. The first usable stream wins;
+    // the loser is cancelled and never spliced into the winning answer.
+    if (
+        params.hedgeDelayMs
+        && params.hedgeDelayMs > 0
+        && failoverAllowed
+        && settings.enableFallback
+        && !(await isCircuitOpen(providerName, cbConfig))
+    ) {
+        let hedgeFallbackProviderName: string | null = null;
+        let hedgeFallbackModel: string | null = null;
+        let hedgeFallbackBillingMode: GatewayBillingMode | null = null;
+        let winner: 'primary' | 'secondary' | null = null;
+        let emitted = false;
+
+        try {
+            const raced = hedgedStream<StreamChunk>({
+                primary: () => {
+                    params.performance?.markProviderStart();
+                    return streamWithTimeout(provider.stream(chatRequest), `${providerName} hedged primary`);
+                },
+                secondary: async () => {
+                    const fallbackChain = getFallbackChain(providerName, settings.configuredFallback);
+                    for (const candidate of fallbackChain) {
+                        if (await isCircuitOpen(candidate, cbConfig)) continue;
+                        if (!router.hasProvider(candidate)) {
+                            const initialized = await initializeBYOKProviders(
+                                router,
+                                params.supabase,
+                                params.projectId,
+                                params.organizationId,
+                                candidate
+                            );
+                            if (!initialized.success) continue;
+                        }
+
+                        const fallbackProvider = router.getProvider(candidate);
+                        const fallbackModel = await getFallbackModel(
+                            model,
+                            candidate,
+                            settings.configuredFallbackModel
+                        );
+                        const billingMode = assertApiKeyModelAccess({
+                            allowedModels: params.allowedModels,
+                            sponsoredModels: params.sponsoredModels,
+                            provider: candidate,
+                            model: fallbackModel,
+                        });
+                        await fallbackProvider.getPricing(fallbackModel);
+                        hedgeFallbackProviderName = candidate;
+                        hedgeFallbackModel = fallbackModel;
+                        hedgeFallbackBillingMode = billingMode;
+                        return streamWithTimeout(
+                            fallbackProvider.stream({ ...chatRequest, model: fallbackModel }),
+                            `${candidate} hedge`
+                        );
+                    }
+                    throw new Error('No hedge fallback provider is available');
+                },
+                delayMs: params.hedgeDelayMs,
+                isUsable: (chunk) => Boolean(
+                    chunk.delta
+                    || (chunk.toolCalls && chunk.toolCalls.length > 0)
+                    || chunk.finishReason
+                ),
+            });
+
+            for await (const racedChunk of raced) {
+                winner ??= racedChunk.source;
+                emitted = true;
+                const usedFallback = winner === 'secondary';
+                yield {
+                    ...racedChunk.value,
+                    actualProvider: usedFallback ? hedgeFallbackProviderName! : providerName,
+                    actualModel: usedFallback ? hedgeFallbackModel! : model,
+                    usedFallback,
+                    originalProvider: providerName,
+                    originalModel: model,
+                    billingMode: usedFallback ? hedgeFallbackBillingMode! : resolved.billingMode,
+                };
+            }
+
+            if (winner === 'secondary') {
+                await recordSuccess(hedgeFallbackProviderName!);
+                void triggerFallbackWebhook(params.projectId, {
+                    original_provider: providerName,
+                    original_model: model,
+                    fallback_provider: hedgeFallbackProviderName!,
+                    fallback_model: hedgeFallbackModel!,
+                    reason: `Primary exceeded ${params.hedgeDelayMs}ms first-token threshold`,
+                    request_id: params.requestId,
+                });
+            } else {
+                await recordSuccess(providerName);
+            }
+            return;
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            if (emitted) {
+                throw lastError;
+            }
+            // Both candidates failed before output. Continue through the
+            // established retry/failover path below.
+        }
+    }
+
     if (!(await isCircuitOpen(providerName, cbConfig))) {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             let emitted = false;
             try {
+                params.performance?.markProviderStart();
                 const stream = provider.stream(chatRequest);
                 for await (const chunk of streamWithTimeout(stream, `${providerName} primary`)) {
                     emitted = true;
@@ -392,6 +516,7 @@ export async function* streamGatewayChat(params: {
                 model: fallbackModel,
             });
             await fallbackProvider.getPricing(fallbackModel);
+            params.performance?.markProviderStart();
             const stream = fallbackProvider.stream({ ...chatRequest, model: fallbackModel });
 
             for await (const chunk of streamWithTimeout(stream, `${fallbackProviderName} fallback`)) {

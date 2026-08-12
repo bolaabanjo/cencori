@@ -3,6 +3,7 @@ import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { invalidateCustomRules } from '@/lib/config-cache';
 
 interface RouteParams {
     params: Promise<{
@@ -100,6 +101,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
             return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
         }
 
+        await invalidateCustomRules(projectId);
+
         const { data: proj } = await supabase.from('projects').select('organization_id').eq('id', projectId).single();
         if (proj?.organization_id) {
             writeAuditLog({
@@ -141,6 +144,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
             console.error('[Custom Rules] Failed to delete:', error);
             return NextResponse.json({ error: 'Failed to delete rule' }, { status: 500 });
         }
+
+        await invalidateCustomRules(projectId);
 
         const { data: proj } = await supabase.from('projects').select('organization_id').eq('id', projectId).single();
         if (proj?.organization_id) {

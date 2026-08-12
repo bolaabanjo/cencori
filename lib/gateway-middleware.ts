@@ -47,6 +47,8 @@ export interface GatewayContext {
     defaultModel: string | null;
     defaultProvider: string | null;
     endUserBillingEnabled: boolean;
+    /** Agent identity is loaded with the API-key cache to avoid a second key lookup. */
+    agentId?: string | null;
     rateLimit?: {
         status: 'ok' | 'skipped' | 'failed_open' | 'failed_closed';
         limit: number;
@@ -452,6 +454,7 @@ return {
                 project_id,
                 environment,
                 key_type,
+                agent_id,
                 allowed_domains,
                 allowed_models,
                 sponsored_models,
@@ -481,7 +484,7 @@ return {
 
         // Cache the result for next time
         if (keyData) {
-            await setCachedApiKeyConfig(keyHash, keyData);
+            void setCachedApiKeyConfig(keyHash, keyData);
         }
     }
 
@@ -544,25 +547,7 @@ return {
         : null;
     const fullySponsoredKey = isFullySponsoredApiKey(allowedModels, sponsoredModels);
 
-    const networkDenial = await enforceProjectIngressPolicy({
-        supabase,
-        projectId: project.id,
-        sourceIp: requestSourceIp,
-        requestId,
-    });
-    if (networkDenial) return { success: false, response: networkDenial };
-    
-    // ── Credits Fast-Path (Redis) ──
     const shouldEnforceCredits = tier !== 'free' && tier !== 'enterprise' && !fullySponsoredKey;
-    let creditsBalance = Number(organization.credits_balance ?? 0);
-
-    if (shouldEnforceCredits) {
-        const { getCachedCreditsBalance } = await import('@/lib/config-cache');
-        const cachedBalance = await getCachedCreditsBalance(organizationId);
-        if (cachedBalance !== null) {
-            creditsBalance = cachedBalance;
-        }
-    }
 
     if (billingFrozen && !fullySponsoredKey) {
         return {
@@ -573,25 +558,6 @@ return {
                         error: 'Billing account frozen',
                         message: 'Billing is currently frozen for this organization. Contact support.',
                         code: 'billing_frozen',
-                    },
-                    { status: 403 }
-                ),
-                { requestId }
-            ),
-        };
-    }
-
-    if (shouldEnforceCredits && creditsBalance <= 0) {
-        return {
-            success: false,
-            response: addGatewayHeaders(
-                NextResponse.json(
-                    {
-                        error: 'Credit balance exhausted',
-                        message: 'Your organization has run out of credits. Top up to continue.',
-                        code: 'credit_balance_exhausted',
-                        balance: 0,
-                        top_up_url: '/billing',
                     },
                     { status: 403 }
                 ),
@@ -631,12 +597,49 @@ return {
         };
     }
 
-    // ── Per-minute rate limit + Spend cap (parallel — these are independent) ──
+    // ── Independent enforcement checks in one parallel preflight phase ──
+    // These were previously three serial Redis/DB phases (network, credits,
+    // then rate-limit/spend). Keeping their decisions identical while
+    // overlapping the I/O removes two network round trips from warm TTFT.
     const route = req.nextUrl.pathname;
-    const [rateLimitResult, spendCapResult] = await Promise.all([
+    const creditsBalancePromise = shouldEnforceCredits
+        ? import('@/lib/config-cache').then(async ({ getCachedCreditsBalance }) => {
+            const cached = await getCachedCreditsBalance(organizationId);
+            return cached ?? Number(organization.credits_balance ?? 0);
+        })
+        : Promise.resolve(Number(organization.credits_balance ?? 0));
+    const [networkDenial, creditsBalance, rateLimitResult, spendCapResult] = await Promise.all([
+        enforceProjectIngressPolicy({
+            supabase,
+            projectId: project.id,
+            sourceIp: requestSourceIp,
+            requestId,
+        }),
+        creditsBalancePromise,
         checkRateLimit(project.id, { requestId, route }),
         checkSpendCap(project.id),
     ]);
+
+    if (networkDenial) return { success: false, response: networkDenial };
+
+    if (shouldEnforceCredits && creditsBalance <= 0) {
+        return {
+            success: false,
+            response: addGatewayHeaders(
+                NextResponse.json(
+                    {
+                        error: 'Credit balance exhausted',
+                        message: 'Your organization has run out of credits. Top up to continue.',
+                        code: 'credit_balance_exhausted',
+                        balance: 0,
+                        top_up_url: '/billing',
+                    },
+                    { status: 403 }
+                ),
+                { requestId }
+            ),
+        };
+    }
 
     if (!rateLimitResult.allowed) {
         if (rateLimitResult.reason === 'backend_unavailable') {
@@ -715,6 +718,7 @@ return {
         defaultModel: project.default_model,
         defaultProvider: project.default_provider,
         endUserBillingEnabled: Boolean(project.end_user_billing_enabled),
+        agentId: (keyData.agent_id as string | null | undefined) ?? null,
         rateLimit: {
             status: rateLimitResult.status,
             limit: rateLimitResult.limit,

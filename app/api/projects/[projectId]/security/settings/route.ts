@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { invalidateSecurityConfig } from '@/lib/config-cache';
 
 interface SecuritySettings {
     filter_harmful_content: boolean;
@@ -134,6 +135,8 @@ export async function PUT(
         console.error('Error updating security settings:', upsertError);
         return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
     }
+
+    await invalidateSecurityConfig(projectId);
 
     await supabase.from('security_audit_log').insert({
         project_id: projectId,

@@ -5,6 +5,7 @@ import { encryptApiKey } from '@/lib/encryption';
 import { SUPPORTED_PROVIDERS, getProvider } from '@/lib/providers/config';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { invalidateProviderConfig } from '@/lib/config-cache';
 
 interface ProviderKeyResponse {
     provider: string;
@@ -213,6 +214,8 @@ export async function POST(
                 .update(projectUpdate)
                 .eq('id', projectId);
         }
+
+        await invalidateProviderConfig(projectId, provider);
 
         writeAuditLog({
             organizationId: project.organization_id,

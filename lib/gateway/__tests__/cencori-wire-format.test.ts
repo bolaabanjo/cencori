@@ -406,7 +406,48 @@ describe('cencori wire format — stream', () => {
         expect(raw).not.toContain('123-45-6789');
         expect(c.some((chunk) => chunk.error === 'Response blocked')).toBe(true);
         expect(c.filter((chunk) => typeof chunk.delta === 'string' && chunk.delta)
-            .map((chunk) => chunk.delta).join('')).toBe('S'.repeat(144));
+            .map((chunk) => chunk.delta).join('')).toBe('S'.repeat(376));
+    });
+
+    it('releases the first approved bytes after 32 generated characters', async () => {
+        let finishStream!: () => void;
+        const finishGate = new Promise<void>((resolve) => {
+            finishStream = resolve;
+        });
+        mockStreamGatewayChat.mockReturnValue(
+            (async function* () {
+                yield {
+                    actualProvider: 'openai',
+                    actualModel: 'gpt-4o',
+                    usedFallback: false,
+                    originalProvider: 'openai',
+                    originalModel: 'gpt-4o',
+                    delta: 'A'.repeat(32),
+                };
+                await finishGate;
+                yield {
+                    actualProvider: 'openai',
+                    actualModel: 'gpt-4o',
+                    usedFallback: false,
+                    originalProvider: 'openai',
+                    originalModel: 'gpt-4o',
+                    delta: '',
+                    finishReason: 'stop',
+                };
+            })()
+        );
+
+        const result = await runV1ProviderExecution(baseParams({ stream: true }));
+        if (!result.ok) throw new Error('expected ok');
+        const reader = result.response.body!.getReader();
+        const firstRead = await reader.read();
+        const firstPayload = new TextDecoder().decode(firstRead.value);
+
+        expect(firstPayload).toContain(`"delta":"${'A'.repeat(8)}"`);
+        finishStream();
+        while (!(await reader.read()).done) {
+            // Drain the response so settlement completes.
+        }
     });
 
     it('openai mode still emits [DONE] after an output block (unchanged)', async () => {

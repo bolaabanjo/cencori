@@ -104,17 +104,21 @@ export async function resolveAgentContext(params: {
     const { supabase, req, gatewayCtx, authenticatedProjectId, authenticatedUserId, startedAt } = params;
     let resolvedGatewayCtx = gatewayCtx;
 
-    let agentId: string | null = params.agentIdOverride || req.headers.get("X-Agent-ID");
+    let agentId: string | null = params.agentIdOverride
+        || req.headers.get("X-Agent-ID")
+        || resolvedGatewayCtx?.agentId
+        || null;
 
-    // Derive agent ID from API key name (format: "Agent {uuid} Key")
-    if (!agentId && resolvedGatewayCtx) {
+    // Old cached key payloads may predate agent_id. Only agent-scoped keys pay
+    // for this compatibility lookup; generic API keys stay entirely on the
+    // cached validation path.
+    if (!agentId && resolvedGatewayCtx?.keyType === 'agent' && resolvedGatewayCtx.apiKeyId) {
         const { data: keyRecord } = await supabase
             .from("api_keys")
-            .select("name")
+            .select("agent_id")
             .eq("id", resolvedGatewayCtx.apiKeyId)
             .single();
-        const match = keyRecord?.name?.match(/^Agent\s+(\S+)\s+Key/);
-        if (match) agentId = match[1];
+        agentId = (keyRecord?.agent_id as string | null | undefined) ?? null;
     }
 
     if (!agentId) {

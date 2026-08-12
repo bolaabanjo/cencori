@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createClient } from "@supabase/supabase-js";
 import { writeAuditLog } from "@/lib/audit-log";
+import { invalidateFailoverConfig } from '@/lib/config-cache';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -134,6 +135,8 @@ export async function PATCH(
             description: 'Updated project settings',
             metadata: { changes: body },
         });
+
+        await invalidateFailoverConfig(projectId);
 
         return NextResponse.json({ success: true });
     } catch (error) {

@@ -5,6 +5,10 @@ import {
     type ProcessedContent,
 } from '@/lib/safety/custom-data-rules';
 import type { UnifiedMessage } from '@/lib/providers/base';
+import {
+    getCachedCustomRules,
+    setCachedCustomRules,
+} from '@/lib/config-cache';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -19,12 +23,19 @@ export async function fetchAndProcessCustomRules(
     inputText: string
 ): Promise<CustomRulesPipelineResult> {
     try {
-        const { data: rules, error } = await supabase
-            .from('custom_data_rules')
-            .select('*')
-            .eq('project_id', projectId)
-            .eq('is_active', true)
-            .order('priority', { ascending: false });
+        let rules = await getCachedCustomRules(projectId) as CustomDataRule[] | null;
+        let error: { message?: string } | null = null;
+        if (rules === null) {
+            const result = await supabase
+                .from('custom_data_rules')
+                .select('*')
+                .eq('project_id', projectId)
+                .eq('is_active', true)
+                .order('priority', { ascending: false });
+            rules = (result.data || []) as CustomDataRule[];
+            error = result.error;
+            if (!error) void setCachedCustomRules(projectId, rules);
+        }
 
         if (error || !rules || rules.length === 0) {
             return {
@@ -38,8 +49,8 @@ export async function fetchAndProcessCustomRules(
             };
         }
 
-        const inputResult = await processCustomRules(inputText, rules as CustomDataRule[]);
-        return { rules: rules as CustomDataRule[], inputResult };
+        const inputResult = await processCustomRules(inputText, rules);
+        return { rules, inputResult };
     } catch (error) {
         console.warn('[CustomRules] Failed to process:', error);
         return {

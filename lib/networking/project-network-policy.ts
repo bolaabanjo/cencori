@@ -45,7 +45,7 @@ export async function loadProjectNetworkPolicy(
     }
 
     const policy = fromRow(data as ProjectNetworkPolicyRow | null);
-    await setCachedNetworkConfig(projectId, policy);
+    void setCachedNetworkConfig(projectId, policy);
     return policy;
 }
 

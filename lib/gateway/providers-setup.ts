@@ -16,6 +16,10 @@ import {
     assertApiKeyModelAccess,
     type GatewayBillingMode,
 } from '@/lib/gateway/model-access';
+import {
+    getCachedProviderConfig,
+    setCachedProviderConfig,
+} from '@/lib/config-cache';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -113,12 +117,22 @@ export async function initializeBYOKProviders(
     targetProvider: string
 ): Promise<{ success: boolean; defaultModel?: string }> {
     try {
-        const { data: providerKey, error } = await supabase
-            .from('provider_keys')
-            .select('encrypted_key, is_active, default_model')
-            .eq('project_id', projectId)
-            .eq('provider', targetProvider)
-            .single();
+        const cached = await getCachedProviderConfig(projectId, targetProvider);
+        let providerKey = cached?.row;
+        let error: unknown = null;
+        if (!cached) {
+            const result = await supabase
+                .from('provider_keys')
+                .select('encrypted_key, is_active, default_model')
+                .eq('project_id', projectId)
+                .eq('provider', targetProvider)
+                .single();
+            providerKey = result.data;
+            error = result.error;
+            // Cache misses too: managed-provider projects should not query the
+            // BYOK table on every inference.
+            void setCachedProviderConfig(projectId, targetProvider, providerKey ?? null);
+        }
 
         if (!error && providerKey && providerKey.is_active) {
             const apiKey = decryptApiKey(providerKey.encrypted_key, organizationId);

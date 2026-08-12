@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabaseAdmin';
 import { trackEvent } from '@/lib/track-event';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { invalidateCustomRules } from '@/lib/config-cache';
 
 interface RouteParams {
     params: Promise<{
@@ -100,6 +101,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
             console.error('[Custom Rules] Failed to create:', error);
             return NextResponse.json({ error: 'Failed to create rule' }, { status: 500 });
         }
+
+        await invalidateCustomRules(projectId);
 
         trackEvent({ event_type: 'custom_rule.created', product: 'gateway', project_id: projectId, metadata: { rule_name: name, match_type, action } });
 

@@ -32,6 +32,14 @@ interface MetricsResponse {
         p90_ms: number | null;
         p99_ms: number | null;
     };
+    inference_performance: {
+        samples: number;
+        gateway_preflight_ms: MetricDistribution;
+        provider_ttft_ms: MetricDistribution;
+        client_ttft_ms: MetricDistribution;
+        total_completion_ms: MetricDistribution;
+        tokens_per_second: MetricDistribution;
+    };
     providers: {
         [provider: string]: {
             requests: number;
@@ -43,6 +51,31 @@ interface MetricsResponse {
             requests: number;
             cost_usd: number;
         };
+    };
+}
+
+interface MetricDistribution {
+    avg: number | null;
+    p50: number | null;
+    p90: number | null;
+    p99: number | null;
+}
+
+function summarize(values: Array<number | string | null>): MetricDistribution {
+    const sorted = values
+        .map(Number)
+        .filter((value) => Number.isFinite(value) && value >= 0)
+        .sort((a, b) => a - b);
+    if (sorted.length === 0) return { avg: null, p50: null, p90: null, p99: null };
+    const percentile = (fraction: number) => sorted[Math.min(
+        sorted.length - 1,
+        Math.floor(sorted.length * fraction)
+    )];
+    return {
+        avg: sorted.reduce((total, value) => total + value, 0) / sorted.length,
+        p50: percentile(0.5),
+        p90: percentile(0.9),
+        p99: percentile(0.99),
     };
 }
 
@@ -152,10 +185,21 @@ export async function GET(req: NextRequest) {
         provider: string | null; model: string | null;
     };
     let requests: MetricRow[];
+    type PerformanceRow = {
+        gateway_preflight_ms: number | null;
+        provider_ttft_ms: number | null;
+        client_ttft_ms: number | null;
+        total_completion_ms: number | null;
+        tokens_per_second: number | string | null;
+    };
+    let performanceRows: PerformanceRow[] = [];
     try {
         // Paginate past the 1000-row ceiling so totals reflect ALL requests.
-        requests = await fetchAllRows<MetricRow>((from, to) =>
-            supabase
+        // Latency telemetry is supplementary: it depends on columns added by a
+        // later migration, so a failure there degrades to an empty
+        // distribution instead of failing the whole metrics response.
+        [requests, performanceRows] = await Promise.all([
+            fetchAllRows<MetricRow>((from, to) => supabase
                 .from('ai_requests')
                 .select('status, cost_usd, latency_ms, prompt_tokens, completion_tokens, total_tokens, provider, model')
                 .eq('project_id', projectId)
@@ -163,7 +207,21 @@ export async function GET(req: NextRequest) {
                 .lte('created_at', end.toISOString())
                 .order('created_at', { ascending: true })
                 .range(from, to)
-        );
+            ),
+            fetchAllRows<PerformanceRow>((from, to) => supabase
+                .from('api_gateway_request_logs')
+                .select('gateway_preflight_ms, provider_ttft_ms, client_ttft_ms, total_completion_ms, tokens_per_second')
+                .eq('project_id', projectId)
+                .eq('endpoint', '/v1/chat/completions')
+                .gte('created_at', start.toISOString())
+                .lte('created_at', end.toISOString())
+                .order('created_at', { ascending: true })
+                .range(from, to)
+            ).catch((error) => {
+                console.error('[Metrics API] Performance telemetry unavailable:', error);
+                return [] as PerformanceRow[];
+            }),
+        ]);
     } catch (error) {
         console.error('[Metrics API] Query error:', error);
         return respond(
@@ -239,6 +297,14 @@ export async function GET(req: NextRequest) {
             p50_ms: p50 !== null ? Math.round(p50) : null,
             p90_ms: p90 !== null ? Math.round(p90) : null,
             p99_ms: p99 !== null ? Math.round(p99) : null,
+        },
+        inference_performance: {
+            samples: performanceRows.length,
+            gateway_preflight_ms: summarize(performanceRows.map((row) => row.gateway_preflight_ms)),
+            provider_ttft_ms: summarize(performanceRows.map((row) => row.provider_ttft_ms)),
+            client_ttft_ms: summarize(performanceRows.map((row) => row.client_ttft_ms)),
+            total_completion_ms: summarize(performanceRows.map((row) => row.total_completion_ms)),
+            tokens_per_second: summarize(performanceRows.map((row) => row.tokens_per_second)),
         },
         providers,
         models,

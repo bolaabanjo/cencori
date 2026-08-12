@@ -35,6 +35,7 @@ const routeMocks = vi.hoisted(() => ({
     incrementUsage: vi.fn(),
     addGatewayHeaders: vi.fn((res: Response) => res),
     logApiGatewayRequest: vi.fn(),
+    updateApiGatewayRequestPerformance: vi.fn(),
     getCachedCacheConfig: vi.fn(),
     getProjectCacheConfig: vi.fn(),
     lookupCache: vi.fn(),
@@ -80,6 +81,7 @@ vi.mock('@/lib/end-user-billing', () => ({
 vi.mock('@/lib/api-gateway-logs', () => ({
     extractGatewayCallerIdentity: vi.fn(() => ({})),
     logApiGatewayRequest: (...args: any[]) => routeMocks.logApiGatewayRequest(...args),
+    updateApiGatewayRequestPerformance: (...args: any[]) => routeMocks.updateApiGatewayRequestPerformance(...args),
 }));
 
 vi.mock('@/lib/cache/prompt-cache', () => ({
@@ -234,6 +236,8 @@ function defaultGatewayContext(): GatewayContext {
 function resetRouteMocks() {
     vi.clearAllMocks();
     routeMocks.addGatewayHeaders.mockImplementation((res: Response) => res);
+    routeMocks.logApiGatewayRequest.mockResolvedValue(undefined);
+    routeMocks.updateApiGatewayRequestPerformance.mockResolvedValue(undefined);
     routeMocks.runGatewayOutputGuard.mockResolvedValue({ ok: true });
 }
 
@@ -500,6 +504,33 @@ describe('Gateway route parity (/v1/chat/completions vs /api/ai/chat)', () => {
         expect(routeMocks.runV1ProviderExecution).not.toHaveBeenCalled();
         const body = await parseRouteJson(v1Res);
         expect(body.object).toBe('chat.completion');
+    });
+
+    it('v1 replays exact cache hits as an immediate SSE stream', async () => {
+        routeMocks.getCachedCacheConfig.mockResolvedValue({ data: enabledCacheConfig });
+        routeMocks.lookupCache.mockResolvedValue({
+            hit: true,
+            hitType: 'exact',
+            response: createOpenAiCachePayload(),
+            entryId: 'cache-entry-stream',
+            estimatedTokens: 10,
+            estimatedCostUsd: 0,
+        });
+        const messages = toUnifiedMessages(STREAM_REQUEST_BODY.messages);
+        routeMocks.runGatewayInputPipeline.mockResolvedValue(createMockInputPipelineSuccess(messages));
+
+        const { POST: v1Post } = await import('@/app/api/v1/chat/completions/route');
+        const response = await v1Post(
+            buildGatewayRequest('http://localhost/api/v1/chat/completions', STREAM_REQUEST_BODY)
+        );
+        const raw = await response.text();
+
+        expect(response.headers.get('Content-Type')).toContain('text/event-stream');
+        expect(response.headers.get('X-Cache')).toBe('HIT-EXACT');
+        expect(raw).toContain('chat.completion.chunk');
+        expect(raw).toContain('data: [DONE]');
+        expect(routeMocks.runV1ProviderExecution).not.toHaveBeenCalled();
+        expect(routeMocks.lookupCache.mock.calls[0][0].config.semanticMatchEnabled).toBe(false);
     });
 
     it('ai returns cached response without executeGatewayChat', async () => {

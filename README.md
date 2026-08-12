@@ -286,6 +286,21 @@ Get AI responses as they're generated:
 - Async generator pattern for easy integration
 - Automatic token counting and cost tracking
 
+For latency-sensitive calls, opt into the speed profile:
+
+```json
+{
+  "model": "gpt-4o",
+  "messages": [{ "role": "user", "content": "Answer briefly." }],
+  "stream": true,
+  "routing_profile": "speed"
+}
+```
+
+Speed mode uses the deployment's `CENCORI_SPEED_MODEL` when configured, caps
+input/output size, and starts a fallback only if the primary misses the
+configured first-token threshold. Normal requests retain balanced behavior.
+
 ### **Credits-Based Billing**
 
 Transparent, prepaid pricing model:

@@ -1,7 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
-import { extractGatewayCallerIdentity, logApiGatewayRequest } from "@/lib/api-gateway-logs";
+import {
+    extractGatewayCallerIdentity,
+    logApiGatewayRequest,
+    updateApiGatewayRequestPerformance,
+} from "@/lib/api-gateway-logs";
 import {
     validateGatewayRequest,
     addGatewayHeaders,
@@ -51,6 +55,12 @@ import type { SubscriptionTier } from "@/lib/entitlements";
 import type { UnifiedMessage } from "@/lib/providers/base";
 import { resolveAgentContext } from "@/lib/gateway/agent-context";
 import { isLocalMemoryBuild } from "@/lib/memory/availability";
+import { GatewayPerformanceTracker } from "@/lib/gateway/performance";
+import {
+    applySpeedProfile,
+    resolveGatewayRoutingProfile,
+    type GatewayRoutingProfile,
+} from "@/lib/gateway/speed-profile";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -78,6 +88,7 @@ type ChatRequestBody = {
         variables?: Record<string, string>;
     };
     memory?: MemoryDirectiveInput;
+    routing_profile?: GatewayRoutingProfile;
 };
 
 const normalizeGatewayModelId = (modelId: string): string => {
@@ -95,6 +106,52 @@ const normalizeGatewayModelId = (modelId: string): string => {
 
     return aliases[strippedModel] || strippedModel;
 };
+
+function buildCachedOpenAiStreamResponse(cached: Record<string, any>): NextResponse {
+    const encoder = new TextEncoder();
+    const model = typeof cached.model === 'string' ? cached.model : 'cached';
+    const choice = Array.isArray(cached.choices) ? cached.choices[0] : null;
+    const content = typeof choice?.message?.content === 'string'
+        ? choice.message.content
+        : typeof cached.content === 'string' ? cached.content : '';
+    const finishReason = typeof choice?.finish_reason === 'string'
+        ? choice.finish_reason
+        : 'stop';
+    const completionId = typeof cached.id === 'string'
+        ? cached.id
+        : `chatcmpl-cache-${crypto.randomUUID()}`;
+    const created = typeof cached.created === 'number'
+        ? cached.created
+        : Math.floor(Date.now() / 1000);
+    const chunk = (delta: Record<string, unknown>, terminal: string | null) => ({
+        id: completionId,
+        object: 'chat.completion.chunk',
+        created,
+        model,
+        choices: [{ index: 0, delta, finish_reason: terminal }],
+    });
+
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk({ content }, null))}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                ...chunk({}, finishReason),
+                ...(cached.usage ? { usage: cached.usage } : {}),
+            })}\n\n`));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+        },
+    });
+
+    return new NextResponse(stream, {
+        headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        },
+    });
+}
 
 /**
  * Insert a tool call as a pending action for Shadow Mode approval.
@@ -150,15 +207,17 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
     const endpoint = '/v1/chat/completions';
     const startedAt = Date.now();
+    const performance = new GatewayPerformanceTracker(startedAt);
     const callerIdentity = extractGatewayCallerIdentity(req.headers);
     let gatewayCtx: GatewayContext | null = null;
+    let routingProfile: GatewayRoutingProfile = 'balanced';
 
     const respond = (response: NextResponse, errorCode?: string, errorMessage?: string) => {
         if (!gatewayCtx) {
             return response;
         }
 
-        void logApiGatewayRequest({
+        const logPromise = logApiGatewayRequest({
             projectId: gatewayCtx.projectId,
             apiKeyId: gatewayCtx.apiKeyId,
             requestId: gatewayCtx.requestId,
@@ -175,7 +234,21 @@ export async function POST(req: NextRequest) {
             errorCode: errorCode || null,
             errorMessage: errorMessage || null,
         });
+        const finalMetrics = performance.snapshot();
+        if (finalMetrics.totalCompletionMs !== null) {
+            void logPromise.then(() => updateApiGatewayRequestPerformance(
+                gatewayCtx!.requestId,
+                finalMetrics
+            ));
+        } else {
+            void logPromise;
+        }
 
+        response.headers.set('X-Cencori-Routing-Profile', routingProfile);
+        const preflight = performance.snapshot().gatewayPreflightMs;
+        if (preflight !== null) {
+            response.headers.set('Server-Timing', `cencori_preflight;dur=${preflight}`);
+        }
         return addGatewayHeaders(response, { requestId: gatewayCtx.requestId });
     };
 
@@ -202,6 +275,10 @@ export async function POST(req: NextRequest) {
     };
 
     try {
+        // Body parsing is independent of authentication and project checks;
+        // overlap it with remote validation instead of adding another serial
+        // phase to preflight.
+        const bodyPromise = req.json() as Promise<ChatRequestBody>;
         const authHeader = req.headers.get("Authorization");
         const providedApiKey = extractCencoriApiKeyFromHeaders(req.headers);
 
@@ -260,7 +337,11 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Parse Request Body ──
-        const body = await req.json() as ChatRequestBody;
+        const body = await bodyPromise;
+        routingProfile = resolveGatewayRoutingProfile(
+            body.routing_profile,
+            req.headers.get('x-cencori-routing-profile')
+        );
         let messages = body.messages ?? [];
         const { tools, tool_choice } = body;
         const shouldStream = typeof body.stream === "boolean" ? body.stream : Boolean(agentConfig);
@@ -288,7 +369,7 @@ export async function POST(req: NextRequest) {
                 'missing_model_configuration'
             );
         }
-        const model = normalizeGatewayModelId(configuredModel.trim());
+        let model = normalizeGatewayModelId(configuredModel.trim());
 
         // Inject system prompt from agent config (agent mode only).
         if (agentConfig?.system_prompt) {
@@ -325,6 +406,20 @@ export async function POST(req: NextRequest) {
             }
         }
         const visionSourceMessages = isVisionRequest ? [...messages] : null;
+
+        let effectiveMaxTokens = body.max_tokens;
+        let hedgeDelayMs: number | undefined;
+        if (routingProfile === 'speed' && !isVisionRequest) {
+            const speed = applySpeedProfile({
+                model,
+                maxTokens: effectiveMaxTokens,
+                messages,
+            });
+            model = normalizeGatewayModelId(speed.model);
+            effectiveMaxTokens = speed.maxTokens;
+            messages = speed.messages;
+            hedgeDelayMs = speed.hedgeDelayMs;
+        }
 
         const toUnifiedMessages = (items: ChatMessage[]): UnifiedMessage[] => {
             return items.map((m) => ({
@@ -540,7 +635,7 @@ export async function POST(req: NextRequest) {
                 ctx: activeGatewayCtx,
                 rawMessages: visionSourceMessages,
                 requestedModel: model,
-                maxTokens: body.max_tokens,
+                maxTokens: effectiveMaxTokens,
                 temperature: body.temperature,
                 stream: shouldStream,
                 guardedPrompt,
@@ -598,7 +693,7 @@ export async function POST(req: NextRequest) {
         // facts must never be cached (semantic cache matches project-wide —
         // user A's facts could serve user B), and lookups against such
         // prompts are useless. Skip the cache in both directions.
-        if (gatewayCtx && !shouldStream && !tools && !skipCache && !memoryDirective?.retrieve) {
+        if (gatewayCtx && !tools && !skipCache && !memoryDirective?.retrieve) {
             try {
                 // Try cache first - use cached config if available
                 const cachedConfig = await getCachedCacheConfig(gatewayCtx.projectId);
@@ -624,7 +719,7 @@ export async function POST(req: NextRequest) {
                             environment: gatewayCtx.environment,
                             model,
                             temperature: requestTemp,
-                            maxTokens: body.max_tokens,
+                            maxTokens: effectiveMaxTokens,
                             messages: normalizedMsgs,
                         });
 
@@ -636,8 +731,13 @@ export async function POST(req: NextRequest) {
                             cacheKey,
                             promptText: promptTextForCache,
                             model,
-                            maxTokens: body.max_tokens,
-                            config: cacheConfig,
+                            maxTokens: effectiveMaxTokens,
+                            // Streaming stays on the exact Redis path. A
+                            // semantic miss would add an embedding request to
+                            // the most latency-sensitive request mode.
+                            config: shouldStream
+                                ? { ...cacheConfig, semanticMatchEnabled: false }
+                                : cacheConfig,
                         });
 
                         if (cacheResult.hit && cacheResult.response) {
@@ -677,7 +777,14 @@ export async function POST(req: NextRequest) {
                             });
                             void incrementUsage(gatewayCtx, 0);
 
-                            const cachedResponse = NextResponse.json(cacheResult.response);
+                            performance.markPreflightComplete();
+                            performance.markClientFirstByte();
+                            performance.markComplete(Number(
+                                cacheResult.response?.usage?.completion_tokens ?? 0
+                            ));
+                            const cachedResponse = shouldStream
+                                ? buildCachedOpenAiStreamResponse(cacheResult.response as Record<string, any>)
+                                : NextResponse.json(cacheResult.response);
                             cachedResponse.headers.set('X-Cache', cacheResult.hitType === 'exact' ? 'HIT-EXACT' : 'HIT-SEMANTIC');
                             cachedResponse.headers.set('X-Cencori-Cache', cacheResult.hitType === 'exact' ? 'HIT' : 'SEMANTIC-HIT');
                             if (cacheResult.similarityScore) {
@@ -712,7 +819,7 @@ export async function POST(req: NextRequest) {
                     model,
                     environment: gatewayCtx.environment,
                     temperature: body.temperature,
-                    maxTokens: body.max_tokens,
+                    maxTokens: effectiveMaxTokens,
                     response: responseJson,
                     embedding: cacheResult?.embedding ?? null,
                     ttlSeconds: cacheConfig.ttlSeconds,
@@ -776,7 +883,7 @@ export async function POST(req: NextRequest) {
             inputSecurity: inputPipeline.inputSecurity,
             tokenMap: inputPipeline.tokenMap,
             temperature: body.temperature,
-            maxTokens: body.max_tokens,
+            maxTokens: effectiveMaxTokens,
             frequencyPenalty: body.frequency_penalty ?? body.frequencyPenalty,
             presencePenalty: body.presence_penalty ?? body.presencePenalty,
             stream: shouldStream,
@@ -811,6 +918,14 @@ export async function POST(req: NextRequest) {
                     void createDispatchedAction(adminClient, agentId, toolCall);
                 }
                 : undefined,
+            performance,
+            onPerformance: (metrics) => {
+                waitUntil(updateApiGatewayRequestPerformance(
+                    activeGatewayCtx.requestId,
+                    metrics
+                ));
+            },
+            hedgeDelayMs,
         });
 
         if (!execResult.ok) {

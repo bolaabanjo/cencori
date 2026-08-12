@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabaseServer';
 import { encryptApiKey } from '@/lib/encryption';
 import { writeAuditLog } from '@/lib/audit-log';
 import { requireTierFeatureForProject } from '@/lib/require-tier-feature';
+import { invalidateProviderConfig } from '@/lib/config-cache';
 
 export async function PATCH(
     req: NextRequest,
@@ -121,6 +122,8 @@ export async function PATCH(
             metadata: { provider, updatedFields: Object.keys(updateData) },
         });
 
+        await invalidateProviderConfig(projectId, provider);
+
         return NextResponse.json({
             success: true,
             provider: {
@@ -198,6 +201,8 @@ export async function DELETE(
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        await invalidateProviderConfig(projectId, provider);
 
         writeAuditLog({
             organizationId: project.organization_id,

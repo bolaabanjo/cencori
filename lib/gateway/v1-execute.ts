@@ -22,6 +22,10 @@ import {
     calculateGatewayCharge,
     type GatewayBillingMode,
 } from '@/lib/gateway/model-access';
+import type {
+    GatewayPerformanceMetrics,
+    GatewayPerformanceTracker,
+} from '@/lib/gateway/performance';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -92,6 +96,9 @@ export type V1ExecuteParams = {
     shadowMode?: boolean;
     createPendingAction?: (toolCall: ToolCallPayload) => Promise<string | null>;
     createDispatchedAction?: (toolCall: ToolCallPayload) => void;
+    performance?: GatewayPerformanceTracker;
+    onPerformance?: (metrics: GatewayPerformanceMetrics) => void;
+    hedgeDelayMs?: number;
 };
 
 function buildOpenAiCompletionJson(params: {
@@ -157,14 +164,15 @@ function buildOpenAiStreamChunk(model: string, delta: Record<string, unknown>, f
 }
 
 /**
- * Streaming output is intentionally held back by a small rolling window.
- * This gives the output guard enough look-behind to catch common secrets and
- * PII that are split across provider chunks before those characters leave the
- * gateway. The batch threshold avoids running the cumulative guard for every
- * one-token provider event while still producing a responsive stream.
+ * Streaming output is held behind a compact rolling boundary. Twenty-four
+ * characters cover the bounded secret/PII suffixes detected by the output
+ * scanner (SSNs, card numbers, phone numbers, and the terminal portion of an
+ * email) without forcing a fast model to generate ~80 tokens before TTFT.
+ * Every release still runs the cumulative guard, and completion runs a final
+ * full-output guard, so reducing the boundary does not skip security checks.
  */
-const STREAM_GUARD_HOLDBACK_CHARS = 256;
-const STREAM_GUARD_EMIT_BATCH_CHARS = 64;
+export const STREAM_GUARD_HOLDBACK_CHARS = 24;
+export const STREAM_GUARD_EMIT_BATCH_CHARS = 8;
 
 export type V1ExecuteResult =
     | { ok: true; response: NextResponse }
@@ -202,6 +210,7 @@ export async function runV1ProviderExecution(
             allowedModels: params.gatewayCtx.allowedModels,
             sponsoredModels: params.gatewayCtx.sponsoredModels,
         });
+        params.performance?.markPreflightComplete();
 
         const chatRequest: UnifiedChatRequest = {
             messages: params.messages,
@@ -214,6 +223,7 @@ export async function runV1ProviderExecution(
             userId: params.endUserId || undefined,
             frequencyPenalty: params.frequencyPenalty,
             presencePenalty: params.presencePenalty,
+            promptCacheKey: `cencori:${params.gatewayCtx.projectId}:${resolved.model}`,
         };
 
         if (params.tools && params.tools.length > 0 && resolved.provider.supportsTools === false) {
@@ -241,6 +251,7 @@ export async function runV1ProviderExecution(
                 request: chatRequest,
                 resolved,
                 requestId: params.gatewayCtx.requestId,
+                performance: params.performance,
             });
 
             let content = result.content;
@@ -386,6 +397,11 @@ export async function runV1ProviderExecution(
                   });
 
             params.onCompletion?.({ fullText: content });
+            params.performance?.markClientFirstByte();
+            params.performance?.markComplete(result.usage.completionTokens);
+            if (params.performance) {
+                params.onPerformance?.(params.performance.snapshot());
+            }
 
             return { ok: true, response: NextResponse.json(json) };
         }
@@ -451,6 +467,7 @@ export async function runV1ProviderExecution(
                     }
                 ) => {
                     if (!text) return;
+                    params.performance?.markClientFirstByte();
 
                     if (isCencoriWire) {
                         const payload: Record<string, unknown> = { delta: text };
@@ -588,7 +605,7 @@ export async function runV1ProviderExecution(
                 };
 
                 /** Terminal chunks after settlement, per wire format. */
-                const finishStream = (
+                    const finishStream = (
                     figures: Awaited<ReturnType<typeof settleStream>>,
                     meta: { actualModel: string; finishReason: string }
                 ) => {
@@ -611,6 +628,10 @@ export async function runV1ProviderExecution(
                         );
                     }
                     controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    params.performance?.markComplete(figures.completionTokens);
+                    if (params.performance) {
+                        params.onPerformance?.(params.performance.snapshot());
+                    }
                     controller.close();
                 };
 
@@ -624,7 +645,7 @@ export async function runV1ProviderExecution(
                     },
                     outputCheck: { ok: false; message: string }
                 ) => {
-                    await settleStream({
+                    const figures = await settleStream({
                         actualModel: meta.actualModel,
                         actualProvider: meta.actualProvider,
                         usedFallback: meta.usedFallback,
@@ -636,6 +657,10 @@ export async function runV1ProviderExecution(
                     controller.enqueue(sse({ error: outputCheck.message }));
                     if (!isCencoriWire) {
                         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                    }
+                    params.performance?.markComplete(figures.completionTokens);
+                    if (params.performance) {
+                        params.onPerformance?.(params.performance.snapshot());
                     }
                     controller.close();
                 };
@@ -696,6 +721,7 @@ export async function runV1ProviderExecution(
                         if (toolCallValues.length > 0) {
                             payload.tool_calls = toolCallValues;
                             payload.toolCalls = toolCallValues;
+                            params.performance?.markClientFirstByte();
                         }
                         controller.enqueue(sse(payload));
                     } else {
@@ -709,6 +735,7 @@ export async function runV1ProviderExecution(
                             }));
                         }
                         if (Object.keys(delta).length > 0) {
+                            params.performance?.markClientFirstByte();
                             controller.enqueue(
                                 sse(buildOpenAiStreamChunk(meta.actualModel, delta, null))
                             );
@@ -782,6 +809,8 @@ export async function runV1ProviderExecution(
                         request: chatRequest,
                         resolved,
                         requestId: params.gatewayCtx.requestId,
+                        performance: params.performance,
+                        hedgeDelayMs: params.hedgeDelayMs,
                     })) {
                         const originalProvider: string = lastMeta?.usedFallback && chunk.usedFallback
                             ? lastMeta.originalProvider
@@ -798,7 +827,11 @@ export async function runV1ProviderExecution(
                             billingMode: chunk.billingMode,
                         };
                         if (chunk.delta) {
+                            params.performance?.markProviderFirstToken();
                             fullText += chunk.delta;
+                        }
+                        if (chunk.toolCalls && chunk.toolCalls.length > 0) {
+                            params.performance?.markProviderFirstToken();
                         }
 
                         // Server-side max_tokens enforcement — some

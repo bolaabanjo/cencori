@@ -67,6 +67,8 @@ export interface UnifiedChatRequest {
     parallelToolCalls?: boolean;
     frequencyPenalty?: number;
     presencePenalty?: number;
+    /** Stable provider-side prefix-cache routing key when supported. */
+    promptCacheKey?: string;
 }
 
 /**
