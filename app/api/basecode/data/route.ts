@@ -266,6 +266,34 @@ export async function POST(request: NextRequest) {
     return json({ turn: turnJson(data) });
   }
 
+  if (body.action === "archive_thread") {
+    if (!isUuid(body.threadId)) return json({ error: "Invalid thread." }, 400);
+    const { data, error } = await session.admin
+      .from("basecode_threads")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", body.threadId)
+      .eq("user_id", session.user.id)
+      .select("id")
+      .maybeSingle();
+    return error || !data
+      ? json({ error: "The task could not be archived." }, error ? 500 : 404)
+      : json({ ok: true });
+  }
+
+  if (body.action === "delete_thread") {
+    if (!isUuid(body.threadId)) return json({ error: "Invalid thread." }, 400);
+    const { data, error } = await session.admin
+      .from("basecode_threads")
+      .delete()
+      .eq("id", body.threadId)
+      .eq("user_id", session.user.id)
+      .select("id")
+      .maybeSingle();
+    return error || !data
+      ? json({ error: "The task could not be deleted." }, error ? 500 : 404)
+      : json({ ok: true });
+  }
+
   if (body.action === "archive_workspace_threads") {
     if (!isUuid(body.workspaceId)) return json({ error: "Invalid workspace." }, 400);
     const { error } = await session.admin
