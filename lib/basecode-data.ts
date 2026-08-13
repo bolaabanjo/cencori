@@ -33,3 +33,16 @@ export function cleanText(value: unknown, maximum: number): string | null {
   const cleaned = value.trim();
   return cleaned && cleaned.length <= maximum ? cleaned : null;
 }
+
+/**
+ * A Basecode task becomes durable only after its first turn exists. Filtering zero-turn shells
+ * keeps interrupted task creation (renderer reloads, failed turn starts) out of account history.
+ */
+export function threadsWithPersistedTurns<T extends { id?: unknown }>(
+  threads: T[],
+  persistedThreadIds: ReadonlySet<string>,
+): T[] {
+  return threads.filter(
+    (thread) => typeof thread.id === "string" && persistedThreadIds.has(thread.id),
+  );
+}

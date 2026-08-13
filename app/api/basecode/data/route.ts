@@ -3,6 +3,7 @@ import {
   authenticateBasecodeDataRequest,
   cleanText,
   isUuid,
+  threadsWithPersistedTurns,
 } from "@/lib/basecode-data";
 import { noStoreHeaders } from "@/lib/basecode-auth";
 
@@ -99,9 +100,29 @@ export async function GET(request: NextRequest) {
   if (workspaceError || threadError) {
     return json({ error: "Basecode history could not be loaded." }, 500);
   }
+
+  // A task shell is created separately from its first turn. If the runtime fails to start a turn
+  // or the renderer reloads between those writes, the shell must not surface as an empty chat.
+  const candidateThreads = (threads ?? []) as Record<string, unknown>[];
+  const persistedThreadIds = new Set<string>();
+  const candidateIds = candidateThreads.flatMap((thread) =>
+    typeof thread.id === "string" ? [thread.id] : [],
+  );
+  for (let index = 0; index < candidateIds.length; index += 100) {
+    const batch = candidateIds.slice(index, index + 100);
+    const { data: turnOwners, error: turnOwnerError } = await session.admin
+      .from("basecode_turns")
+      .select("thread_id")
+      .eq("user_id", session.user.id)
+      .in("thread_id", batch);
+    if (turnOwnerError) return json({ error: "Basecode history could not be loaded." }, 500);
+    for (const row of turnOwners ?? []) {
+      if (typeof row.thread_id === "string") persistedThreadIds.add(row.thread_id);
+    }
+  }
   return json({
     workspaces: (workspaces ?? []).map(workspaceJson),
-    threads: (threads ?? []).map(threadJson),
+    threads: threadsWithPersistedTurns(candidateThreads, persistedThreadIds).map(threadJson),
   });
 }
 
