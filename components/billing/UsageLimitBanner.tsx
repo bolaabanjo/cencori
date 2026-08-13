@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Zap, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { AlertCircleIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabaseClient';
 import { cn } from '@/lib/utils';
@@ -58,13 +60,18 @@ export function UsageLimitBanner({ orgId, orgSlug }: UsageLimitBannerProps) {
         <>
             <div
                 className={cn(
-                    'flex items-center gap-3 px-4 py-2.5 text-xs border-b',
+                    'flex items-center gap-3 px-4 py-2.5 text-xs',
                     isAtLimit
-                        ? 'bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400'
-                        : 'bg-amber-500/5 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                        ? 'bg-red-500/5 text-red-600 dark:text-red-400'
+                        : 'bg-amber-500/5 text-amber-600 dark:text-amber-400'
                 )}
             >
-                <Zap className="w-3.5 h-3.5 shrink-0" />
+                <HugeiconsIcon
+                    icon={AlertCircleIcon}
+                    className="size-3.5 shrink-0"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                />
 
                 <span className="flex-1">{reason}</span>
 
