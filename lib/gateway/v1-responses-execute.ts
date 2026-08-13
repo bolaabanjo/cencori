@@ -6,11 +6,12 @@
 
 import { NextResponse } from 'next/server';
 import {
-    calculateProviderTokenCost,
+    type TokenUsage,
     type UnifiedMessage,
     type Tool,
     type UnifiedChatRequest,
 } from '@/lib/providers/base';
+import { settleStreamUsage } from '@/lib/gateway/stream-usage';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
@@ -651,6 +652,8 @@ export async function runV1ResponsesExecution(
             async start(controller) {
                 const encoder = new TextEncoder();
                 let fullText = '';
+                // Real usage from the provider when the adapter reports it.
+                let reportedUsage: TokenUsage | undefined;
                 const collectedToolCalls: Record<string, { id: string; name: string; arguments: string }> = {};
                 const collectedBuiltinToolOutputs: ToolCallOutput[] = [...preProcessResult.toolOutputs];
 
@@ -666,6 +669,9 @@ export async function runV1ResponsesExecution(
                         resolved,
                         requestId: gatewayCtx.requestId,
                     })) {
+                        if (chunk.usage) {
+                            reportedUsage = chunk.usage;
+                        }
                         if (chunk.delta) {
                             fullText += chunk.delta;
                         }
@@ -721,28 +727,30 @@ export async function runV1ResponsesExecution(
                                 && resolved.router.hasProvider(chunk.actualProvider)
                                     ? resolved.router.getProvider(chunk.actualProvider)
                                     : resolved.provider;
-                            let promptTokens = 0;
-                            let completionTokens = 0;
-                            try {
-                                promptTokens = await streamProvider.countTokens(
-                                    messages.map(m => m.content).join(' '),
-                                    chunk.actualModel
-                                );
-                                completionTokens = await streamProvider.countTokens(
-                                    fullText,
-                                    chunk.actualModel
-                                );
-                            } catch {
-                                promptTokens = Math.max(1, Math.ceil(messages.map(m => m.content).join(' ').length / 4));
-                                completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-                            }
-                            const totalTokens = promptTokens + completionTokens;
                             const pricing = await streamProvider.getPricing(chunk.actualModel);
-                            const providerCostUsd = calculateProviderTokenCost(
+                            const {
                                 promptTokens,
                                 completionTokens,
-                                pricing
-                            );
+                                totalTokens,
+                                providerCostUsd,
+                            } = await settleStreamUsage({
+                                reported: reportedUsage,
+                                pricing,
+                                estimate: async () => {
+                                    const promptText = messages.map(m => m.content).join(' ');
+                                    try {
+                                        return {
+                                            promptTokens: await streamProvider.countTokens(promptText, chunk.actualModel),
+                                            completionTokens: await streamProvider.countTokens(fullText, chunk.actualModel),
+                                        };
+                                    } catch {
+                                        return {
+                                            promptTokens: Math.max(1, Math.ceil(promptText.length / 4)),
+                                            completionTokens: Math.max(1, Math.ceil(fullText.length / 4)),
+                                        };
+                                    }
+                                },
+                            });
                             const { cencoriChargeUsd, markupPercentage } = calculateGatewayCharge(
                                 providerCostUsd,
                                 pricing,

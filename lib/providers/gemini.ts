@@ -11,6 +11,7 @@ import {
     UnifiedChatResponse,
     StreamChunk,
     ModelPricing,
+    TokenUsage,
 } from './base';
 import { getPricingFromDB } from './pricing';
 import { toGeminiMessages } from './utils';
@@ -54,13 +55,34 @@ export class GeminiProvider extends AIProvider {
             const response = result.response;
             const text = response.text();
 
-            // Token counting
-            const promptTokens = (await model.countTokens(prompt)).totalTokens;
-            const completionTokens = (await model.countTokens(text)).totalTokens;
+            // Prefer the usage the provider actually billed. countTokens() only
+            // sees the prompt string, so it misses history, system instructions
+            // and tools, and has no concept of cached content — it is a fallback
+            // for responses that arrive without usageMetadata, not the source of
+            // truth. It also costs two extra round trips.
+            const meta = response.usageMetadata;
+            const cachedTokens = Math.max(0, Number(meta?.cachedContentTokenCount) || 0);
+            const reportedPromptTokens = Math.max(0, Number(meta?.promptTokenCount) || 0);
+            const promptTokens = meta
+                ? reportedPromptTokens
+                : (await model.countTokens(prompt)).totalTokens;
+            const completionTokens = meta
+                ? Math.max(0, Number(meta.candidatesTokenCount) || 0)
+                : (await model.countTokens(text)).totalTokens;
+
+            // Gemini counts cached content inside promptTokenCount, so bill the
+            // remainder at the input rate and the cached slice at its own rate.
+            const cacheReadTokens = Math.min(cachedTokens, promptTokens);
+            const billablePromptTokens = promptTokens - cacheReadTokens;
 
             // Get pricing and calculate costs
             const pricing = await this.getPricing(request.model);
-            const providerCost = this.calculateCost(promptTokens, completionTokens, pricing);
+            const providerCost = this.calculateCost(
+                billablePromptTokens,
+                completionTokens,
+                pricing,
+                { cacheReadTokens }
+            );
             const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
                 + (pricing.fixedFeePerRequest ?? 0);
 
@@ -72,6 +94,7 @@ export class GeminiProvider extends AIProvider {
                     promptTokens,
                     completionTokens,
                     totalTokens: promptTokens + completionTokens,
+                    ...(cacheReadTokens ? { cacheReadTokens } : {}),
                 },
                 cost: {
                     providerCostUsd: providerCost,
@@ -107,10 +130,35 @@ export class GeminiProvider extends AIProvider {
                 };
             }
 
+            // The aggregated response resolves once the stream drains and is
+            // the only place the billed usage appears. Never let a missing
+            // figure fail a stream that already delivered its content — the
+            // gateway falls back to estimating when usage is absent.
+            let usage: TokenUsage | undefined;
+            try {
+                const meta = (await result.response).usageMetadata;
+                if (meta) {
+                    const promptTokens = Math.max(0, Number(meta.promptTokenCount) || 0);
+                    const cacheReadTokens = Math.min(
+                        Math.max(0, Number(meta.cachedContentTokenCount) || 0),
+                        promptTokens,
+                    );
+                    usage = {
+                        promptTokens: promptTokens - cacheReadTokens,
+                        completionTokens: Math.max(0, Number(meta.candidatesTokenCount) || 0),
+                        totalTokens: Math.max(0, Number(meta.totalTokenCount) || 0),
+                        ...(cacheReadTokens ? { cacheReadTokens } : {}),
+                    };
+                }
+            } catch {
+                usage = undefined;
+            }
+
             // Stream complete
             yield {
                 delta: '',
                 finishReason: 'stop',
+                ...(usage ? { usage } : {}),
             };
         } catch (error) {
             throw normalizeProviderError(this.providerName, error);

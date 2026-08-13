@@ -3,15 +3,16 @@ import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { GatewayContext } from '@/lib/gateway-middleware';
 import type { QuotaCheckResult } from '@/lib/end-user-billing';
 import {
-    calculateProviderTokenCost,
     type UnifiedMessage,
     type Tool,
     type UnifiedChatRequest,
+    type TokenUsage,
 } from '@/lib/providers/base';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
+import { settleStreamUsage } from '@/lib/gateway/stream-usage';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 import { buildCencoriChatResponse } from '@/lib/gateway/ai-chat-support';
@@ -413,6 +414,11 @@ export async function runV1ProviderExecution(
                 const encoder = new TextEncoder();
                 let fullText = '';
                 let tokenLimitReached = false;
+                // Usage the provider itself reported, when it reports any.
+                // Preferred over counting tokens off the text: it is what we
+                // were actually billed for, and it is the only way cached
+                // prompt tokens are visible at all.
+                let reportedUsage: TokenUsage | undefined;
                 let releasedRawLength = 0;
                 let emittedText = '';
                 let fallbackMetadataEmitted = false;
@@ -542,22 +548,29 @@ export async function runV1ProviderExecution(
                             ? resolved.router.getProvider(meta.actualProvider)
                             : resolved.provider;
                     const promptText = params.messages.map((m) => m.content).join(' ');
-                    let promptTokens = 0;
-                    let completionTokens = 0;
-                    try {
-                        promptTokens = await streamProvider.countTokens(promptText, meta.actualModel);
-                        completionTokens = await streamProvider.countTokens(fullText, meta.actualModel);
-                    } catch {
-                        promptTokens = Math.max(1, Math.ceil(promptText.length / 4));
-                        completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-                    }
-                    const totalTokens = promptTokens + completionTokens;
                     const pricing = await streamProvider.getPricing(meta.actualModel);
-                    const providerCostUsd = calculateProviderTokenCost(
-                        promptTokens,
+                    const {
+                        promptTokens: reportedPromptTokens,
                         completionTokens,
-                        pricing
-                    );
+                        totalTokens,
+                        providerCostUsd,
+                    } = await settleStreamUsage({
+                        reported: reportedUsage,
+                        pricing,
+                        estimate: async () => {
+                            try {
+                                return {
+                                    promptTokens: await streamProvider.countTokens(promptText, meta.actualModel),
+                                    completionTokens: await streamProvider.countTokens(fullText, meta.actualModel),
+                                };
+                            } catch {
+                                return {
+                                    promptTokens: Math.max(1, Math.ceil(promptText.length / 4)),
+                                    completionTokens: Math.max(1, Math.ceil(fullText.length / 4)),
+                                };
+                            }
+                        },
+                    });
                     const { cencoriChargeUsd, markupPercentage } = calculateGatewayCharge(
                         providerCostUsd,
                         pricing,
@@ -575,7 +588,7 @@ export async function runV1ProviderExecution(
                         status: meta.blocked
                             ? 'error'
                             : meta.usedFallback ? 'success_fallback' : 'success',
-                        promptTokens,
+                        promptTokens: reportedPromptTokens,
                         completionTokens,
                         totalTokens,
                         providerCostUsd,
@@ -587,7 +600,7 @@ export async function runV1ProviderExecution(
                     });
                     params.incrementUsage(cencoriChargeUsd);
                     params.recordEndUserUsage({
-                        promptTokens,
+                        promptTokens: reportedPromptTokens,
                         completionTokens,
                         totalTokens,
                         providerCostUsd,
@@ -596,7 +609,7 @@ export async function runV1ProviderExecution(
                     });
 
                     return {
-                        promptTokens,
+                        promptTokens: reportedPromptTokens,
                         completionTokens,
                         totalTokens,
                         cencoriChargeUsd,
@@ -826,6 +839,9 @@ export async function runV1ProviderExecution(
                             originalModel,
                             billingMode: chunk.billingMode,
                         };
+                        if (chunk.usage) {
+                            reportedUsage = chunk.usage;
+                        }
                         if (chunk.delta) {
                             params.performance?.markProviderFirstToken();
                             fullText += chunk.delta;

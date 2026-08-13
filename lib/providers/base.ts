@@ -78,6 +78,14 @@ export interface TokenUsage {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    /**
+     * Prompt tokens the provider served from, or wrote to, its own cache.
+     * Reported alongside rather than folded into `promptTokens`, which stays
+     * the count billed at the full input rate — anything that re-derives cost
+     * from `promptTokens` would otherwise double-bill them.
+     */
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
 }
 
 /**
@@ -114,6 +122,13 @@ export interface StreamChunk {
     error?: string;
     /** Tool calls in this chunk (streamed incrementally) */
     toolCalls?: ToolCall[];
+    /**
+     * Final token usage, emitted once on the terminal chunk by adapters whose
+     * provider reports it. Absent on every earlier chunk, and absent entirely
+     * for adapters that cannot report usage — consumers must treat it as
+     * optional rather than assuming the last chunk carries it.
+     */
+    usage?: TokenUsage;
 }
 
 /**
@@ -125,6 +140,13 @@ export interface ModelPricing {
     cencoriMarkupPercentage: number;
     /** Discounted provider rate for cached prompt tokens, when reported. */
     cachedInputPer1KTokens?: number;
+    /**
+     * Multiplier on the input rate for tokens written to a provider-side cache.
+     * Anthropic charges 1.25x the base input rate for a 5-minute cache write
+     * (2x for the 1-hour TTL, which nothing here requests). Providers that do
+     * not charge a write premium leave this unset and bill writes as input.
+     */
+    cacheWriteMultiplier?: number;
     /** Prompt-token count above which the long-context rates apply. */
     longContextThresholdTokens?: number;
     longContextInputPer1KTokens?: number;
@@ -137,20 +159,72 @@ export interface ModelPricing {
 }
 
 /**
+ * Prompt tokens a provider served from, or wrote to, its own prompt cache.
+ * Reported separately from the uncached prompt count because providers price
+ * them differently — and because providers disagree on whether they are part
+ * of the headline prompt-token figure. Anthropic excludes them from
+ * `input_tokens`; OpenAI counts cache reads inside `prompt_tokens`.
+ */
+export interface CachedTokenUsage {
+    /** Prompt tokens served from cache, billed at the discounted cache rate. */
+    cacheReadTokens?: number;
+    /** Prompt tokens written to cache, billed at a premium over the input rate. */
+    cacheWriteTokens?: number;
+}
+
+/**
+ * Split an OpenAI-shaped usage object into billable and cached prompt tokens.
+ *
+ * OpenAI counts cache reads *inside* `prompt_tokens` and breaks them out under
+ * `prompt_tokens_details.cached_tokens`, so billing the headline figure charges
+ * cached tokens at the full input rate. Providers on the OpenAI-compatible
+ * wire format that omit the details object simply report no cache activity,
+ * which yields the original prompt count unchanged.
+ *
+ * OpenAI does not charge a premium for cache writes, so there is no write
+ * component to separate out here.
+ */
+export function splitOpenAICachedTokens(usage: {
+    prompt_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number | null } | null;
+}): { promptTokens: number; cached: CachedTokenUsage } {
+    const promptTokens = Math.max(0, Number(usage.prompt_tokens) || 0);
+    const reported = Math.max(0, Number(usage.prompt_tokens_details?.cached_tokens) || 0);
+    // Never let a bogus cache count drive the billable remainder negative.
+    const cacheReadTokens = Math.min(reported, promptTokens);
+    return {
+        promptTokens: promptTokens - cacheReadTokens,
+        cached: { cacheReadTokens },
+    };
+}
+
+/**
  * Calculate provider token cost, including request-wide long-context tiers.
- * Cached input is intentionally not accepted until every streaming adapter can
- * report it consistently; callers therefore bill prompt tokens at the normal
- * input rate rather than applying an unverified discount.
+ *
+ * `promptTokens` is the count of prompt tokens billed at the full input rate —
+ * i.e. NOT served from or written to a provider cache. Adapters whose provider
+ * folds cached tokens into its headline prompt count must subtract them before
+ * calling; passing them twice double-bills. Omitting `cached` entirely bills
+ * every prompt token at the input rate, which is the correct behaviour for
+ * providers that report no cache activity.
  */
 export function calculateProviderTokenCost(
     promptTokens: number,
     completionTokens: number,
-    pricing: ModelPricing
+    pricing: ModelPricing,
+    cached?: CachedTokenUsage
 ): number {
-    const safePromptTokens = Math.max(0, Number(promptTokens) || 0);
-    const safeCompletionTokens = Math.max(0, Number(completionTokens) || 0);
+    const safe = (value: number | undefined) => Math.max(0, Number(value) || 0);
+    const safePromptTokens = safe(promptTokens);
+    const safeCompletionTokens = safe(completionTokens);
+    const cacheReadTokens = safe(cached?.cacheReadTokens);
+    const cacheWriteTokens = safe(cached?.cacheWriteTokens);
+
+    // Providers tier on the size of the whole request, so the threshold has to
+    // see cached tokens too — they occupy the context window like any other.
+    const totalPromptTokens = safePromptTokens + cacheReadTokens + cacheWriteTokens;
     const useLongContext = pricing.longContextThresholdTokens !== undefined
-        && safePromptTokens > pricing.longContextThresholdTokens;
+        && totalPromptTokens > pricing.longContextThresholdTokens;
     const inputRate = useLongContext
         ? pricing.longContextInputPer1KTokens
         : pricing.inputPer1KTokens;
@@ -162,7 +236,16 @@ export function calculateProviderTokenCost(
         throw new Error('Long-context pricing is incomplete');
     }
 
+    // Fail toward the input rate rather than toward zero: an unpriced cache
+    // read is a rate we do not know, not a token we were given for free.
+    const cacheReadRate = (useLongContext
+        ? pricing.longContextCachedInputPer1KTokens ?? pricing.cachedInputPer1KTokens
+        : pricing.cachedInputPer1KTokens) ?? inputRate;
+    const cacheWriteRate = inputRate * (pricing.cacheWriteMultiplier ?? 1);
+
     return (safePromptTokens / 1000) * inputRate
+        + (cacheReadTokens / 1000) * cacheReadRate
+        + (cacheWriteTokens / 1000) * cacheWriteRate
         + (safeCompletionTokens / 1000) * outputRate;
 }
 
@@ -211,9 +294,10 @@ export abstract class AIProvider {
     protected calculateCost(
         promptTokens: number,
         completionTokens: number,
-        pricing: ModelPricing
+        pricing: ModelPricing,
+        cached?: CachedTokenUsage
     ): number {
-        return calculateProviderTokenCost(promptTokens, completionTokens, pricing);
+        return calculateProviderTokenCost(promptTokens, completionTokens, pricing, cached);
     }
 
     /**

@@ -14,10 +14,11 @@ import {
 } from '@/lib/gateway/v1-responses-tools';
 import type { ResponsesTool } from '@/lib/gateway/v1-responses-execute';
 import {
-    calculateProviderTokenCost,
+    type TokenUsage,
     type Tool,
     type UnifiedMessage,
 } from '@/lib/providers/base';
+import { settleStreamUsage } from '@/lib/gateway/stream-usage';
 import type { SessionEventType, SessionEventPayloadMap } from '@/lib/gateway/session-types';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
@@ -187,6 +188,8 @@ function makeStream(params: {
             const encoder = new TextEncoder();
             let seq = 0;
             let fullText = '';
+            // Real usage from the provider when the adapter reports it.
+            let reportedUsage: TokenUsage | undefined;
             const toolCalls: Record<string, { id: string; name: string; args: string }> = {};
 
             const el = async (eventType: SessionEventType, data: SessionEventPayloadMap[typeof eventType]) => {
@@ -239,6 +242,9 @@ function makeStream(params: {
                     resolved: resolved as never,
                     requestId: gatewayCtx.requestId,
                     })) {
+                        if (chunk.usage) {
+                            reportedUsage = chunk.usage;
+                        }
                         if (chunk.delta) {
                             fullText += chunk.delta;
                         }
@@ -292,17 +298,29 @@ function makeStream(params: {
                             && resolved.router?.hasProvider(chunk.actualProvider)
                                 ? resolved.router.getProvider(chunk.actualProvider)
                                 : resolved.provider;
-                        let pt = 0, ct = 0;
-                        try {
-                            pt = await streamProvider.countTokens(messages.map(m => m.content || '').join(' '), chunk.actualModel);
-                            ct = await streamProvider.countTokens(fullText, chunk.actualModel);
-                        } catch {
-                            pt = Math.max(1, Math.ceil(messages.map(m => m.content || '').join(' ').length / 4));
-                            ct = Math.max(1, Math.ceil(fullText.length / 4));
-                        }
-                        const tt = pt + ct;
                         const pricing = await streamProvider.getPricing(chunk.actualModel);
-                        const pc = calculateProviderTokenCost(pt, ct, pricing);
+                        const settled = await settleStreamUsage({
+                            reported: reportedUsage,
+                            pricing,
+                            estimate: async () => {
+                                const promptText = messages.map(m => m.content || '').join(' ');
+                                try {
+                                    return {
+                                        promptTokens: await streamProvider.countTokens(promptText, chunk.actualModel),
+                                        completionTokens: await streamProvider.countTokens(fullText, chunk.actualModel),
+                                    };
+                                } catch {
+                                    return {
+                                        promptTokens: Math.max(1, Math.ceil(promptText.length / 4)),
+                                        completionTokens: Math.max(1, Math.ceil(fullText.length / 4)),
+                                    };
+                                }
+                            },
+                        });
+                        const pt = settled.promptTokens;
+                        const ct = settled.completionTokens;
+                        const tt = settled.totalTokens;
+                        const pc = settled.providerCostUsd;
                         const { cencoriChargeUsd: cc, markupPercentage } = calculateGatewayCharge(
                             pc,
                             pricing,
@@ -716,6 +734,8 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                 const encoder = new TextEncoder();
                 let seq = 0;
                 let fullText = '';
+                // Real usage from the provider when the adapter reports it.
+                let reportedUsage: TokenUsage | undefined;
                 const newToolCalls: Record<string, { id: string; name: string; args: string }> = {};
 
                 const es = async (eventType: SessionEventType, data: Record<string, unknown>) => {
@@ -773,6 +793,9 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                         resolved: resolved as never,
                         requestId: gatewayCtx.requestId,
                     })) {
+                        if (chunk.usage) {
+                            reportedUsage = chunk.usage;
+                        }
                         if (chunk.delta) {
                             fullText += chunk.delta;
                         }
@@ -804,17 +827,31 @@ export async function resumeSessionTurn(params: ResumeTurnParams): Promise<TurnE
                                 && resolved.router?.hasProvider(chunk.actualProvider)
                                     ? resolved.router.getProvider(chunk.actualProvider)
                                     : resolved.provider;
-                            let pt = 0, ct = 0;
-                            try {
-                                pt = await streamProvider.countTokens(messages.map(m => (m as { content: string }).content || '').join(' '), chunk.actualModel);
-                                ct = await streamProvider.countTokens(fullText, chunk.actualModel);
-                            } catch {
-                                pt = Math.max(1, Math.ceil(messages.map(m => (m as { content: string }).content || '').join(' ').length / 4));
-                                ct = Math.max(1, Math.ceil(fullText.length / 4));
-                            }
-                            const tt = pt + ct;
                             const pricing = await streamProvider.getPricing(chunk.actualModel);
-                            const pc = calculateProviderTokenCost(pt, ct, pricing);
+                            const settled = await settleStreamUsage({
+                                reported: reportedUsage,
+                                pricing,
+                                estimate: async () => {
+                                    const promptText = messages
+                                        .map(m => (m as { content: string }).content || '')
+                                        .join(' ');
+                                    try {
+                                        return {
+                                            promptTokens: await streamProvider.countTokens(promptText, chunk.actualModel),
+                                            completionTokens: await streamProvider.countTokens(fullText, chunk.actualModel),
+                                        };
+                                    } catch {
+                                        return {
+                                            promptTokens: Math.max(1, Math.ceil(promptText.length / 4)),
+                                            completionTokens: Math.max(1, Math.ceil(fullText.length / 4)),
+                                        };
+                                    }
+                                },
+                            });
+                            const pt = settled.promptTokens;
+                            const ct = settled.completionTokens;
+                            const tt = settled.totalTokens;
+                            const pc = settled.providerCostUsd;
                             const { cencoriChargeUsd: cc, markupPercentage } = calculateGatewayCharge(
                                 pc,
                                 pricing,

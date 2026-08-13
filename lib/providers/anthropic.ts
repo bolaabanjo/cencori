@@ -140,10 +140,18 @@ export class AnthropicProvider extends AIProvider {
             });
 
             const pricing = await this.getPricing(request.model);
+            // Anthropic reports cache reads and writes as fields of their own,
+            // excluded from input_tokens — so they have to be billed explicitly
+            // or they are billed at nothing.
+            const cached = {
+                cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+                cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+            };
             const providerCost = this.calculateCost(
                 response.usage.input_tokens,
                 response.usage.output_tokens,
-                pricing
+                pricing,
+                cached
             );
             const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
                 + (pricing.fixedFeePerRequest ?? 0);
@@ -176,6 +184,8 @@ export class AnthropicProvider extends AIProvider {
                     promptTokens: response.usage.input_tokens,
                     completionTokens: response.usage.output_tokens,
                     totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+                    ...(cached.cacheReadTokens ? { cacheReadTokens: cached.cacheReadTokens } : {}),
+                    ...(cached.cacheWriteTokens ? { cacheWriteTokens: cached.cacheWriteTokens } : {}),
                 },
                 cost: {
                     providerCostUsd: providerCost,
@@ -213,7 +223,22 @@ export class AnthropicProvider extends AIProvider {
             // the model stops, so callers always see complete arguments.
             const toolCallsInProgress = new Map<number, { id: string; name: string; argumentsJson: string }>();
 
+            // Anthropic splits usage across two events: message_start carries
+            // the prompt side (including the cache fields, which are excluded
+            // from input_tokens), message_delta the running output count.
+            let promptTokens = 0;
+            let cacheReadTokens = 0;
+            let cacheWriteTokens = 0;
+            let completionTokens = 0;
+
             for await (const event of stream) {
+                if (event.type === 'message_start') {
+                    const usage = event.message.usage;
+                    promptTokens = usage.input_tokens ?? 0;
+                    cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+                    cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
+                    completionTokens = usage.output_tokens ?? 0;
+                }
                 if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
                     toolCallsInProgress.set(event.index, {
                         id: event.content_block.id,
@@ -233,6 +258,8 @@ export class AnthropicProvider extends AIProvider {
                     }
                 }
                 if (event.type === 'message_delta') {
+                    // Cumulative, not incremental — assign rather than add.
+                    completionTokens = event.usage?.output_tokens ?? completionTokens;
                     const finishReason = toFinishReason(event.delta.stop_reason);
                     const toolCalls: ToolCall[] | undefined = toolCallsInProgress.size > 0
                         ? Array.from(toolCallsInProgress.values()).map(call => ({
@@ -249,6 +276,14 @@ export class AnthropicProvider extends AIProvider {
                         delta: '',
                         finishReason,
                         ...(toolCalls ? { toolCalls } : {}),
+                        usage: {
+                            promptTokens,
+                            completionTokens,
+                            totalTokens: promptTokens + cacheReadTokens + cacheWriteTokens
+                                + completionTokens,
+                            ...(cacheReadTokens ? { cacheReadTokens } : {}),
+                            ...(cacheWriteTokens ? { cacheWriteTokens } : {}),
+                        },
                     };
                 }
             }

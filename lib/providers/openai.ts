@@ -13,6 +13,8 @@ import {
     StreamChunk,
     ModelPricing,
     ToolCall,
+    TokenUsage,
+    splitOpenAICachedTokens,
 } from './base';
 import { getPricingFromDB } from './pricing';
 import { toOpenAIMessages, estimateTokenCount } from './utils';
@@ -69,10 +71,15 @@ export class OpenAIProvider extends AIProvider {
             const usage = completion.usage!;
             const pricing = await this.getPricing(request.model);
 
+            // OpenAI caches automatically above ~1k tokens and counts the hits
+            // inside prompt_tokens, so billing that figure charges cache reads
+            // at the full input rate — up to 10x the real cost on GPT-5.
+            const { promptTokens: billablePromptTokens, cached } = splitOpenAICachedTokens(usage);
             const providerCost = this.calculateCost(
-                usage.prompt_tokens,
+                billablePromptTokens,
                 usage.completion_tokens,
-                pricing
+                pricing,
+                cached
             );
 
             const cencoriCharge = this.applyMarkup(providerCost, pricing.cencoriMarkupPercentage)
@@ -114,6 +121,7 @@ export class OpenAIProvider extends AIProvider {
                     promptTokens: usage.prompt_tokens,
                     completionTokens: usage.completion_tokens,
                     totalTokens: usage.total_tokens,
+                    ...(cached.cacheReadTokens ? { cacheReadTokens: cached.cacheReadTokens } : {}),
                 },
                 cost: {
                     providerCostUsd: providerCost,
@@ -156,12 +164,28 @@ export class OpenAIProvider extends AIProvider {
                 frequency_penalty: request.frequencyPenalty,
                 presence_penalty: request.presencePenalty,
                 prompt_cache_key: request.promptCacheKey,
+                // Without this OpenAI reports no usage on a stream at all, and
+                // the gateway has to fall back to estimating tokens from text.
+                stream_options: { include_usage: true },
             });
 
             // Track tool calls across chunks (they stream incrementally)
             const toolCallsInProgress: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
             for await (const chunk of stream) {
+                // Usage arrives on a final chunk of its own, after the content
+                // is done, with an empty choices array.
+                let usage: TokenUsage | undefined;
+                if (chunk.usage) {
+                    const { promptTokens, cached } = splitOpenAICachedTokens(chunk.usage);
+                    usage = {
+                        promptTokens,
+                        completionTokens: chunk.usage.completion_tokens ?? 0,
+                        totalTokens: chunk.usage.total_tokens ?? 0,
+                        ...(cached.cacheReadTokens ? { cacheReadTokens: cached.cacheReadTokens } : {}),
+                    };
+                }
+
                 const delta = chunk.choices[0]?.delta?.content || '';
                 const finishReason = chunk.choices[0]?.finish_reason;
                 const toolCallDeltas = chunk.choices[0]?.delta?.tool_calls;
@@ -206,6 +230,7 @@ export class OpenAIProvider extends AIProvider {
                             ? finishReason
                             : undefined,
                     toolCalls,
+                    ...(usage ? { usage } : {}),
                 };
             }
         } catch (error) {
