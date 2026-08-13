@@ -229,8 +229,12 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://docs.x.ai',
         keyPrefix: 'xai-',
         models: [
+            // Grok 4.6 (August 2026)
+            { id: 'grok-4.6', name: 'Grok 4.6', type: ['reasoning', 'chat'], contextWindow: 500000, description: 'Frontier xAI reasoning model with text and image input' },
+            // Grok 4.5 Series (July 2026)
+            { id: 'grok-4.5', name: 'Grok 4.5', type: ['reasoning', 'chat'], contextWindow: 500000, description: 'Previous xAI flagship, same price as Grok 4.6' },
             // Grok 4.3 Series (April 2026)
-            { id: 'grok-4.3', name: 'Grok 4.3', type: ['reasoning', 'chat'], contextWindow: 1000000, description: 'Latest xAI reasoning model with text and image input' },
+            { id: 'grok-4.3', name: 'Grok 4.3', type: ['reasoning', 'chat'], contextWindow: 1000000, description: 'Long-context xAI reasoning model with text and image input' },
             // Grok Voice Series
             // Grok 4 Series (July-Nov 2025)
             // Grok 3 Series

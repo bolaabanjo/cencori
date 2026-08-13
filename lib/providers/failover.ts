@@ -65,6 +65,9 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'gemini-2.0-flash': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4-5' },
 
     // xAI models → fallbacks
+    'grok-4.6': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-5' },
+    'grok-4.5': { 'openai': 'gpt-5.5', 'anthropic': 'claude-opus-5' },
+    'grok-4.3': { 'openai': 'gpt-5.4', 'anthropic': 'claude-sonnet-4-6' },
     'grok-voice-think-fast': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
     'grok-4': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
     'grok-4.1': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5' },
