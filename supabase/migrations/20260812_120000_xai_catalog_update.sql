@@ -19,11 +19,11 @@
 -- below for consistency with the rest of the table. The input/output rates are
 -- re-asserted unchanged so the ON CONFLICT update is a no-op for them.
 --
--- NOTE: this column is currently bookkeeping only. calculateProviderTokenCost
--- (lib/providers/base.ts) takes no cached-token argument and never reads
--- cachedInputPer1KTokens, so no model bills cached reads at its cache rate
--- today. Populating this row changes nothing about what customers are charged
--- until that function grows a cached-token parameter.
+-- NOTE: when this migration was written the column was bookkeeping only --
+-- calculateProviderTokenCost took no cached-token argument and never read
+-- cachedInputPer1KTokens. That was fixed in the same branch, so this rate is
+-- now live: xAI reports cache hits inside prompt_tokens (OpenAI-compatible
+-- wire format) and the adapter splits them out before costing.
 
 INSERT INTO public.model_pricing (
     provider, model_name,
