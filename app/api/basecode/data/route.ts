@@ -49,6 +49,7 @@ function turnJson(row: Record<string, unknown>) {
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
+    workTrace: row.work_trace,
   };
 }
 
@@ -235,6 +236,17 @@ export async function POST(request: NextRequest) {
     if (!isUuid(threadId) || !sidecarTurnId || userMessage === null) {
       return json({ error: "Invalid turn." }, 400);
     }
+    // Older desktop builds do not send a trace yet, so omission remains a valid null trace.
+    const workTrace = body.workTrace === undefined ? null : body.workTrace;
+    if (
+      workTrace !== null &&
+      (typeof workTrace !== "object" || Array.isArray(workTrace))
+    ) {
+      return json({ error: "Invalid turn activity." }, 400);
+    }
+    if (workTrace !== null && JSON.stringify(workTrace).length > 1_000_000) {
+      return json({ error: "Turn activity is too large." }, 413);
+    }
     const sequence = Number.isInteger(body.sequence) && Number(body.sequence) >= 0 ? body.sequence : 0;
     const status = ["running", "completed", "interrupted", "failed"].includes(String(body.status))
       ? body.status
@@ -251,6 +263,7 @@ export async function POST(request: NextRequest) {
           assistant_message: assistantMessage,
           model: body.model === null ? null : cleanText(body.model, 120),
           status,
+          work_trace: workTrace,
           completed_at: status === "running" ? null : new Date().toISOString(),
         },
         { onConflict: "thread_id,sidecar_turn_id" },
