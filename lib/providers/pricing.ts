@@ -22,7 +22,7 @@ const EXPLICITLY_FREE_MODELS = new Set([
     // 20260803_120000_maximo_atlas_paid_pricing.sql.
 ]);
 
-function isExplicitlyFree(provider: string, model: string): boolean {
+export function isExplicitlyFree(provider: string, model: string): boolean {
     return EXPLICITLY_FREE_MODELS.has(`${provider}:${model}`);
 }
 

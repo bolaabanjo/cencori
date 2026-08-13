@@ -1,7 +1,10 @@
 import type { ModelPricing, UnifiedChatResponse } from '@/lib/providers/base';
 import { ModelAccessDeniedError } from '@/lib/providers/errors';
+import { isExplicitlyFree } from '@/lib/providers/pricing';
 
 export type GatewayBillingMode = 'standard' | 'sponsored';
+
+export const ALL_MODELS_GRANT = '*';
 
 const RESTRICTED_MODELS = new Set([
     'maximo:maximo-atlas-1.1',
@@ -25,8 +28,17 @@ export function resolveApiKeyModelAccess(params: {
     const allowed = canonicalSet(params.allowedModels);
     const sponsored = canonicalSet(params.sponsoredModels);
     const hasExplicitAllowlist = Array.isArray(params.allowedModels);
+    const grantsEveryModel = allowed.has(ALL_MODELS_GRANT);
+    // An allowlist scopes which *paid* models a key may reach. Cencori's free catalog is never
+    // charged to the customer, so it stays open to every key that is not fully closed — a scoped
+    // key can use free models without widening its billing exposure. An empty array still permits
+    // nothing, which is the only way to shut a key off entirely.
     const isAllowed = hasExplicitAllowlist
-        ? allowed.has(key)
+        ? allowed.size > 0 && (
+            grantsEveryModel
+            || allowed.has(key)
+            || isExplicitlyFree(params.provider, params.model)
+        )
         : !RESTRICTED_MODELS.has(key);
 
     return {

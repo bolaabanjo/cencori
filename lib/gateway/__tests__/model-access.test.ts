@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+    ALL_MODELS_GRANT,
     applyResponseBillingMode,
     calculateGatewayCharge,
     isFullySponsoredApiKey,
@@ -53,6 +54,68 @@ describe('API-key model access and sponsorship', () => {
             model: 'gpt-5',
         }).allowed).toBe(false);
         expect(isFullySponsoredApiKey(access.allowedModels, access.sponsoredModels)).toBe(true);
+    });
+
+    it('lets a scoped key reach the free catalog without widening its paid access', () => {
+        const access = { allowedModels: [atlas], sponsoredModels: [atlas] };
+
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'cerebras',
+            model: 'gpt-oss-120b',
+        })).toEqual({ allowed: true, billingMode: 'standard' });
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'groq',
+            model: 'llama-3.3-70b-versatile',
+        }).allowed).toBe(true);
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'anthropic',
+            model: 'claude-opus-5',
+        }).allowed).toBe(false);
+    });
+
+    it('keeps an empty allowlist fully closed, free models included', () => {
+        const access = { allowedModels: [], sponsoredModels: null };
+
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'cerebras',
+            model: 'gpt-oss-120b',
+        }).allowed).toBe(false);
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'maximo',
+            model: 'maximo-atlas-1.1',
+        }).allowed).toBe(false);
+    });
+
+    it('lets a first-party product key reach every model without sponsoring every model', () => {
+        const access = {
+            allowedModels: [ALL_MODELS_GRANT],
+            sponsoredModels: [atlas],
+        };
+
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'maximo',
+            model: 'maximo-atlas-1.1',
+        })).toEqual({ allowed: true, billingMode: 'sponsored' });
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'anthropic',
+            model: 'claude-opus-5',
+        })).toEqual({ allowed: true, billingMode: 'standard' });
+        expect(resolveApiKeyModelAccess({
+            ...access,
+            provider: 'cerebras',
+            model: 'gpt-oss-120b',
+        })).toEqual({ allowed: true, billingMode: 'standard' });
+        expect(isFullySponsoredApiKey(
+            access.allowedModels,
+            access.sponsoredModels,
+        )).toBe(false);
     });
 
     it('tracks provider cost while charging the sponsored key zero', () => {
