@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { notFound, usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useParams, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -49,6 +49,9 @@ import Plug01Icon from "@hugeicons/core-free-icons/Plug01Icon";
 import UserMultipleIcon from "@hugeicons/core-free-icons/UserMultipleIcon";
 import DocumentValidationIcon from "@hugeicons/core-free-icons/DocumentValidationIcon";
 import { useMobileSheet } from "@/lib/contexts/MobileSheetContext";
+import { useSession } from "@/lib/contexts/SessionContext";
+import { isAuthExpiredError } from "@/lib/auth/auth-errors";
+import { WorkspaceUnavailable } from "@/components/dashboard/WorkspaceUnavailable";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { UsageLimitBanner } from "@/components/billing/UsageLimitBanner";
 import { UserMenu } from "@/components/dashboard/UserMenu";
@@ -63,10 +66,18 @@ interface OrganizationData {
     monthly_request_limit: number;
 }
 
-// Sentinel message that marks a *genuine* missing org (server confirmed zero
-// rows) vs. a transient failure (offline, 5xx, auth hiccup). Only the former
-// should ever render a 404 — a network blip must never nuke the dashboard.
+// Sentinel message that marks an org the server returned zero rows for, vs. a
+// transient failure (offline, 5xx). Only the former renders the unavailable
+// screen — a network blip must never nuke the dashboard.
+//
+// "Zero rows" is not the same as "doesn't exist": RLS filters out every org the
+// signed-in account isn't a member of, so a workspace belonging to another
+// account is indistinguishable from a slug that was never real. See
+// WorkspaceUnavailable for how that ambiguity is presented.
 const ORG_NOT_FOUND = "ORG_NOT_FOUND";
+// The session behind the tab is dead or belongs to somebody else. Handed to
+// SessionProvider, which owns the interruption UI.
+const ORG_AUTH_EXPIRED = "ORG_AUTH_EXPIRED";
 
 function useOrganization(orgSlug: string) {
     return useQuery({
@@ -79,10 +90,15 @@ function useOrganization(orgSlug: string) {
                 .single();
 
             if (orgError) {
-                // PGRST116 = query succeeded but matched no rows → the org
-                // truly doesn't exist. Anything else (network drop, timeout,
-                // 5xx) is transient and must be surfaced as a retryable error,
-                // NOT a 404.
+                // An expired or swapped session comes back as an auth error,
+                // not as missing data. Never render that as a missing org.
+                if (isAuthExpiredError(orgError)) {
+                    throw new Error(ORG_AUTH_EXPIRED);
+                }
+                // PGRST116 = query succeeded but matched no rows → nothing this
+                // account can reach at this slug. Anything else (network drop,
+                // timeout, 5xx) is transient and must be surfaced as a
+                // retryable error.
                 if (orgError.code === "PGRST116") {
                     throw new Error(ORG_NOT_FOUND);
                 }
@@ -95,6 +111,13 @@ function useOrganization(orgSlug: string) {
             return orgData as OrganizationData;
         },
         staleTime: 15 * 60 * 1000,
+        // Retrying a definitive answer only delays the explanation. Transient
+        // failures keep the default single retry.
+        retry: (failureCount, error) => {
+            const message = error instanceof Error ? error.message : "";
+            if (message === ORG_NOT_FOUND || message === ORG_AUTH_EXPIRED) return false;
+            return failureCount < 1;
+        },
     });
 }
 
@@ -108,6 +131,7 @@ export default function OrganizationLayoutClient({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { isOpen, setIsOpen } = useMobileSheet();
+    const { reportSessionExpired } = useSession();
 
     const { data: organization, error } = useOrganization(orgSlug);
 
@@ -196,11 +220,22 @@ export default function OrganizationLayoutClient({
         }
     }, [isInsideProject, isOrganizationSettingsView, isProjectSettingsView, pathname]);
 
-    // Only a confirmed-missing org renders 404. Transient/network errors keep
-    // the last-good dashboard on screen; the global ConnectivityWatcher tells
-    // the user to reconnect, and React Query refetches once back online.
-    if (error instanceof Error && error.message === ORG_NOT_FOUND) {
-        notFound();
+    // Transient/network errors keep the last-good dashboard on screen; the
+    // global ConnectivityWatcher tells the user to reconnect, and React Query
+    // refetches once back online. Only a definitive answer changes the page.
+    const orgErrorMessage = error instanceof Error ? error.message : null;
+
+    useEffect(() => {
+        if (orgErrorMessage === ORG_AUTH_EXPIRED) {
+            reportSessionExpired();
+        }
+    }, [orgErrorMessage, reportSessionExpired]);
+
+    if (orgErrorMessage === ORG_NOT_FOUND) {
+        // Deliberately not notFound(): the sidebar around it links into an org
+        // this account can't open, and "404" answers the wrong question. See
+        // WorkspaceUnavailable.
+        return <WorkspaceUnavailable orgSlug={orgSlug} />;
     }
 
     // Layout groups (top → bottom):

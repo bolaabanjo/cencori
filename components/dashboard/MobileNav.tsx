@@ -15,6 +15,7 @@ import { ChevronsUpDown, HelpCircle, ExternalLink, CircleUserRound, CreditCard, 
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabaseClient";
+import { beginIntentionalSignOut, clearClientSessionCaches } from "@/lib/auth/session-caches";
 
 interface MobileNavProps {
     onMenuClick: () => void;
@@ -285,6 +286,8 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                         <DropdownMenuItem
                             className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
                             onClick={async () => {
+                                beginIntentionalSignOut();
+                                clearClientSessionCaches();
                                 await supabase.auth.signOut();
                                 router.push("/login");
                             }}

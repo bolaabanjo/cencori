@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { ORG_PROJECT_CACHE_KEY } from "@/lib/auth/session-caches";
 
 export interface Organization {
     id: string;
@@ -33,11 +34,18 @@ const OrganizationProjectContext = createContext<OrganizationProjectContextType 
     undefined
 );
 
-const CACHE_KEY = "cencori:org-project-cache";
+interface OrgProjectCache {
+    organizations: Organization[];
+    projects: Project[];
+    // Which account the cache was written for. Absent on entries written before
+    // this field existed — those are treated as belonging to nobody and dropped
+    // on the first fetch, which costs one paint and is worth it.
+    userId?: string;
+}
 
-function loadCache(): { organizations: Organization[]; projects: Project[] } | null {
+function loadCache(): OrgProjectCache | null {
     try {
-        const raw = sessionStorage.getItem(CACHE_KEY);
+        const raw = sessionStorage.getItem(ORG_PROJECT_CACHE_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.organizations) && Array.isArray(parsed.projects)) {
@@ -47,9 +55,12 @@ function loadCache(): { organizations: Organization[]; projects: Project[] } | n
     return null;
 }
 
-function saveCache(organizations: Organization[], projects: Project[]) {
+function saveCache(organizations: Organization[], projects: Project[], userId: string) {
     try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ organizations, projects }));
+        sessionStorage.setItem(
+            ORG_PROJECT_CACHE_KEY,
+            JSON.stringify({ organizations, projects, userId } satisfies OrgProjectCache),
+        );
     } catch { /* storage full, ignore */ }
 }
 
@@ -71,6 +82,16 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
                 console.error("User not logged in:", sessionError?.message);
                 setLoading(false);
                 return;
+            }
+
+            // The cache is per-tab, so a sign-out or account switch that
+            // happened in a *different* tab leaves it holding the previous
+            // account's workspaces — which is what used to keep rendering their
+            // org and project names in the breadcrumbs after the identity had
+            // already changed. Drop it before anything paints.
+            if (cached && cached.userId !== session.user.id) {
+                setOrganizations([]);
+                setProjects([]);
             }
 
             // Fetch organizations
@@ -106,13 +127,13 @@ export const OrganizationProjectProvider = ({ children }: { children: ReactNode 
                 }
             }
 
-            saveCache(orgsData || [], projectsWithOrgSlug);
+            saveCache(orgsData || [], projectsWithOrgSlug, session.user.id);
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [cached]);
 
     useEffect(() => {
         fetchData();

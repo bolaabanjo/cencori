@@ -30,6 +30,7 @@ import { MobileNav } from "@/components/dashboard/MobileNav";
 import { CencoriAgentSidebar } from "@/components/dashboard/CencoriAgentSidebar";
 import { EnvironmentProvider, useEnvironment } from "@/lib/contexts/EnvironmentContext";
 import { ReactQueryProvider } from "@/lib/providers/ReactQueryProvider";
+import { SessionProvider } from "@/lib/contexts/SessionContext";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import posthog from "posthog-js";
@@ -80,7 +81,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (mounted) {
           setAuthState({ loading: true, user: null });
         }
-        router.replace("/login");
+        // Carry the page they were trying to open through the login round-trip.
+        const returnTo = `${window.location.pathname}${window.location.search}`;
+        router.replace(`/login?redirect=${encodeURIComponent(returnTo)}`);
         return;
       }
 
@@ -107,11 +110,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (event === "SIGNED_OUT") {
+        // No redirect from here. A deliberate log-out navigates itself, and an
+        // involuntary one (expired token, sign-out in another tab) belongs to
+        // SessionProvider, which explains what happened and preserves the page
+        // to come back to. Racing it with router.replace("/login") threw people
+        // out mid-task with no context and no return path.
         clearDashboardUserCache();
         if (mounted) {
           setAuthState({ loading: true, user: null });
         }
-        router.replace("/login");
       } else if (session?.user) {
         const dashboardUser: DashboardUser = {
           email: session.user.email,
@@ -130,8 +137,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [router]);
 
-  if (authState.loading) return null;
-
   const typedUser = authState.user ?? {};
   const meta = typedUser.user_metadata ?? {};
   const avatar = (meta.avatar_url as string | null) ?? (meta.picture as string | null) ?? null;
@@ -140,20 +145,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     typedUser.email?.split?.("@")[0] ??
     null;
 
+  // SessionProvider sits outside the loading gate on purpose: when the session
+  // drops out from under an open tab, `authState.loading` goes back to true and
+  // the dashboard stops rendering — the interruption screen has to survive that
+  // to be the thing the user actually sees.
   return (
     <ReactQueryProvider>
-      <MobileSheetProvider>
-        <OrganizationProjectProvider>
-          <EnvironmentProvider>
-            <LayoutContent
-              user={typedUser}
-              avatar={avatar}
-              name={name}>
-              {children}
-            </LayoutContent>
-          </EnvironmentProvider>
-        </OrganizationProjectProvider>
-      </MobileSheetProvider>
+      <SessionProvider>
+        {authState.loading ? null : (
+          <MobileSheetProvider>
+            <OrganizationProjectProvider>
+              <EnvironmentProvider>
+                <LayoutContent
+                  user={typedUser}
+                  avatar={avatar}
+                  name={name}>
+                  {children}
+                </LayoutContent>
+              </EnvironmentProvider>
+            </OrganizationProjectProvider>
+          </MobileSheetProvider>
+        )}
+      </SessionProvider>
     </ReactQueryProvider>
   );
 }

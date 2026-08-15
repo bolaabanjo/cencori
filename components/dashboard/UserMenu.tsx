@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import posthog from "posthog-js";
+import { beginIntentionalSignOut, clearClientSessionCaches } from "@/lib/auth/session-caches";
 
 const UpgradeDialog = dynamic(
     () => import("@/components/billing/UpgradeDialog").then((module) => module.UpgradeDialog),
@@ -151,7 +152,12 @@ export function UserMenu({ organization }: UserMenuProps) {
                     <DropdownMenuItem
                         className="text-xs py-1.5 cursor-pointer flex justify-between text-red-500 focus:text-red-500"
                         onClick={async () => {
-                            sessionStorage.removeItem("cencori:org-project-cache");
+                            // Flag it first: SessionProvider watches for the
+                            // session disappearing and would otherwise raise the
+                            // "you were signed out" screen over a log-out the
+                            // user just asked for.
+                            beginIntentionalSignOut();
+                            clearClientSessionCaches();
                             await supabase.auth.signOut();
                             posthog.reset();
                             router.push("/login");

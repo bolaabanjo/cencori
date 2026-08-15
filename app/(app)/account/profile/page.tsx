@@ -19,6 +19,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { beginIntentionalSignOut, clearClientSessionCaches } from "@/lib/auth/session-caches";
 
 interface UserProfile {
     id: string;
@@ -156,6 +157,8 @@ export default function ProfilePage() {
                 throw new Error("Failed to delete account");
             }
 
+            beginIntentionalSignOut();
+            clearClientSessionCaches();
             await supabase.auth.signOut();
             router.push("/");
             toast.success("Account deleted");
