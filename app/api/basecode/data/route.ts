@@ -300,6 +300,29 @@ export async function POST(request: NextRequest) {
     return json({ turn: turnJson(data) });
   }
 
+  if (body.action === "truncate_turns") {
+    const threadId = body.threadId;
+    const fromSequence = Number.isInteger(body.fromSequence) && Number(body.fromSequence) >= 0
+      ? Number(body.fromSequence)
+      : null;
+    if (!isUuid(threadId) || fromSequence === null) {
+      return json({ error: "Invalid conversation branch." }, 400);
+    }
+    const { error } = await session.admin
+      .from("basecode_turns")
+      .delete()
+      .eq("thread_id", threadId)
+      .eq("user_id", session.user.id)
+      .gte("sequence", fromSequence);
+    if (error) return json({ error: "The conversation branch could not be updated." }, 500);
+    await session.admin
+      .from("basecode_threads")
+      .update({ status: "idle", updated_at: new Date().toISOString() })
+      .eq("id", threadId)
+      .eq("user_id", session.user.id);
+    return json({ ok: true });
+  }
+
   if (body.action === "archive_thread") {
     if (!isUuid(body.threadId)) return json({ error: "Invalid thread." }, 400);
     const { data, error } = await session.admin
