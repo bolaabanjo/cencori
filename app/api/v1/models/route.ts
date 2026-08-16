@@ -23,12 +23,21 @@ import { resolveApiKeyModelAccess } from '@/lib/gateway/model-access';
  *   401: { error: "..." }
  */
 
+/**
+ * `created` is resolved per request from the model's pricing row rather than
+ * baked in here: evaluating Date.now() at module load stamps every model with
+ * the server's boot time, so the same model reports a different `created` from
+ * each serverless instance and the value drifts on every deploy. The pricing
+ * row's created_at is the closest real answer — when the model became
+ * available on Cencori — and it is stable across instances and deploys.
+ */
+const UNKNOWN_CREATED = 0;
+
 // Build models list once at module load from the provider config (single source of truth)
 const MODELS = SUPPORTED_PROVIDERS.flatMap(provider =>
     provider.models.map(model => ({
         id: model.id,
         object: 'model' as const,
-        created: Math.floor(Date.now() / 1000),
         owned_by: provider.id,
         name: model.name,
         type: model.type,
@@ -36,6 +45,13 @@ const MODELS = SUPPORTED_PROVIDERS.flatMap(provider =>
         description: model.description,
     }))
 );
+
+type CatalogModel = (typeof MODELS)[number] & { created: number };
+
+function toEpochSeconds(value: unknown): number {
+    const parsed = typeof value === 'string' ? Date.parse(value) : NaN;
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : UNKNOWN_CREATED;
+}
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -156,7 +172,7 @@ export async function GET(req: NextRequest) {
     const availableProviderIds = getManagedProviderNames();
 
     // Include project BYOK and custom providers/models for API-key scoped requests.
-    let customModels: typeof MODELS = [];
+    let customModels: CatalogModel[] = [];
     if (apiLogContext?.projectId) {
         const supabase = createAdminClient();
         const { data: providerKeys } = await supabase
@@ -173,13 +189,13 @@ export async function GET(req: NextRequest) {
             .select(`
                 id,
                 name,
-                custom_models(model_name, display_name, is_active)
+                created_at,
+                custom_models(model_name, display_name, is_active, created_at)
             `)
             .eq('project_id', apiLogContext.projectId)
             .eq('is_active', true);
 
         if (!customProviderError && Array.isArray(projectCustomProviders)) {
-            const created = Math.floor(Date.now() / 1000);
             const customRows = projectCustomProviders.flatMap((provider) => {
                 const providerTag = `custom:${provider.id}`;
                 const models = (provider.custom_models || [])
@@ -187,7 +203,7 @@ export async function GET(req: NextRequest) {
                     .map((model) => ({
                         id: model.model_name as string,
                         object: 'model' as const,
-                        created,
+                        created: toEpochSeconds(model.created_at),
                         owned_by: providerTag,
                         name: (model.display_name as string | null) || (model.model_name as string),
                         type: 'chat' as const,
@@ -201,7 +217,8 @@ export async function GET(req: NextRequest) {
                     : [{
                         id: provider.name,
                         object: 'model' as const,
-                        created,
+                        // The alias stands for the provider, not one model.
+                        created: toEpochSeconds(provider.created_at),
                         owned_by: providerTag,
                         name: provider.name,
                         type: 'chat' as const,
@@ -249,13 +266,21 @@ export async function GET(req: NextRequest) {
     // A row whose promotional rate has lapsed still counts as priced when it
     // carries the follow-on rate it switches to — that is a scheduled
     // changeover, not a gap. Without one it drops out, same as before.
+    const activePricingRows = (pricingRows ?? [])
+        .filter(row => !row.pricing_expires_at
+            || Date.parse(row.pricing_expires_at) > Date.now()
+            || (row.next_input_price_per_1k_tokens != null
+                && row.next_output_price_per_1k_tokens != null));
     const pricedModels = new Set(
-        (pricingRows ?? [])
-            .filter(row => !row.pricing_expires_at
-                || Date.parse(row.pricing_expires_at) > Date.now()
-                || (row.next_input_price_per_1k_tokens != null
-                    && row.next_output_price_per_1k_tokens != null))
-            .map(row => `${row.provider}:${row.model_name}`)
+        activePricingRows.map(row => `${row.provider}:${row.model_name}`)
+    );
+    // When the model became available on Cencori. Stable across instances and
+    // deploys, unlike a boot-time timestamp.
+    const createdByModel = new Map<string, number>(
+        activePricingRows.map(row => [
+            `${row.provider}:${row.model_name}`,
+            toEpochSeconds(row.created_at),
+        ])
     );
 
     // Optional filtering by provider or type (Restored Feature)
@@ -271,7 +296,7 @@ export async function GET(req: NextRequest) {
         }).allowed
     );
 
-    let filteredModels = [
+    let filteredModels: CatalogModel[] = [
         ...MODELS.filter((model) =>
             availableProviderIds.has(model.owned_by)
             && resolveApiKeyModelAccess({
@@ -282,7 +307,12 @@ export async function GET(req: NextRequest) {
             && (
                 pricedModels.has(`${model.owned_by}:${model.id}`)
                 || hasStaticPricing(model.owned_by, model.id)
-            )),
+            ))
+            // Statically-priced models have no pricing row to date them.
+            .map((model) => ({
+                ...model,
+                created: createdByModel.get(`${model.owned_by}:${model.id}`) ?? UNKNOWN_CREATED,
+            })),
         ...visibleCustomModels,
     ];
     if (filterProvider) {
