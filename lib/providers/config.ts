@@ -331,8 +331,8 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://maximoai.co/platform',
         keyPrefix: '',
         models: [
-            { id: 'maximo-atlas-1.2', name: 'Maximo Atlas 1.2', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Agentic coding & debugging across large codebases, 1M context / 128K max output, prompt caching, reasoning low→max. $0.11/$0.01 cached/$0.30 per 1M through 2026-08-31 UTC, then $0.55/$0.05/$1.50' },
-            { id: 'maximo-atlas-1.1', name: 'Maximo Atlas 1.1', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Agentic coding model, multiple specialized models behind one endpoint, 1M context / 128K max output, $0.20/$1.00 per 1M tokens' },
+            { id: 'maximo-atlas-1.2', name: 'Maximo Atlas 1.2', type: ['chat', 'reasoning', 'code', 'vision'], contextWindow: 1000000, description: 'Agentic coding & debugging across large codebases, image input, 1M context / 128K max output, prompt caching, reasoning low→max. $0.11/$0.01 cached/$0.30 per 1M through 2026-08-31 UTC, then $0.55/$0.05/$1.50' },
+            { id: 'maximo-atlas-1.1', name: 'Maximo Atlas 1.1', type: ['chat', 'reasoning', 'code', 'vision'], contextWindow: 1000000, description: 'Agentic coding model, multiple specialized models behind one endpoint, image input, 1M context / 128K max output, $0.20/$1.00 per 1M tokens' },
         ],
     },
     {

@@ -51,6 +51,17 @@ function firstConfiguredEnv(names: string[]): string | undefined {
     return undefined;
 }
 
+/**
+ * The managed (Cencori-funded) key for an OpenAI-compatible provider, if one is
+ * deployed. Exported so the vision path resolves keys from the same table the
+ * chat path does — a provider whose key variable is only known here would
+ * otherwise look unconfigured to vision and fail with a misleading message.
+ */
+export function getManagedOpenAICompatibleKey(provider: string): string | undefined {
+    const envVars = OPENAI_COMPATIBLE_ENV_VARS[provider];
+    return envVars ? firstConfiguredEnv(envVars) : undefined;
+}
+
 export function getManagedProviderNames(): Set<string> {
     const providers = new Set<string>();
     if (getGoogleApiKey()) providers.add('google');

@@ -12,6 +12,11 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { NextRequest } from 'next/server';
 import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
+import {
+    OPENAI_COMPATIBLE_ENDPOINTS,
+    openAICompatibleHeaders,
+} from '@/lib/providers/openai-compatible';
+import { getManagedOpenAICompatibleKey } from '@/lib/gateway/providers-setup';
 import { getPricingFromDB } from '@/lib/providers/pricing';
 import { calculateProviderTokenCost } from '@/lib/providers/base';
 import type { GatewayContext } from '@/lib/gateway-middleware';
@@ -24,6 +29,7 @@ import {
 import {
     readResponseBuffer,
     safeOutboundFetch,
+    safeProviderFetch,
     UnsafeOutboundUrlError,
 } from '@/lib/security/outbound-url';
 
@@ -46,6 +52,14 @@ export const VISION_PROVIDER_LIMITS = {
         formats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'],
         maxBytes: 20 * 1024 * 1024,
         notes: 'HEIC/HEIF supported. Max 20MB per image inline.',
+    },
+    maximo: {
+        // Maximo publishes no image format or size limits, so the cross-provider
+        // safe set applies: anything accepted here is accepted everywhere, which
+        // also keeps failover to another provider from failing validation.
+        formats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+        maxBytes: 20 * 1024 * 1024,
+        notes: 'No published limits; the cross-provider safe set is applied.',
     },
 } as const satisfies Record<VisionProvider, { formats: readonly string[]; maxBytes: number; notes: string }>;
 
@@ -72,7 +86,21 @@ export class VisionValidationError extends Error {
     }
 }
 
-export type VisionProvider = 'openai' | 'anthropic' | 'google';
+/**
+ * Providers on the OpenAI wire format whose vision-capable models are reached
+ * through the same request shape as OpenAI's, just at a different base URL.
+ *
+ * Vision used to be a closed three-provider world, which meant a model like
+ * Maximo Atlas — which reads images perfectly well over the OpenAI wire format —
+ * threw `Unknown vision model` before a request was ever made. Adding a provider
+ * here plus its models in VISION_MODELS is all it takes; nothing about the
+ * payload changes.
+ */
+export const OPENAI_COMPATIBLE_VISION_PROVIDERS = ['maximo'] as const;
+
+export type OpenAICompatibleVisionProvider = typeof OPENAI_COMPATIBLE_VISION_PROVIDERS[number];
+
+export type VisionProvider = 'openai' | 'anthropic' | 'google' | OpenAICompatibleVisionProvider;
 
 export interface VisionImage {
     // Provide exactly one of these:
@@ -140,6 +168,9 @@ const VISION_MODELS: Record<string, ModelInfo> = {
     'gemini-2.5-pro': { provider: 'google', apiModel: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro — 1M context' },
     'gemini-2.5-flash': { provider: 'google', apiModel: 'gemini-2.5-flash', description: 'Cheapest, 1M context' },
     'gemini-2.5-flash-lite': { provider: 'google', apiModel: 'gemini-2.5-flash-lite', description: 'Fastest Gemini' },
+    // Maximo (OpenAI wire format)
+    'maximo-atlas-1.2': { provider: 'maximo', apiModel: 'maximo-atlas-1.2', description: 'Atlas 1.2 — agentic coding with visual understanding, 1M context' },
+    'maximo-atlas-1.1': { provider: 'maximo', apiModel: 'maximo-atlas-1.1', description: 'Atlas 1.1 — agentic coding, 1M context' },
 };
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -159,6 +190,11 @@ function resolveModel(requested?: string): ModelInfo & { key: string } {
     }
     if (lower.startsWith('gemini')) {
         return { key, provider: 'google', apiModel: key, description: 'Google model' };
+    }
+    for (const provider of OPENAI_COMPATIBLE_VISION_PROVIDERS) {
+        if (lower.startsWith(`${provider}-`)) {
+            return { key, provider, apiModel: key, description: `${provider} model` };
+        }
     }
     throw new Error(`Unknown vision model: ${key}. See GET /api/ai/vision for supported models.`);
 }
@@ -188,7 +224,9 @@ async function getProviderKey(ctx: GatewayContext, provider: VisionProvider): Pr
     if (provider === 'openai') return process.env.OPENAI_API_KEY ?? null;
     if (provider === 'anthropic') return process.env.ANTHROPIC_API_KEY ?? null;
     if (provider === 'google') return getGoogleApiKey();
-    return null;
+    // Managed keys for OpenAI-compatible providers are named in one place
+    // (providers-setup), including historical aliases like MAXIMOAI_API_KEY.
+    return getManagedOpenAICompatibleKey(provider) ?? null;
 }
 
 // ── Image normalization ─────────────────────────────────────────
@@ -315,14 +353,36 @@ function openaiImageContent(imgs: NormalizedImage[]) {
     }));
 }
 
+/**
+ * Client for an OpenAI-compatible provider's endpoint.
+ *
+ * Base URL and headers come from the same registry the chat path uses, so a
+ * provider quirk fixed for chat (Maximo's WAF User-Agent rule) is fixed here
+ * too, and `safeProviderFetch` keeps the SSRF guard consistent across both.
+ */
+function openAICompatibleClient(provider: OpenAICompatibleVisionProvider, apiKey: string): OpenAI {
+    const endpoint = OPENAI_COMPATIBLE_ENDPOINTS[provider];
+    if (!endpoint) {
+        throw new Error(`No OpenAI-compatible endpoint is configured for provider '${provider}'.`);
+    }
+    return new OpenAI({
+        apiKey,
+        baseURL: endpoint.baseURL,
+        fetch: safeProviderFetch,
+        timeout: 55_000,
+        maxRetries: 0,
+        defaultHeaders: openAICompatibleHeaders(provider),
+    });
+}
+
 async function analyzeOpenAI(
     apiKey: string,
     model: string,
     prompt: string,
     imgs: NormalizedImage[],
-    opts: { maxTokens?: number; temperature?: number; jsonMode?: boolean }
+    opts: { maxTokens?: number; temperature?: number; jsonMode?: boolean },
+    client: OpenAI = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 })
 ): Promise<{ analysis: string; promptTokens: number; completionTokens: number }> {
-    const client = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 });
     const response = await client.chat.completions.create({
         model,
         max_tokens: opts.maxTokens ?? 1024,
@@ -448,9 +508,9 @@ async function* streamOpenAI(
     model: string,
     prompt: string,
     imgs: NormalizedImage[],
-    opts: { maxTokens?: number; temperature?: number }
+    opts: { maxTokens?: number; temperature?: number },
+    client: OpenAI = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 })
 ): AsyncGenerator<{ delta: string } | { done: true; promptTokens: number; completionTokens: number }> {
-    const client = new OpenAI({ apiKey, timeout: 55_000, maxRetries: 0 });
     const stream = await client.chat.completions.create({
         model,
         max_tokens: opts.maxTokens ?? 1024,
@@ -557,9 +617,13 @@ function makeVisionStreamGenerator(
     imgs: NormalizedImage[],
     opts: { maxTokens?: number; temperature?: number }
 ) {
-    return provider === 'openai' ? streamOpenAI(apiKey, apiModel, prompt, imgs, opts)
-        : provider === 'anthropic' ? streamAnthropic(apiKey, apiModel, prompt, imgs, opts)
-        : streamGoogle(apiKey, apiModel, prompt, imgs, opts);
+    // Explicit per-provider dispatch, not a trailing else: this used to fall
+    // through to Google for anything that wasn't OpenAI or Anthropic, which
+    // would have sent an OpenAI-compatible provider's request to Gemini.
+    if (provider === 'openai') return streamOpenAI(apiKey, apiModel, prompt, imgs, opts);
+    if (provider === 'anthropic') return streamAnthropic(apiKey, apiModel, prompt, imgs, opts);
+    if (provider === 'google') return streamGoogle(apiKey, apiModel, prompt, imgs, opts);
+    return streamOpenAI(apiKey, apiModel, prompt, imgs, opts, openAICompatibleClient(provider, apiKey));
 }
 
 export async function* streamVision(
@@ -717,7 +781,8 @@ async function callVisionProvider(
 ): Promise<VisionCallResult> {
     if (provider === 'openai') return analyzeOpenAI(apiKey, apiModel, prompt, imgs, opts);
     if (provider === 'anthropic') return analyzeAnthropic(apiKey, apiModel, prompt, imgs, opts);
-    return analyzeGoogle(apiKey, apiModel, prompt, imgs, opts);
+    if (provider === 'google') return analyzeGoogle(apiKey, apiModel, prompt, imgs, opts);
+    return analyzeOpenAI(apiKey, apiModel, prompt, imgs, opts, openAICompatibleClient(provider, apiKey));
 }
 
 export async function analyzeVision(

@@ -86,6 +86,31 @@ export const OPENAI_COMPATIBLE_ENDPOINTS: Record<string, { baseURL: string; name
 };
 
 /**
+ * Provider-specific headers required to reach an OpenAI-compatible endpoint.
+ *
+ * Exported because the vision path builds its own OpenAI client against these
+ * same endpoints. Maximo's WAF rule in particular has to be applied wherever a
+ * client is constructed, or image requests 403 while chat works fine.
+ */
+export function openAICompatibleHeaders(providerName: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+
+    // OpenRouter requires additional headers
+    if (providerName === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://cencori.com';
+        headers['X-Title'] = 'Cencori';
+    }
+
+    // Maximo's WAF blocks the OpenAI SDK's default User-Agent (`OpenAI/NodeJS …`),
+    // returning `403 "Your request was blocked."`. Override it so requests pass.
+    if (providerName === 'maximo') {
+        headers['User-Agent'] = 'Cencori/1.0';
+    }
+
+    return headers;
+}
+
+/**
  * Generic OpenAI-compatible provider
  * Works with any provider that implements the OpenAI API format
  */
@@ -126,21 +151,7 @@ export class OpenAICompatibleProvider extends AIProvider {
      * Get provider-specific headers
      */
     private getDefaultHeaders(providerName: string): Record<string, string> {
-        const headers: Record<string, string> = {};
-
-        // OpenRouter requires additional headers
-        if (providerName === 'openrouter') {
-            headers['HTTP-Referer'] = 'https://cencori.com';
-            headers['X-Title'] = 'Cencori';
-        }
-
-        // Maximo's WAF blocks the OpenAI SDK's default User-Agent (`OpenAI/NodeJS …`),
-        // returning `403 "Your request was blocked."`. Override it so requests pass.
-        if (providerName === 'maximo') {
-            headers['User-Agent'] = 'Cencori/1.0';
-        }
-
-        return headers;
+        return openAICompatibleHeaders(providerName);
     }
 
     /**

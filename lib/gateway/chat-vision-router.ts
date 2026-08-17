@@ -107,6 +107,7 @@ const VISION_CAPABLE_PATTERNS = [
     /^claude-sonnet-5/i,
     /^gemini-2\.5/i,
     /^gemini-3/i,
+    /^maximo-atlas-1\.[12]/i,
 ];
 
 function isVisionCapable(model: string): boolean {
