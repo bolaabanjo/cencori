@@ -14,6 +14,15 @@ describe('Maximo Atlas catalog', () => {
         expect(modelIds).not.toContain('maximo-atlas-preview');
     });
 
+    it('advertises the context window Maximo actually reports', () => {
+        // Both Atlas versions report context_length 1_000_000 from
+        // GET https://api.maximoai.co/v1/models. 1.1 sat at 262_000 here for a
+        // release and a half, understating it by ~4x.
+        for (const model of getModelsForProvider('maximo')) {
+            expect(model.contextWindow).toBe(1_000_000);
+        }
+    });
+
     it('routes both Atlas versions to Maximo', () => {
         const router = new ProviderRouter();
 

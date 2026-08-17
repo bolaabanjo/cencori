@@ -19,10 +19,9 @@
 -- be redeployed on 2026-09-01. Storing the promo *without* a successor would
 -- fail closed on that date instead, which is the behaviour this avoids.
 --
--- The changeover is pinned to 00:00 UTC because Maximo published a date, not a
--- time. If their promo actually runs into 2026-09-01 in a western timezone we
--- start charging the standard rate a few hours early — the error direction that
--- can only ever over-recover cost, never bill below what we pay.
+-- The changeover is pinned to 00:00 UTC on the provider's own terms: Maximo's
+-- model description states the discount runs "through August 31, 2026 UTC", so
+-- the first second of 2026-09-01 UTC is exactly when the standard rate applies.
 --
 -- Atlas 1.2 is the first Atlas with prompt caching (1.1 published no cache
 -- rate). Cache reads are billed at the cached rate by calculateProviderTokenCost
