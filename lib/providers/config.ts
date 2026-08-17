@@ -213,12 +213,32 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         website: 'https://openrouter.ai',
         docsUrl: 'https://openrouter.ai/docs',
         keyPrefix: 'sk-or-',
+        // Model ids, context windows and pricing here are read from
+        // https://openrouter.ai/api/v1/models, which is the authoritative live
+        // catalog — an id absent from that response 404s at inference no matter
+        // what this file says. Verified 2026-08-17.
+        //
+        // OpenRouter is also how Cencori serves the open-weight Chinese models
+        // (DeepSeek, Kimi, Qwen) without provisioning a direct key with each
+        // lab. The trade is margin: OpenRouter's published rate already includes
+        // their cut, and Cencori's markup stacks on top, so the same model costs
+        // the end user more here than through a funded direct key.
         models: [
             { id: 'openai/gpt-5', name: 'GPT-5 (via OpenRouter)', type: ['chat'], contextWindow: 256000, description: 'Access any model' },
             { id: 'anthropic/claude-opus-4.5', name: 'Claude Opus 4.5 (via OpenRouter)', type: ['chat'], contextWindow: 200000, description: 'Unified billing' },
-            { id: 'google/gemini-3-pro', name: 'Gemini 3 Pro (via OpenRouter)', type: ['chat'], contextWindow: 2000000, description: 'Meta-provider' },
-            { id: 'x-ai/grok-4.3', name: 'Grok 4.3 (via OpenRouter)', type: ['reasoning'], contextWindow: 1000000, description: 'Latest xAI reasoning model' },
-            { id: 'x-ai/grok-4', name: 'Grok 4 (via OpenRouter)', type: ['chat'], contextWindow: 256000, description: 'Access xAI models' },
+            // `google/gemini-3-pro` and `x-ai/grok-4` were listed here but do not
+            // exist on OpenRouter; they are replaced by the ids it actually serves.
+            { id: 'google/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (via OpenRouter)', type: ['chat', 'reasoning'], contextWindow: 1048576, description: 'Google flagship preview through OpenRouter' },
+            { id: 'x-ai/grok-4.3', name: 'Grok 4.3 (via OpenRouter)', type: ['reasoning'], contextWindow: 1000000, description: 'Long-context xAI reasoning model' },
+            { id: 'x-ai/grok-4.6', name: 'Grok 4.6 (via OpenRouter)', type: ['reasoning', 'chat'], contextWindow: 500000, description: 'Frontier xAI reasoning model' },
+            // ── Open-weight models (the "free and open source" tier) ──────────
+            { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 1048576, description: '1.6T total / 49B active params, flagship open-weight model' },
+            { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 1048576, description: 'Fast, very low cost open-weight model' },
+            { id: 'moonshotai/kimi-k3', name: 'Kimi K3 (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 1048576, description: 'Moonshot flagship, 1M context' },
+            { id: 'moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code (via OpenRouter)', type: ['code', 'chat', 'reasoning'], contextWindow: 262144, description: 'Coding-tuned Kimi, strong price/performance' },
+            { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6 (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 262144, description: 'General-purpose Kimi K2 generation' },
+            { id: 'qwen/qwen3.8-max', name: 'Qwen 3.8 Max (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Alibaba flagship, 1M context' },
+            { id: 'qwen/qwen3-coder-plus', name: 'Qwen 3 Coder Plus (via OpenRouter)', type: ['code', 'chat'], contextWindow: 1000000, description: 'Code-specialised Qwen, 1M context' },
         ],
     },
     {
@@ -311,6 +331,7 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://maximoai.co/platform',
         keyPrefix: '',
         models: [
+            { id: 'maximo-atlas-1.2', name: 'Maximo Atlas 1.2', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Agentic coding, research & browsing model by Maximo AI with prompt caching, $0.11/$0.30 per 1M tokens through 2026-08-31, $0.55/$1.50 after' },
             { id: 'maximo-atlas-1.1', name: 'Maximo Atlas 1.1', type: ['chat', 'reasoning', 'code'], contextWindow: 262000, description: 'Production coding & agent model by Maximo AI, $0.20/$1.00 per 1M tokens' },
         ],
     },

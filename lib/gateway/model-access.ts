@@ -6,6 +6,9 @@ export type GatewayBillingMode = 'standard' | 'sponsored';
 
 export const ALL_MODELS_GRANT = '*';
 
+// Models a key can only reach through an explicit allowlist grant. The
+// restriction is per model, not per line: Atlas 1.2 ships generally available,
+// while 1.1 stays gated under its existing arrangement.
 const RESTRICTED_MODELS = new Set([
     'maximo:maximo-atlas-1.1',
 ]);

@@ -43,6 +43,7 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'moonshotai/kimi-k2-instruct': 'groq',
     'allam-2-7b': 'groq',
     // Maximo AI (defaults to openai)
+    'maximo-atlas-1.2': 'maximo',
     'maximo-atlas-1.1': 'maximo',
     // Helix (Launchverse) — autonomous engineering agent personas
     'helix-advisor': 'helix',
