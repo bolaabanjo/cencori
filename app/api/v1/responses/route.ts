@@ -76,7 +76,11 @@ const normalizeGatewayModelId = (modelId: string): string => {
     return aliases[strippedModel] || strippedModel;
 };
 
-const MAX_INPUT_ITEMS = 100;
+// An agent turn resends its whole conversation as input items — every message, function call, and
+// function call output — so a coding session legitimately reaches hundreds of items. The aggregate
+// byte cap below, not the item count, is what bounds the payload.
+const MAX_INPUT_ITEMS = 2000;
+const MAX_TOTAL_TEXT_BYTES = 8 * 1024 * 1024;
 const MAX_INLINE_FILES = 20;
 const MAX_INLINE_FILE_BYTES = 512 * 1024;
 const MAX_TOTAL_INLINE_FILE_BYTES = 2 * 1024 * 1024;
@@ -105,6 +109,7 @@ function validateResponsesInput(input: unknown): string | null {
 
     let fileCount = 0;
     let totalFileBytes = 0;
+    let totalTextBytes = 0;
     for (const rawItem of input) {
         if (!rawItem || typeof rawItem !== 'object') return 'Every input item must be an object.';
         const item = rawItem as Record<string, unknown>;
@@ -116,6 +121,7 @@ function validateResponsesInput(input: unknown): string | null {
             if (typeof item.content !== 'string' || utf8Bytes(item.content) > MAX_TEXT_FIELD_BYTES) {
                 return 'Message content must be a string no larger than 1 MiB.';
             }
+            totalTextBytes += utf8Bytes(item.content);
         } else if (item.type === 'function_call') {
             if (typeof item.id !== 'string' || typeof item.call_id !== 'string'
                 || typeof item.name !== 'string' || typeof item.arguments !== 'string') {
@@ -124,6 +130,7 @@ function validateResponsesInput(input: unknown): string | null {
             if (utf8Bytes(item.arguments) > MAX_TEXT_FIELD_BYTES) {
                 return 'Function call arguments exceed the 1 MiB limit.';
             }
+            totalTextBytes += utf8Bytes(item.arguments);
         } else if (item.type === 'function_call_output') {
             if (typeof item.call_id !== 'string' || typeof item.output !== 'string') {
                 return 'Function call output items require string call_id and output fields.';
@@ -131,6 +138,7 @@ function validateResponsesInput(input: unknown): string | null {
             if (utf8Bytes(item.output) > MAX_TEXT_FIELD_BYTES) {
                 return 'Function call output exceeds the 1 MiB limit.';
             }
+            totalTextBytes += utf8Bytes(item.output);
         } else if (item.type === 'file') {
             fileCount += 1;
             if (fileCount > MAX_INLINE_FILES) return `Input may contain at most ${MAX_INLINE_FILES} inline files.`;
@@ -154,6 +162,10 @@ function validateResponsesInput(input: unknown): string | null {
             }
         } else {
             return 'Unsupported input item type.';
+        }
+
+        if (totalTextBytes > MAX_TOTAL_TEXT_BYTES) {
+            return 'Input text exceeds the 8 MiB combined limit.';
         }
     }
 
