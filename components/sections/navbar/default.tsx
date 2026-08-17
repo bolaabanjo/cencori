@@ -331,7 +331,7 @@ export default function Navbar({
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={async () => {
-                          await supabase.auth.signOut();
+                          await supabase.auth.signOut({ scope: "local" });
                           router.push("/login");
                         }}
                         className="cursor-pointer"

@@ -288,7 +288,7 @@ export default function ScanLayout({ children }: ScanLayoutProps) {
                                 <DropdownMenuItem
                                     className="text-xs py-1.5 cursor-pointer text-red-500 focus:text-red-500"
                                     onClick={async () => {
-                                        await supabase.auth.signOut();
+                                        await supabase.auth.signOut({ scope: "local" });
                                         window.location.href = logoutHref;
                                     }}
                                 >

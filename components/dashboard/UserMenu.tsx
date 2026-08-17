@@ -158,7 +158,7 @@ export function UserMenu({ organization }: UserMenuProps) {
                             // user just asked for.
                             beginIntentionalSignOut();
                             clearClientSessionCaches();
-                            await supabase.auth.signOut();
+                            await supabase.auth.signOut({ scope: "local" });
                             posthog.reset();
                             router.push("/login");
                         }}

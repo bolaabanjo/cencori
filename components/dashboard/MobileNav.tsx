@@ -288,7 +288,7 @@ export function MobileNav({ projectSlug, user, avatar }: MobileNavProps) {
                             onClick={async () => {
                                 beginIntentionalSignOut();
                                 clearClientSessionCaches();
-                                await supabase.auth.signOut();
+                                await supabase.auth.signOut({ scope: "local" });
                                 router.push("/login");
                             }}
                         >

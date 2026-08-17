@@ -39,7 +39,7 @@ export function WorkspaceUnavailable({ orgSlug }: { orgSlug: string }) {
         setBusy(true);
         beginIntentionalSignOut();
         try {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
         } catch {
             // Local cookie clearing is what matters before we hand off to login.
         }

@@ -40,7 +40,7 @@ export function SessionInterruptionOverlay({
         setBusy(true);
         beginIntentionalSignOut();
         try {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
         } catch {
             // Already gone server-side is fine — we only need the local cookie
             // cleared before handing the user back to the login screen.

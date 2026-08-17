@@ -159,7 +159,7 @@ export default function ProfilePage() {
 
             beginIntentionalSignOut();
             clearClientSessionCaches();
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
             router.push("/");
             toast.success("Account deleted");
         } catch (error) {

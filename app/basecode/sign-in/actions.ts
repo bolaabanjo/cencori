@@ -23,7 +23,7 @@ export async function useAnotherCencoriAccount(formData: FormData): Promise<neve
   }
 
   const supabase = await createServerClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   const returnTo = basecodeSignInPath(challenge, state, redirectUri);
   redirect(`/login?redirect=${encodeURIComponent(returnTo)}`);
 }
