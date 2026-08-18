@@ -1,66 +1,66 @@
 ---
 title: "Building Agents with the Responses API"
-description: "Build production AI agents that search the web, query your knowledge base, run code, and call APIs — all through a single endpoint."
+description: "Build production AI agents that search the web, query your uploaded documents, and call your APIs — all through a single endpoint."
 section: "Agents"
 order: 1
 ---
 
-You have an AI model. You want it to do more than chat — you want it to search the web for real-time information, look up internal knowledge, run calculations, and call your APIs. You want an agent, not just a chatbot.
+You have an AI model. You want it to do more than chat — you want it to search the web for real-time information, look up internal knowledge, and call your APIs. You want an agent, not just a chatbot.
 
-The Responses API gives you that in one endpoint. No wiring up separate search APIs, vector databases, or code sandboxes. Just tell the model what tools it has, and it uses them.
+The Responses API gives you that in one endpoint. No wiring up separate search APIs or vector databases. Just tell the model what tools it has, and it uses them.
 
 ## What Makes It an Agent
 
-An AI stops being a chatbot and starts being an agent when it can act on the world — gather information, execute code, and call services — not just generate text.
+An AI stops being a chatbot and starts being an agent when it can act on the world — gather information and call services — not just generate text.
 
-The Responses API gives the model four built-in capabilities:
+The Responses API gives the model three built-in capabilities:
 
-**Web Search** — The agent searches the web for real-time information, reads results, and synthesizes answers. No separate search API integration needed.
+**Web Search** — The agent searches the web for real-time information, reads results, and synthesizes answers with citations. No separate search API integration needed.
 
-**Knowledge Retrieval** — The agent queries your stored documents and memory. Connect your knowledge base once, and every agent you build can reference it.
-
-**Code Execution** — The agent writes and runs Python or JavaScript to solve problems numerically, process data, or generate charts. Results flow back into the conversation naturally.
+**Knowledge Retrieval** — The agent searches documents you've uploaded to the project. Send a file with your request and it's indexed and searchable in the same call.
 
 **Function Calling** — The agent calls your existing APIs and services. Works exactly like standard tool calling — same format, same flow.
 
 Each tool is self-contained. The agent decides when to use them based on the task.
+
+> [!IMPORTANT]
+> **Code execution is not available yet.** The API accepts `code_interpreter`, but it always returns a `code_interpreter_call` item with `status: "failed"`. It stays disabled until it is backed by an isolated runtime with no application credentials, network access, or shared disk — running model-generated code in the gateway process is not a tradeoff worth making.
+>
+> For numeric work today, have the model return structured output and do the arithmetic in your own code.
 
 ## How It Works
 
 A single request, one response:
 
 ```
-You: "Analyze Q3 revenue trends and search for industry benchmarks."
+You: "Analyze Q3 revenue and search for industry benchmarks."
 
 Agent: 1. Searches the web for current benchmarks
-       2. Queries internal knowledge base for Q3 data
-       3. Writes and runs Python to compare the numbers
-       4. Returns a synthesized analysis
+       2. Searches your uploaded Q3 documents
+       3. Returns a synthesized analysis with citations
 ```
 
-All four tool calls happen in one request-response cycle. No building a multi-step pipeline, no managing intermediate state, no stitching together outputs from different services.
+Both tool calls happen in one request-response cycle. No building a multi-step pipeline, no managing intermediate state, no stitching together outputs from different services.
 
 ```typescript
 const response = await cencori.ai.responses({
-  model: 'gpt-4o',
-  input: 'Pull our Q3 revenue from the knowledge base, search for competitor benchmarks, and compare them.',
+  model: 'claude-opus-5',
+  input: 'Pull our Q3 revenue from the uploaded reports, search for competitor benchmarks, and compare them.',
   tools: [
     { type: 'file_search', max_num_results: 10 },
     { type: 'web_search_preview', search_context_size: 'high' },
-    { type: 'code_interpreter' },
   ],
 });
 ```
 
-The response contains everything — the text answer, search results, retrieved documents, and code output — in a single structured response.
+The response contains everything — the text answer, search results, and retrieved document excerpts — in a single structured response.
 
 ## Not Just a Wrapper
 
-All four tools run on Cencori's infrastructure:
+Every tool runs on Cencori's infrastructure:
 
 - **Web search** queries Cencori's first-party hybrid index, retrieves evidence-bearing results, and injects them as context
-- **File search** queries your Cencori project's vector store
-- **Code interpreter** executes in a sandboxed environment with timeouts and resource limits
+- **File search** runs full-text retrieval over the chunks indexed for your project, scoped so one project never sees another's documents
 - **Function calls** route through your existing provider chain with the same security, failover, and observability as any other gateway request
 
 Every request passes through the same security pipeline — jailbreak detection, PII masking, audit logging, rate limiting. Monetization applies the same way. You get agentic capabilities without bypassing your existing governance.
@@ -72,13 +72,32 @@ Every request passes through the same security pipeline — jailbreak detection,
 | Try it with one line of code | SDK quickstart: `cencori.ai.responses()` |
 | Test with curl | `POST /api/v1/responses` with `model`, `input`, and `tools` |
 | Give your agent web search | Add `{ type: "web_search_preview" }` to `tools` |
-| Give your agent access to internal docs | Upload content to Cencori Memory, add `{ type: "file_search" }` |
-| Let your agent run code | Add `{ type: "code_interpreter" }` to `tools` |
+| Give your agent access to internal docs | Send `file` input items alongside `{ type: "file_search" }` |
 | Integrate your own APIs | Add standard `{ type: "function" }` definitions alongside built-in tools |
+| See what else it can build | [What to Build with the Responses API](/docs/guides/what-to-build-with-responses) |
 
 The Responses API is available at `https://cencori.com/api/v1/responses`. Its first-party Web integration is available through `cencori@1.6.1` and later.
 
+## Giving the Agent Documents
+
+There is no separate upload step. Send `file` items in `input` with `file_search` in `tools`, and the content is chunked, indexed, and searchable within the same request:
+
+```typescript
+const response = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: [
+    { type: 'file', filename: 'q3-report.txt', content: reportText, mime_type: 'text/plain' },
+    { type: 'message', role: 'user', content: 'What drove the margin change in Q3?' },
+  ],
+  tools: [{ type: 'file_search', max_num_results: 8 }],
+});
+```
+
+Limits are 20 inline files per request, 512 KiB each, and 2 MiB combined. Indexed chunks stay searchable in your project for 30 days, so follow-up requests can query the same document without re-sending it — pass `file_search` with no file items to search everything you've already indexed.
+
 ## Beyond the First Request
+
+The single-turn call above is the foundation. Three things turn it into something you can put in front of users: a schema to constrain the output, citations to make it verifiable, and chaining to carry context forward.
 
 ## Structured Output
 
@@ -86,12 +105,13 @@ Sometimes you need the agent to return structured data rather than free text. Th
 
 ```typescript
 const response = await cencori.ai.responses({
-  model: 'gpt-4o',
+  model: 'gpt-5.4-mini',
   input: 'Extract the key dates from this document.',
   response_format: {
     type: 'json_schema',
     json_schema: {
       name: 'dates',
+      strict: true,
       schema: {
         type: 'object',
         properties: {
@@ -103,9 +123,11 @@ const response = await cencori.ai.responses({
                 title: { type: 'string' },
                 date: { type: 'string' },
               },
+              required: ['title', 'date'],
             },
           },
         },
+        required: ['events'],
       },
     },
   },
@@ -116,7 +138,7 @@ This is useful when piping agent output into another system — the schema acts 
 
 ## Source Annotations
 
-When the agent uses web search, the response includes `url_citation` annotations on the output text. Each `[1]` citation in the text maps to a source URL:
+When the agent uses web search, the response includes `url_citation` annotations on the output text. Each citation maps a span of the answer to the source that supports it:
 
 ```typescript
 const msg = response.output.find(i => i.type === 'message');
@@ -124,7 +146,7 @@ const annotation = msg?.content?.[0]?.annotations?.[0];
 // { type: 'url_citation', start_index: 0, end_index: 3, url: '...', title: '...' }
 ```
 
-Use these annotations to render clickable citations in your UI.
+Because `start_index` and `end_index` point at the exact span of text, you can render clickable inline citations rather than a footnote list you hope is accurate.
 
 ## Multi-turn Conversations
 
@@ -132,13 +154,13 @@ Chain agent interactions by passing the previous response ID:
 
 ```typescript
 const step1 = await cencori.ai.responses({
-  model: 'gpt-4o',
+  model: 'gpt-5.4-mini',
   input: 'Search for Q3 AI funding rounds.',
   tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
 });
 
 const step2 = await cencori.ai.responses({
-  model: 'gpt-4o',
+  model: 'gpt-5.4-mini',
   input: 'Summarize those rounds in a table.',
   previous_response_id: step1.id,
 });
@@ -146,6 +168,8 @@ const step2 = await cencori.ai.responses({
 
 The agent sees the previous response's output as conversation history, giving it context for follow-up questions.
 
+Stored responses expire after **30 minutes**. That covers a chained sequence of steps inside one working session, not a thread a user returns to the next day. For conversations that outlive that window, keep the history client-side and resend it as `message` items, or use [Sessions](/docs/api/sessions) for durable threads. Pass `store: false` on requests you don't want persisted at all.
+
 ## What's Next
 
-The Responses API handles single-turn agentic requests. For multi-step agents that need persistent memory, scheduled tasks, or human-in-the-loop approval, Cencori's Workflow and Orchestration layer is on the way — join the waitlist.
+The Responses API handles single-turn and short-chained agentic requests. For multi-step agents that need persistent memory, scheduled tasks, or human-in-the-loop approval, Cencori's Workflow and Orchestration layer is on the way — join the waitlist.
