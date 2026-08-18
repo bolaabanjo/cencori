@@ -1,0 +1,301 @@
+---
+title: "What to Build with the Responses API"
+description: "Eight things you can ship on a single endpoint — cited research, document Q&A, structured extraction, tool-calling agents, streaming UIs, and billable AI features."
+section: "Guides"
+order: 11
+---
+
+# What to build with the Responses API
+
+The Responses API is one endpoint — `POST /api/v1/responses` — that takes an input, optionally gives the model tools, and returns structured output. Everything below is a real product you can ship on it today, with the code that does it.
+
+Each recipe is independent. Start with the one closest to what you're building.
+
+## Prerequisites
+
+- A Cencori project and secret API key
+- `cencori@latest`
+
+```bash
+npm install cencori@latest
+```
+
+```bash
+# .env.local
+CENCORI_API_KEY=csk_...
+```
+
+```ts
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+```
+
+## 1. A research assistant that cites its sources
+
+Ask a question about the live web and get an answer whose claims map back to URLs. No search API account, no scraper, no ranking code.
+
+```ts
+const research = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: 'What changed in EU AI Act enforcement this quarter?',
+  tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
+});
+
+const message = research.output.find(item => item.type === 'message');
+const text = message?.content?.[0]?.text ?? '';
+const citations = message?.content?.[0]?.annotations ?? [];
+```
+
+Each annotation is a `url_citation` with `start_index` and `end_index` pointing at the exact span of text it supports:
+
+```ts
+citations.forEach(c => {
+  console.log(text.slice(c.start_index, c.end_index), '→', c.url);
+});
+```
+
+Those offsets are what make the citation clickable in your UI rather than a footnote you hope is right. The search itself runs against Cencori's first-party index, and results are injected as context before the model answers.
+
+**Ship it as:** a research tab, a "check this claim" button, a briefing generator.
+
+## 2. A document Q&A endpoint
+
+Upload a document and ask questions about it in the same request. Inline `file` items are chunked and indexed automatically when `file_search` is present, so there is no separate upload step and no vector database to run.
+
+```ts
+const answer = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: [
+    {
+      type: 'file',
+      filename: 'msa-2026.txt',
+      content: contractText,
+      mime_type: 'text/plain',
+    },
+    {
+      type: 'message',
+      role: 'user',
+      content: 'What is the termination notice period, and who can invoke it?',
+    },
+  ],
+  tools: [{ type: 'file_search', max_num_results: 8 }],
+});
+```
+
+Limits per request: 20 inline files, 512 KiB each, 2 MiB combined.
+
+Indexed chunks persist in your project's store, so later requests can query the same document without re-uploading it — pass `file_search` with no file items and the model retrieves from everything you've indexed.
+
+**Ship it as:** contract Q&A, a support-docs assistant, an internal policy lookup.
+
+## 3. A structured extractor
+
+When the output feeds another system, don't parse prose. Make the schema the contract.
+
+```ts
+const extraction = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: emailBody,
+  instructions: 'Extract the purchase order details.',
+  response_format: {
+    type: 'json_schema',
+    json_schema: {
+      name: 'purchase_order',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          vendor: { type: 'string' },
+          total_usd: { type: 'number' },
+          line_items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                description: { type: 'string' },
+                quantity: { type: 'number' },
+              },
+              required: ['description', 'quantity'],
+            },
+          },
+        },
+        required: ['vendor', 'total_usd', 'line_items'],
+      },
+    },
+  },
+});
+
+const message = extraction.output.find(item => item.type === 'message');
+const order = JSON.parse(message?.content?.[0]?.text ?? '{}');
+```
+
+`strict: true` makes the model conform to the schema rather than approximate it. Use `{ type: 'json_object' }` when you want JSON but don't want to pin the shape.
+
+**Ship it as:** inbound email parsing, invoice ingestion, form autofill, data migration.
+
+## 4. An agent that calls your own APIs
+
+Give the model your functions. It decides when to call them, you execute them, and you hand the results back. The round-trip uses three input item types.
+
+```ts
+const tools = [{
+  type: 'function' as const,
+  function: {
+    name: 'lookup_order',
+    description: 'Look up an order by ID',
+    parameters: {
+      type: 'object',
+      properties: { order_id: { type: 'string' } },
+      required: ['order_id'],
+    },
+  },
+}];
+
+// Turn 1 — the model asks for a tool call
+const first = await cencori.ai.responses({
+  model: 'claude-opus-5',
+  input: 'Where is order A-4471?',
+  tools,
+});
+
+const call = first.output.find(item => item.type === 'function_call');
+
+// You run it — your database, your auth, your rules
+const result = await lookupOrder(JSON.parse(call.arguments).order_id);
+
+// Turn 2 — hand the result back and get the final answer
+const final = await cencori.ai.responses({
+  model: 'claude-opus-5',
+  input: [
+    { type: 'message', role: 'user', content: 'Where is order A-4471?' },
+    {
+      type: 'function_call',
+      id: call.id,
+      call_id: call.call_id,
+      name: call.name,
+      arguments: call.arguments,
+    },
+    { type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) },
+  ],
+  tools,
+});
+```
+
+Loop that pattern and you have an agent. The input array is deliberately generous — up to 2000 items and 8 MiB of text — because an agent turn resends its whole conversation, and a long coding or support session legitimately gets there.
+
+Mix built-in and function tools freely: web search for context, file search for internal knowledge, your functions for actions.
+
+**Ship it as:** a support agent, an ops copilot, an internal "ask anything" bot with real system access.
+
+## 5. A streaming chat UI
+
+Set `stream: true` and render tokens as they arrive.
+
+```ts
+for await (const event of cencori.ai.responsesStream({
+  model: 'gpt-5.4-mini',
+  input: userMessage,
+  stream: true,
+})) {
+  if (event.type === 'response.output_text.delta') {
+    appendToUI(event.data.delta);
+  }
+  if (event.type === 'response.done') {
+    finalize(event.data);
+  }
+}
+```
+
+The full event set:
+
+| Event | Fires when |
+|---|---|
+| `response.output_text.delta` | Each token of the answer |
+| `response.output_text.done` | Answer text is complete |
+| `response.function_call_arguments.delta` | Tool arguments streaming in |
+| `response.function_call_arguments.done` | A tool call is fully formed |
+| `response.web_search_call.completed` | Web search finished |
+| `response.file_search_call.completed` | Retrieval finished |
+| `response.done` | Terminal event, includes usage |
+
+The tool-call events let you show "Searching the web…" in the UI instead of a dead spinner.
+
+## 6. A multi-turn assistant without storing history
+
+Responses are persisted by default. Pass `previous_response_id` and the prior turn's output is prepended as context — you don't resend the conversation.
+
+```ts
+const step1 = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: 'Search for Q3 AI funding rounds in Africa.',
+  tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
+});
+
+const step2 = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: 'Put those in a table sorted by round size.',
+  previous_response_id: step1.id,
+});
+```
+
+**One important limit:** stored responses expire after 30 minutes. This is built for a chained sequence of steps inside a single working session, not for a thread a user returns to tomorrow. For conversations that outlive that window, keep the history client-side and resend it as `message` items, or use [Sessions](/docs/api/sessions) for durable threads.
+
+Pass `store: false` on requests you don't want persisted at all.
+
+## 7. A billable AI feature for your own customers
+
+Pass `user` and the gateway meters that end user individually — quota, model allowlist, and your markup — without you writing a billing loop.
+
+```ts
+const response = await cencori.ai.responses({
+  model: 'gpt-5.4-mini',
+  input: prompt,
+  user: customer.id,
+});
+```
+
+If that customer is over quota you get a `429` with `Retry-After`; if their plan doesn't include the model you get a `403` with `end_user_model_not_allowed`. Usage and your margin are recorded per request.
+
+**Ship it as:** a metered AI feature inside your SaaS. See [Monetization Setup](/docs/guides/monetization-setup) for the plan configuration.
+
+## 8. An agent with a human in the loop
+
+Bind a request to a configured agent and its model, system prompt, and tools apply server-side. Put that agent in **shadow mode** and its tool calls are written to `agent_actions` as `pending` instead of being dispatched — a person approves them before anything runs.
+
+This is the path for agents that touch money, customer records, or anything you can't take back.
+
+**Ship it as:** a refund agent, an outbound-email drafter, a change-request bot.
+
+## What's not available yet
+
+`code_interpreter` is defined in the API but currently returns `status: "failed"` with "Code interpreter is temporarily unavailable". It stays disabled until it is backed by an isolated runtime with no application credentials, network access, or shared disk — running model-generated code in the gateway process is not a tradeoff worth making. Handle a failed tool output gracefully if you send it, and don't build a feature that depends on it yet.
+
+For numeric work today, have the model emit structured output (recipe 3) and do the arithmetic in your own code.
+
+## What every recipe gets for free
+
+None of these bypass your controls. Every request above passes through the same pipeline as any gateway call:
+
+- **Input guard** — prompt-injection and jailbreak detection, PII detection and tokenization before the prompt reaches a provider
+- **Output guard** — the response is checked, and tokenized values are restored on the way back to you
+- **Audit logging** — model, provider, tokens, cost, latency, and end user recorded per request
+- **Failover** — provider outages route to a fallback without changing your code
+- **Cost tracking** — provider cost and your charge, per request
+
+## Limits at a glance
+
+| Limit | Value |
+|---|---|
+| Input items | 2000 |
+| Total input text | 8 MiB |
+| Single text field | 1 MiB |
+| Inline files | 20 per request |
+| Inline file size | 512 KiB each, 2 MiB combined |
+| Stored response TTL | 30 minutes |
+
+## Next steps
+
+- [Responses API reference](/docs/api/responses) — every parameter and response field
+- [Building Agents with the Responses API](/docs/agents/responses) — the agent-shaped view
+- [Build a Web Research Agent](/docs/guides/build-a-web-research-agent) — recipe 1, end to end
