@@ -1,278 +1,100 @@
 ---
 title: "Introducing Cencori"
 slug: "introducing-cencori"
-date: "2026-01-05"
-excerpt: "Today, we're excited to introduce Cencori — the AI infrastructure platform for production applications."
+date: "2026-08-17"
+excerpt: "Cencori is a deep technology company building the computing infrastructure global AI runs on. Here is the mission, and here is what already exists."
 authors:
   - bola
-tags: ["Announcement", "Product", "AI Security"]
+tags: ["Announcement", "Company", "Infrastructure", "Mission"]
 category: "product"
 published: true
 ---
 
-Today marks an important milestone for Cencori. After months of development and feedback from early users, we're officially launching our platform to help developers and companies build secure, reliable AI applications.
+Yesterday we published [our thesis](/blog/computing-infrastructure-global-ai-runs-on): AI began as something people accessed, and it is becoming something the world operates. This post is the shorter version, plus an honest account of what we have actually built so far.
 
-## Who We Are
+Cencori is a deep technology company building the computing infrastructure global AI runs on.
 
-Cencori is the infrastructure for AI production. We provide the platform layer that sits between your application and AI providers, handling security, multi-provider routing, and comprehensive observability — so you can focus on building your product.
+Our mission is to **make the infrastructure required to build and run AI accessible to everyone, everywhere.**
 
-Our mission is simple: make AI applications production-ready from day one. We believe every AI application deserves enterprise-grade security, monitoring, and compliance capabilities — regardless of company size or development stage.
+## Why infrastructure
 
-## The Challenge
+For most people, AI is still something you access. A chatbot. An API. A model endpoint. A feature inside an application.
 
-As AI applications transition from prototypes to production systems, development teams encounter critical infrastructure challenges that can delay launches, increase costs, and create security vulnerabilities.
+That is not where AI ends.
 
-### Security Threats
+Banks will operate AI inside financial infrastructure. Hospitals will operate it across clinical systems. Factories will run it across production lines. Vehicles, robots and autonomous machines will sense their environments, decide, and act — continuously, not when a person asks.
 
-AI applications face unique security threats that traditional security tools weren't designed to handle:
+When AI is a feature inside an application, it can be treated as a request sent to a remote model and a response returned. When AI becomes part of a factory, a hospital, a financial network or a machine, the requirements change. Latency matters differently. Reliability matters differently. The physical environment matters. The consequences of failure matter.
 
-- **Prompt Injection Attacks** - Malicious users manipulating AI behavior through crafted inputs
-- **Data Leakage** - Sensitive information inadvertently exposed in prompts or responses  
-- **Jailbreak Attempts** - Users bypassing content policies and safety guardrails
-- **Model Abuse** - Unauthorized access patterns and usage anomalies
+Where the computation happens starts to matter as much as the intelligence being computed.
 
-A single prompt injection can compromise your entire AI application. Traditional WAFs and security tools cannot detect or prevent these AI-specific attacks.
+More capable models do not remove that problem. They enlarge it. Better intelligence does not eliminate computing — it increases how much of the world needs it.
 
-### Infrastructure Complexity  
+That is the constant underneath everything: intelligence has to run somewhere. It has to be built somewhere. And someone has to have access to the infrastructure that makes both possible.
 
-Managing multiple AI providers creates operational overhead:
+## What exists today
 
-- Different APIs, authentication methods, and request formats
-- Complex failover logic when primary providers experience downtime
-- Rate limiting across multiple provider quotas
-- Cost tracking scattered across multiple billing systems
+The mission is deliberately larger than any product we have. It has to be. But a thesis with nothing running underneath it is an essay, so here is what is real right now.
 
-### Compliance Requirements
+**The gateway.** One OpenAI-compatible endpoint in front of 100+ models across every major provider. Change a base URL and your existing code works:
 
-Production AI applications must meet strict compliance standards:
-
-- Audit logs for every AI request and response
-- Data retention policies for regulatory compliance
-- Security incident tracking and reporting
-- Usage attribution for cost allocation
-
-Building this infrastructure in-house typically requires months of engineering time - time better spent on your core product.
-
-## Our Solution
-
-Cencori provides a complete infrastructure platform for AI applications, handling security, routing, and observability so your team can focus on building features.
-
-### Real-Time Security
-
-Our security layer analyzes every request in real-time before it reaches your AI models:
-
-**Prompt Injection Detection** - Machine learning models trained on thousands of attack patterns to identify and block malicious prompts.
-
-**PII Detection & Redaction** - Automatically detect and optionally redact sensitive information like emails, phone numbers, and credit cards.
-
-**Content Filtering** - Customizable filters to enforce your content policies across all AI interactions.
-
-**Anomaly Detection** - Real-time monitoring of usage patterns to identify potential abuse or security incidents.
-
-Security checks run in milliseconds, adding negligible latency while providing comprehensive protection against AI-specific threats.
-
-### Unified AI Gateway
-
-A single API endpoint that connects to all major AI providers:
-
-```typescript
-// One simple API call
-const response = await fetch('https://cencori.com/api/ai/chat', {
-  method: 'POST',
-  headers: {
-    'CENCORI_API_KEY': process.env.CENCORI_API_KEY,
-  },
-  body: JSON.stringify({
-    model: 'gpt-4o',
-    messages: [{ role: 'user', content: userPrompt }]
-  })
-});
+```bash
+curl https://api.cencori.com/v1/chat/completions \
+  -H "Authorization: Bearer $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Say hello in one sentence."}]
+  }'
 ```
 
-Switch between providers by simply changing the model parameter:
+Switch models by changing one string. Your SDK, your framework, your error handling all stay where they are.
 
-```typescript
-// OpenAI GPT-4
-{ model: 'gpt-4o' }
+**Reliability.** Automatic failover across providers. When an upstream provider degrades or goes down, requests route elsewhere and the application keeps serving. Circuit breakers keep a failing provider from taking your traffic with it.
 
-// Anthropic Claude
-{ model: 'claude-3-opus' }
+**Security on every request.** PII detection and redaction, prompt injection and jailbreak detection, and content policy enforcement — running on the request before it reaches a model and on the response before it reaches your user.
 
-// Google Gemini  
-{ model: 'gemini-2.5-flash' }
-```
+**Observability.** Every request logged with full prompt and response, token usage, cost, latency and security results. Costs attributed by project, key and end user.
 
-No need to maintain separate SDKs, authentication logic, or error handling for each provider.
+**Governance.** Policy enforcement with an immutable audit ledger, for organizations that have to prove what their AI did and why.
 
-### Complete Observability
+**State and memory.** A memory API so applications remember across conversations, and a sessions API that runs the agentic loop — including gating an autonomous tool call on human approval when policy requires it.
 
-Every request flows through Cencori, giving you complete visibility into your AI operations:
+**Beyond text.** Vision, documents, image generation, speech-to-text and text-to-speech through the same gateway, the same keys, the same logs.
 
-- **Request Logs** - Full request and response data with metadata
-- **Analytics Dashboard** - Usage trends, costs, and performance metrics
-- **Security Incidents** - Real-time alerts when threats are detected
-- **Cost Attribution** - Track spending by user, feature, or team
+**How you reach it.** TypeScript, Python and Go SDKs, a CLI, an MCP server, and drop-in React components for the interfaces you would otherwise rebuild.
 
-When something goes wrong in production, having detailed logs of every AI interaction is invaluable. Cencori makes debugging AI applications as straightforward as debugging traditional APIs.
+## Built on Cencori. Run on Cencori.
 
-## Who We Serve
+Build means giving people the computing foundation to create what comes next. Run means providing the infrastructure those systems require once they become real and increasingly embedded in the world.
 
-Cencori is designed for development teams building AI-powered applications across various industries and use cases.
+Today that means the request layer: routing, security, state, observability, governance. The work ahead extends it toward the environments the thesis describes — enterprise and private infrastructure, sovereign deployments, computing closer to networks and machines, and eventually inside the machines themselves.
 
-### AI-First Companies
+We are not going to pretend that exists yet. It does not. But it is the direction, and we would rather state it plainly than describe ourselves as something smaller than what we intend to build.
 
-For companies building products around AI capabilities, we provide the infrastructure to ship features faster without building security and monitoring from scratch. Meet enterprise security and compliance requirements from day one while maintaining control over costs and provider flexibility.
+## Everyone
 
-### Development Teams
+There are capable people everywhere. A student in Lagos. A researcher in Nairobi. An engineer in Bangalore. A robotics team in São Paulo. A founder in London. A laboratory in Tokyo.
 
-**Startups** - Get enterprise features without enterprise complexity. Focus on product-market fit while we handle the infrastructure.
+None of us can know where the next important idea will come from. That is precisely the point. If we knew, infrastructure would not need to be broadly accessible.
 
-**Scale-ups** - Handle growing AI usage with confidence. Monitor costs, optimize performance, and maintain security as you scale.
+So accessibility is not a marketing position for us, it is the architecture. The same foundation should hold from a first experiment to a production system serving millions, without anyone having to rebuild their computing foundation because what they built became important.
 
-**Enterprises** - Meet compliance requirements and maintain comprehensive audit trails. Support for self-hosted deployment and custom SLAs.
+That is also why there is **no monthly request cap on any plan**, free included. Capping how many requests you may make is a limit on ambition, and it punishes exactly the moment a project starts working. You pay for what you use. The free tier exists to be built on, not to run out.
 
-### Common Use Cases
+Plans differ by capability and support — security depth, retention, teams, governance, SSO — not by permission to make requests.
 
-Our platform supports a wide range of AI applications including chatbots and assistants, content generation systems, data analysis tools, code generation platforms, semantic search, and multi-modal applications like image generation and audio transcription.
+## Where we are
 
-## Core Features
+Cencori is early. The thesis describes decades of work; we are at the beginning of it. What we can say honestly today is that the request layer works, it is in production for real companies, and every week it holds more of what those companies depend on.
 
-### AI Gateway & Routing
+If you are building something with AI — an application, an agent, a model, a machine, a scientific system, or something that does not have a name yet — we would like it to run on this.
 
-**Multi-Provider Support** - Seamlessly work with OpenAI, Anthropic, Google, and more providers coming soon.
+- **Start building** — [create an account](/signup) and make a request in minutes.
+- **Read the thesis** — [The Computing Infrastructure Global AI Runs On](/blog/computing-infrastructure-global-ai-runs-on).
+- **Read the docs** — [documentation](/docs) and [API reference](/docs/api/chat).
+- **Talk to us** — [support@cencori.com](mailto:support@cencori.com).
 
-**Automatic Failover** - Seamless switching when providers experience downtime, ensuring your application stays online.
-
-**Load Balancing** - Distribute requests across providers for improved reliability and performance.
-
-**Rate Limit Management** - Intelligent queuing when approaching quotas to prevent request failures.
-
-### Security & Compliance
-
-**Real-Time Threat Detection** - Block attacks before they reach your models with machine learning-powered security.
-
-**Audit Logging** - Comprehensive logs for compliance and debugging, with configurable retention policies.
-
-**Security Incident Tracking** - Monitor and respond to threats with real-time alerts and detailed reporting.
-
-### Monitoring & Analytics
-
-**Usage Dashboard** - Track requests, costs, and performance metrics in real-time with intuitive visualizations.
-
-**Model Comparison** - Compare outputs, latency, and costs across different providers and models.
-
-**Custom Alerts** - Get notified of unusual patterns, budget thresholds, or security incidents.
-
-**Cost Attribution** - Understand spending by user, feature, or endpoint for better budget management.
-
-## Getting Started
-
-Integrating Cencori into your application takes minutes.
-
-### Step 1: Create Your Account
-
-Sign up at [cencori.com/signup](/signup) and create your first project. The free tier includes 1,000 requests per month - perfect for development and testing.
-
-### Step 2: Add Your Provider Keys
-
-In your project settings, add API keys for the AI providers you want to use. Cencori securely stores these credentials and uses them to make requests on your behalf.
-
-### Step 3: Make Your First Request
-
-Replace your existing AI provider calls with a simple fetch to our unified endpoint:
-
-```typescript
-const response = await fetch('https://cencori.com/api/ai/chat', {
-  method: 'POST',
-  headers: {
-    'CENCORI_API_KEY': process.env.CENCORI_API_KEY,
-  },
-  body: JSON.stringify({
-    model: 'gpt-4o',
-    messages: [
-      { role: 'system', content: 'You are a helpful assistant.' },
-      { role: 'user', content: userInput }
-    ]
-  })
-});
-
-const data = await response.json();
-console.log(data.choices[0].message.content);
-```
-
-That's it. You now have security, monitoring, and multi-provider support built in.
-
-For more detailed information, check out our [Quick Start Guide](/docs/quick-start) or browse the complete [API Reference](/docs/api/chat).
-
-## Pricing
-
-We offer flexible pricing designed to scale with your needs.
-
-### Free Tier
-- 1,000 requests/month
-- All security features
-- 7-day log retention
-- Community support
-
-Perfect for development, side projects, and testing.
-
-### Pro - $49/month
-- 50,000 requests/month
-- 30-day log retention
-- Priority support
-- Custom security rules
-
-For growing applications and small teams.
-
-### Enterprise - Custom Pricing
-- Custom request volumes
-- Extended log retention
-- Dedicated support
-- SLA guarantees
-- Self-hosted option available
-
-For large-scale applications with specific requirements.
-
-All plans include full access to security features, analytics, and multi-provider support. No hidden fees - you only pay for the requests you use.
-
-## What's Next
-
-We're committed to continuous improvement and bringing new features to the platform.
-
-### Coming Soon
-
-**Streaming Support** - Real-time streaming responses for better user experience and reduced perceived latency.
-
-**Additional Providers** - Integration with Cohere, AI21, Mistral, and other emerging model providers.
-
-**Advanced Analytics** - Deeper insights into usage patterns, performance metrics, and cost optimization opportunities.
-
-**Custom Security Rules** - Define your own threat detection logic to match your specific security requirements.
-
-### Future Roadmap
-
-**Fine-Tuned Models** - Support for deploying and managing custom and fine-tuned models.
-
-**Edge Deployment** - Reduced latency with regional endpoints closer to your users.
-
-**Enterprise SSO** - SAML and OAuth integration for streamlined enterprise authentication.
-
-**White-Label Option** - Custom domains and branding for enterprise customers.
-
-## Join Us
-
-Whether you're building your first AI feature or scaling to millions of users, Cencori provides the infrastructure you need to move faster and worry less.
-
-**Start Building** - [Create your free account](/signup) and make your first request in minutes.
-
-**Follow Our Journey** - Stay updated on [X(Twitter)](https://x.com/cencori) for product updates, AI security insights, and best practices.
-
-**Read the Docs** - Explore our comprehensive [documentation](/docs) and API guides.
-
-**Get in Touch** - Questions? Email us at [support@cencori.com](mailto:support@cencori.com) - our team is here to help.
-
----
-
-We're excited to have you join us on this journey. Let's build the next generation of AI applications - secure, reliable, and production-ready from day one.
+We do not know exactly what you will build. That is not our job. Our job is to make sure the computing is there when you are ready to build it.
 
 **The Cencori Team**
