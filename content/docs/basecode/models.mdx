@@ -1,0 +1,30 @@
+---
+title: "Models in Basecode"
+description: "Basecode calls models through your Cencori project, so the model list reflects what that project can reach."
+section: "Basecode"
+order: 3
+---
+
+Basecode does not talk to model providers directly. Every request goes through your Cencori project, which is what gives the work in the app the same routing, security enforcement, observability, and cost tracking as anything else you send through Cencori.
+
+The practical consequence is that the model picker is not a fixed list. It shows what your project can actually reach right now.
+
+## Choosing a model
+
+Pick a model from the composer. It applies to the tasks you start after choosing it, and Basecode remembers it per account.
+
+Some models are free to call and need no provider access, which makes them the right first choice when you are confirming that a project is wired up correctly. Others route to a provider and need that provider enabled for the project.
+
+If a model you expect is missing, the project cannot reach it. Confirm provider access in **Project > Providers** in the dashboard — see [Providers and BYOK](/docs/platform/byok).
+
+## Reasoning effort
+
+Reasoning models expose an effort setting next to the model picker, from **Auto** through **Max**. Higher effort means the model spends longer working through the problem before it acts, which helps on genuinely hard changes and mostly costs you time on simple ones.
+
+Models that do not reason do not show the setting.
+
+## Cost and usage
+
+Requests from Basecode are metered on the project like any other Cencori traffic, so they appear in the same logs, analytics, and cost tracking. Nothing is billed separately for using the desktop app.
+
+Because plans, limits, and per-model pricing change, the app does not carry its own copy of them — check your dashboard for what applies to your account.
