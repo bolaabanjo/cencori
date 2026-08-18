@@ -1,4 +1,4 @@
-import { CENCORI_PAID_PLANS, type PaidPlanTier } from "@/lib/billing/plans";
+import { type PaidPlanTier } from "@/lib/billing/plans";
 
 export type StripeSubscriptionSnapshot = {
   subscriptionId: string;
@@ -46,8 +46,6 @@ export function buildStripeOrganizationSubscriptionUpdate(
     subscription_id: snapshot.subscriptionId,
     subscription_tier: tier,
     subscription_status: normalizeStripeSubscriptionStatus(snapshot.status),
-    monthly_request_limit:
-      tier === "free" ? 1_000 : CENCORI_PAID_PLANS[tier].requestLimit,
     subscription_current_period_start: snapshot.currentPeriodStart,
     subscription_current_period_end: snapshot.currentPeriodEnd,
   };

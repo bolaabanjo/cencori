@@ -136,7 +136,7 @@ export const prefetchHelpers = {
             queryFn: async () => {
                 const { data } = await supabase
                     .from("organizations")
-                    .select("id, name, subscription_tier, subscription_status, monthly_requests_used, monthly_request_limit, subscription_current_period_end")
+                    .select("id, name, subscription_tier, subscription_status, monthly_requests_used, subscription_current_period_end")
                     .eq("slug", orgSlug)
                     .single();
                 return data;

@@ -66,7 +66,6 @@ function buildKeyData(overrides?: {
     billingFrozen?: boolean;
     creditsBalance?: number;
     monthlyUsed?: number;
-    monthlyLimit?: number;
     keyType?: string;
     allowedDomains?: string[] | null;
     allowedModels?: string[] | null;
@@ -91,7 +90,6 @@ function buildKeyData(overrides?: {
                 id: 'org-val-1',
                 subscription_tier: overrides?.tier ?? 'pro',
                 monthly_requests_used: overrides?.monthlyUsed ?? 0,
-                monthly_request_limit: overrides?.monthlyLimit ?? 10000,
                 credits_balance: overrides?.creditsBalance ?? 100,
                 billing_frozen: overrides?.billingFrozen ?? false,
             },
@@ -243,7 +241,6 @@ describe('validateGatewayRequest', () => {
                 billingFrozen: true,
                 creditsBalance: 0,
                 monthlyUsed: 10000,
-                monthlyLimit: 10000,
                 allowedModels: [model],
                 sponsoredModels: [model],
             }),
@@ -306,7 +303,10 @@ describe('validateGatewayRequest', () => {
         }
     });
 
-    it('returns 429 when monthly request limit is reached', async () => {
+    it('serves a free org far past the old monthly ceiling', async () => {
+        // This used to assert a 429 at 10,000 requests. No tier has a request
+        // ceiling now: a free org 500x past the old free limit is served, and
+        // only spend-based gates (credits, billing_frozen, spend caps) refuse.
         mockSupabaseFrom.mockImplementation((table: string) => {
             if (table === 'api_keys') {
                 return {
@@ -314,7 +314,7 @@ describe('validateGatewayRequest', () => {
                         eq: () => ({
                             is: () => ({
                                 single: async () => ({
-                                    data: buildKeyData({ monthlyUsed: 10000, monthlyLimit: 10000 }),
+                                    data: buildKeyData({ monthlyUsed: 500_000 }),
                                     error: null,
                                 }),
                             }),
@@ -326,10 +326,7 @@ describe('validateGatewayRequest', () => {
         });
 
         const result = await validateGatewayRequest(authRequest('/api/ai/chat'));
-        expect(result.success).toBe(false);
-        if (!result.success) {
-            expect(result.response.status).toBe(429);
-        }
+        expect(result.success).toBe(true);
     });
 
     it('returns 403 for publishable key on disallowed origin', async () => {

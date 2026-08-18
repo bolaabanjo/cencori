@@ -765,7 +765,7 @@ function CheckoutDetails({
                     <div>
                       <p className="text-sm font-medium">{option.name}</p>
                       <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                        {option.requestLimit.toLocaleString()} requests/month
+                        {option.description}
                       </p>
                     </div>
                     <div className="text-right">

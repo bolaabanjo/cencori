@@ -36,37 +36,10 @@ export async function resetMonthlyUsage(): Promise<{ success: boolean; count: nu
     }
 }
 
-/**
- * Check if an organization is approaching their limit (>= 80%)
- */
-export async function checkUsageAlerts(organizationId: string): Promise<{
-    isNearLimit: boolean;
-    isAtLimit: boolean;
-    usage: number;
-    limit: number;
-    percentage: number;
-}> {
-    const supabase = createAdminClient();
-
-    const { data, error } = await supabase
-        .from('organizations')
-        .select('monthly_requests_used, monthly_request_limit')
-        .eq('id', organizationId)
-        .single();
-
-    if (error || !data) {
-        return { isNearLimit: false, isAtLimit: false, usage: 0, limit: 0, percentage: 0 };
-    }
-
-    const usage = data.monthly_requests_used || 0;
-    const limit = data.monthly_request_limit || 1000;
-    const percentage = Math.round((usage / limit) * 100);
-
-    return {
-        isNearLimit: percentage >= 80,
-        isAtLimit: percentage >= 100,
-        usage,
-        limit,
-        percentage
-    };
-}
+// checkUsageAlerts() lived here: it warned at 80% and 100% of the per-tier
+// monthly request ceiling. The ceiling is gone on every tier, so a percentage
+// of it has nothing to measure against. Spend is what's worth alerting on now,
+// and budget alerts already own that.
+//
+// resetMonthlyUsage above is still wanted — monthly_requests_used remains a
+// reporting counter, it just no longer gates anything.

@@ -73,7 +73,6 @@ async function handleCollectionSucceeded(
           billing_provider: 'bachs',
           subscription_tier: tier,
           subscription_status: 'active',
-          monthly_request_limit: TIER_LIMITS[tier].requestsPerMonth,
           subscription_current_period_start: now.toISOString(),
           subscription_current_period_end: periodEnd.toISOString(),
           bachs_customer_id: data.customer.id,

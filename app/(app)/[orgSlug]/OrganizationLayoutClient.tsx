@@ -53,7 +53,6 @@ import { useSession } from "@/lib/contexts/SessionContext";
 import { isAuthExpiredError } from "@/lib/auth/auth-errors";
 import { WorkspaceUnavailable } from "@/components/dashboard/WorkspaceUnavailable";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { UsageLimitBanner } from "@/components/billing/UsageLimitBanner";
 import { UserMenu } from "@/components/dashboard/UserMenu";
 import { FeedbackMenu } from "@/components/dashboard/FeedbackMenu";
 
@@ -62,8 +61,6 @@ interface OrganizationData {
     name: string;
     slug: string;
     subscription_tier: string;
-    monthly_requests_used: number;
-    monthly_request_limit: number;
 }
 
 // Sentinel message that marks an org the server returned zero rows for, vs. a
@@ -85,7 +82,7 @@ function useOrganization(orgSlug: string) {
         queryFn: async () => {
             const { data: orgData, error: orgError } = await supabase
                 .from("organizations")
-                .select("id, name, slug, subscription_tier, monthly_requests_used, monthly_request_limit")
+                .select("id, name, slug, subscription_tier")
                 .eq("slug", orgSlug)
                 .single();
 
@@ -666,7 +663,6 @@ export default function OrganizationLayoutClient({
             </Sheet>
 
             <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-                {organization && <UsageLimitBanner orgId={organization.id} orgSlug={organization.slug} />}
                 <div
                     key={pathname}
                     className={isPlayground

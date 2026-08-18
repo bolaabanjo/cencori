@@ -287,21 +287,22 @@ export const BACHS_CONFIG = {
   } as const,
 } as const;
 
+// No requestsPerMonth here any more: requests aren't capped on any tier, so a
+// per-tier request number would only be a figure nothing enforces. Seats and
+// prices are what still differ between plans.
 export const TIER_LIMITS = {
-  free: { requestsPerMonth: 1_000, seats: 1, priceMonthly: 0, priceAnnual: 0 },
+  free: { seats: 1, priceMonthly: 0, priceAnnual: 0 },
   pro: {
-    requestsPerMonth: CENCORI_PAID_PLANS.pro.requestLimit,
     seats: 5,
     priceMonthly: CENCORI_PAID_PLANS.pro.prices.month,
     priceAnnual: CENCORI_PAID_PLANS.pro.prices.year,
   },
   team: {
-    requestsPerMonth: CENCORI_PAID_PLANS.team.requestLimit,
     seats: Infinity,
     priceMonthly: CENCORI_PAID_PLANS.team.prices.month,
     priceAnnual: CENCORI_PAID_PLANS.team.prices.year,
   },
-  enterprise: { requestsPerMonth: Infinity, seats: Infinity, priceMonthly: null, priceAnnual: null },
+  enterprise: { seats: Infinity, priceMonthly: null, priceAnnual: null },
 } as const;
 
 export const CREDIT_TOPUP_PACKS = [

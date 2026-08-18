@@ -41,7 +41,6 @@ describe("Bachs subscription reconciliation", () => {
       bachs_customer_id: "cust_1a2b3c4d5e6f",
       subscription_tier: "pro",
       subscription_status: "active",
-      monthly_request_limit: 50_000,
       subscription_current_period_start: "2026-07-01T00:00:00Z",
       subscription_current_period_end: "2026-08-01T00:00:00Z",
     });
@@ -59,7 +58,6 @@ describe("Bachs subscription reconciliation", () => {
     ).toMatchObject({
       subscription_tier: "free",
       subscription_status: "cancelled",
-      monthly_request_limit: 1_000,
     });
   });
 

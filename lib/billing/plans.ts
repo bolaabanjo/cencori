@@ -5,7 +5,6 @@ export type PaidPlan = {
   id: PaidPlanTier;
   name: string;
   description: string;
-  requestLimit: number;
   logRetention: string;
   prices: Record<PlanBillingInterval, number>;
   features: readonly string[];
@@ -16,14 +15,12 @@ export const CENCORI_PAID_PLANS: Record<PaidPlanTier, PaidPlan> = {
     id: "pro",
     name: "Pro",
     description: "For developers shipping production AI workloads.",
-    requestLimit: 50_000,
     logRetention: "30-day log retention",
     prices: {
       month: 4_900,
       year: 49_000,
     },
     features: [
-      "50,000 requests each month",
       "Unlimited projects",
       "Full security pipeline",
       "Advanced analytics",
@@ -35,14 +32,12 @@ export const CENCORI_PAID_PLANS: Record<PaidPlanTier, PaidPlan> = {
     id: "team",
     name: "Team",
     description: "For teams operating AI systems at scale.",
-    requestLimit: 250_000,
     logRetention: "90-day log retention",
     prices: {
       month: 14_900,
       year: 149_000,
     },
     features: [
-      "250,000 requests each month",
       "Everything in Pro",
       "Team seats and collaboration",
       "90-day log retention",

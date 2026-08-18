@@ -37,7 +37,6 @@ const tiers: Array<{
             NGN: { monthly: 0, annual: 0 }
         },
         features: [
-            "1,000 requests/month",
             "1 active project",
             "100+ AI models",
             "Community support",
@@ -58,7 +57,6 @@ const tiers: Array<{
             NGN: { monthly: 39000, annual: 390000 }
         },
         features: [
-            `${CENCORI_PAID_PLANS.pro.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
             "Monetization",
             "Full security pipeline",
@@ -81,7 +79,6 @@ const tiers: Array<{
             NGN: { monthly: 150000, annual: 1500000 }
         },
         features: [
-            `${CENCORI_PAID_PLANS.team.requestLimit.toLocaleString()} requests/month`,
             "Unlimited projects",
             "Monetization",
             "Full security pipeline",

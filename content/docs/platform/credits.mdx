@@ -18,11 +18,11 @@ Cencori uses an organization-level prepaid wallet for AI usage.
 
 Cencori billing has two layers:
 
-1. **Plan tier** (Free / Pro / Team / Enterprise) for request limits and platform entitlements.
+1. **Plan tier** (Free / Pro / Team / Enterprise) for platform entitlements.
 2. **Credits wallet** for usage-based AI charging.
 
-Credits and plan tier work together. A paid org can still hit limits if:
-- monthly request limit is reached,
+Credits and plan tier work together. Requests are never capped by count on any
+plan; a paid org is refused only when:
 - spend cap is reached, or
 - credits are exhausted.
 

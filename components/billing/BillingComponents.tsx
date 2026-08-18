@@ -9,65 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowRight, Check, Sparkles, Zap, AlertTriangle } from 'lucide-react';
 import { CENCORI_PAID_PLANS } from '@/lib/billing/plans';
 
-interface UsageCardProps {
-    used: number;
-    limit: number;
-    tier: 'free' | 'pro' | 'team' | 'enterprise';
-    orgSlug: string;
-}
-
-export function UsageCard({ used, limit, tier, orgSlug }: UsageCardProps) {
-    const percentage = Math.min((used / limit) * 100, 100);
-    const isNearLimit = percentage >= 80;
-    const isAtLimit = percentage >= 100;
-
-    return (
-        <Card>
-            <CardHeader>
-                <div className="flex items-center justify-between">
-                    <CardTitle>Monthly Usage</CardTitle>
-                    <Badge variant={isAtLimit ? 'destructive' : isNearLimit ? 'secondary' : 'default'}>
-                        {tier.toUpperCase()}
-                    </Badge>
-                </div>
-                <CardDescription>
-                    {used.toLocaleString()} / {limit.toLocaleString()} requests this month
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <Progress value={percentage} className="h-3" />
-
-                <div className="text-sm text-muted-foreground">
-                    {isAtLimit ? (
-                        <Alert>
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertDescription>
-                                You&apos;ve reached your monthly limit. Upgrade to continue making requests.
-                            </AlertDescription>
-                        </Alert>
-                    ) : isNearLimit ? (
-                        <Alert>
-                            <AlertDescription>
-                                You&apos;re approaching your monthly limit ({Math.round(100 - percentage)}% remaining).
-                            </AlertDescription>
-                        </Alert>
-                    ) : (
-                        <p>{Math.round(percentage)}% used • Resets on the 1st of each month</p>
-                    )}
-                </div>
-
-                {(isAtLimit || isNearLimit) && tier !== 'enterprise' && (
-                    <Button
-                        className="w-full"
-                        onClick={() => window.location.href = `/pricing`}
-                    >
-                        Upgrade Now <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
+// UsageCard lived here: a progress bar of requests used against the per-tier
+// monthly ceiling, with "you've reached your monthly limit" copy. No tier has
+// a ceiling now, and it had no callers.
 
 interface TierBenefitsProps {
     tier: 'free' | 'pro' | 'team' | 'enterprise';
@@ -76,13 +20,11 @@ interface TierBenefitsProps {
 export function TierBenefits({ tier }: TierBenefitsProps) {
     const benefits = {
         free: [
-            '1,000 requests/month',
             '1 project',
             'Basic security features',
             'Community support',
         ],
         pro: [
-            '50,000 requests/month',
             'Unlimited projects',
             'All security features',
             'Priority support (24hr)',
@@ -90,7 +32,6 @@ export function TierBenefits({ tier }: TierBenefitsProps) {
             'Webhooks',
         ],
         team: [
-            '250,000 requests/month',
             'Everything in Pro',
             'Team collaboration (10 members)',
             'Priority support (4hr)',
@@ -130,14 +71,12 @@ export function UpgradeCard({ currentTier, nextTier, orgId }: UpgradeCardProps) 
         pro: {
             monthly: CENCORI_PAID_PLANS.pro.prices.month / 100,
             annual: CENCORI_PAID_PLANS.pro.prices.year / 100,
-            limit: CENCORI_PAID_PLANS.pro.requestLimit.toLocaleString(),
         },
         team: {
             monthly: CENCORI_PAID_PLANS.team.prices.month / 100,
             annual: CENCORI_PAID_PLANS.team.prices.year / 100,
-            limit: CENCORI_PAID_PLANS.team.requestLimit.toLocaleString(),
         },
-        enterprise: { monthly: 'Custom', annual: 'Custom', limit: 'Unlimited' },
+        enterprise: { monthly: 'Custom', annual: 'Custom' },
     };
 
     const handleUpgrade = async (cycle: 'monthly' | 'annual') => {
@@ -174,7 +113,9 @@ export function UpgradeCard({ currentTier, nextTier, orgId }: UpgradeCardProps) 
                     <CardTitle>Upgrade to {nextTier.charAt(0).toUpperCase() + nextTier.slice(1)}</CardTitle>
                 </div>
                 <CardDescription>
-                    Get {pricing[nextTier].limit} requests/month
+                    {nextTier === 'enterprise'
+                        ? 'Custom terms for organizations at scale'
+                        : CENCORI_PAID_PLANS[nextTier].description}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

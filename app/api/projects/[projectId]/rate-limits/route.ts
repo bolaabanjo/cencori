@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 
+// Throughput ceilings only. The monthly request ceiling these tiers used to
+// carry is gone — nothing enforced it after the gateway stopped checking, and
+// reporting a limit the gateway ignores is worse than reporting none.
 const TIER_LIMITS = {
-    free: { monthly: 1000, perMinute: 60, tokensPerDay: 100000, concurrent: 10 },
-    pro: { monthly: 50000, perMinute: 500, tokensPerDay: 1000000, concurrent: 50 },
-    team: { monthly: 250000, perMinute: 1000, tokensPerDay: 5000000, concurrent: 100 },
-    enterprise: { monthly: 999999999, perMinute: 10000, tokensPerDay: 999999999, concurrent: 1000 },
+    free: { perMinute: 60, tokensPerDay: 100000, concurrent: 10 },
+    pro: { perMinute: 500, tokensPerDay: 1000000, concurrent: 50 },
+    team: { perMinute: 1000, tokensPerDay: 5000000, concurrent: 100 },
+    enterprise: { perMinute: 10000, tokensPerDay: 999999999, concurrent: 1000 },
 };
 
 export async function GET(
@@ -25,7 +28,7 @@ export async function GET(
     try {
         const { data: project, error: projectError } = await supabase
             .from('projects')
-            .select('id, organization_id, organizations!inner(id, subscription_tier, monthly_requests_used, monthly_request_limit)')
+            .select('id, organization_id, organizations!inner(id, subscription_tier, monthly_requests_used)')
             .eq('id', projectId)
             .single();
 
@@ -38,7 +41,6 @@ export async function GET(
             id: orgData?.id || '',
             subscription_tier: orgData?.subscription_tier || 'free',
             monthly_requests_used: orgData?.monthly_requests_used || 0,
-            monthly_request_limit: orgData?.monthly_request_limit || 1000,
         };
 
         const tier = org.subscription_tier as keyof typeof TIER_LIMITS;
@@ -54,7 +56,6 @@ export async function GET(
             perMinute: projectSettings?.requests_per_minute ?? tierLimits.perMinute,
             tokensPerDay: projectSettings?.tokens_per_day ?? tierLimits.tokensPerDay,
             concurrent: projectSettings?.concurrent_requests ?? tierLimits.concurrent,
-            monthly: tierLimits.monthly,
         };
 
         const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
@@ -100,10 +101,10 @@ export async function GET(
                     limit: limits.concurrent,
                     percentage: Math.min(100, Math.round(((concurrentEstimate || 0) / limits.concurrent) * 100)),
                 },
+                // Reported for visibility, with no limit or percentage: monthly
+                // requests are uncapped on every tier.
                 monthlyRequests: {
                     used: org.monthly_requests_used || 0,
-                    limit: org.monthly_request_limit || limits.monthly,
-                    percentage: Math.min(100, Math.round(((org.monthly_requests_used || 0) / (org.monthly_request_limit || limits.monthly)) * 100)),
                 },
             },
         });

@@ -9,25 +9,22 @@ Cencori billing combines plan limits with usage-based credits.
 
 ## Two-Layer Billing
 
-1. **Plan Tier**: controls request limits and platform entitlements.
+1. **Plan Tier**: controls platform entitlements.
 2. **Credits Wallet**: prepaid balance used for AI request charges.
 
-Even with credits available, requests can still be blocked by:
-- monthly request limits,
+Requests are not capped by count on any plan. Even with credits available, a
+request can still be blocked by:
 - spend caps,
 - or security/rate-limit controls.
 
-## Plan Tiers (Typical Limits)
+## Plan Tiers
 
-| Tier | Monthly Request Limit |
-| :--- | :--- |
-| Free | 1,000 |
-| Pro | 50,000 |
-| Team | 250,000 |
-| Enterprise | Custom |
+Tiers differ by features and seats, not by a request allowance — no plan caps
+how many requests you can make. What you pay scales with what you actually use,
+via the credits wallet described below.
 
 > [!NOTE]
-> Tiers and limits may vary by contract or deployment.
+> Entitlements may vary by contract or deployment.
 
 ## Usage Pricing
 

@@ -42,7 +42,7 @@ Fields by failure class:
 | `401` | Unauthorized | Missing or invalid API key |
 | `402` | Payment Required | Spend cap reached |
 | `403` | Forbidden | Domain not allowed, network policy, frozen billing, credit exhaustion |
-| `429` | Too Many Requests | Per-minute rate limit or monthly request limit exceeded |
+| `429` | Too Many Requests | Per-minute rate limit exceeded |
 | `500` | Internal Error | Server-side error |
 | `502` | Bad Gateway | Provider failed (timeout, upstream 5xx) |
 | `503` | Service Unavailable | Rate-limit backend unavailable (fail-closed) or network policy unavailable |
@@ -60,7 +60,6 @@ These come from the shared gateway middleware before the endpoint runs:
 | `network_access_denied` | 403 | Request source blocked by the project ingress policy |
 | `billing_frozen` | 403 | Organization billing is frozen |
 | `credit_balance_exhausted` | 403 | Credit-gated tier (Pro/Team) with no credits. **Free and Enterprise tiers are not credit-gated.** Top up at `top_up_url` |
-| `monthly_request_limit_reached` | 429 | Organization monthly request cap hit |
 | `rate_limit_exceeded` | 429 | Per-project per-minute limit hit; body carries `retry_after_ms`, header carries `Retry-After` |
 | `rate_limit_unavailable` | 503 | Rate-limit backend down and fail-open is disabled |
 | `spend_cap_reached` | 402 | Monthly spend cap hit |
@@ -102,5 +101,4 @@ try {
 
 - **`credit_balance_exhausted` (403)** — top up in `Organization → Billing`. Free/Enterprise tiers aren't credit-gated.
 - **`rate_limit_exceeded` (429)** — 60 requests/min per project for all tiers. Back off for `Retry-After` seconds or use a second project.
-- **`monthly_request_limit_reached` (429)** — free tier resets on the monthly cycle (see reset-usage cron).
 - **`provider_error` (400)** — read the `message`; the truncated upstream body is included.

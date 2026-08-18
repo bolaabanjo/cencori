@@ -11,7 +11,6 @@ interface PlanProps {
     currentPeriodEnd: string | null;
     price: number;
     monthlyRequestsUsed: number;
-    monthlyRequestLimit: number;
     projectCount: number;
     projectLimit: number;
     creditBalance: number;
@@ -27,7 +26,6 @@ export function PlanDetails({
     currentPeriodEnd,
     price,
     monthlyRequestsUsed,
-    monthlyRequestLimit,
     projectCount,
     projectLimit,
     creditBalance,
@@ -105,7 +103,7 @@ export function PlanDetails({
                     <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
                         <dt className="text-muted-foreground">Monthly requests</dt>
                         <dd className="font-mono tabular-nums">
-                            {monthlyRequestsUsed.toLocaleString()} of {monthlyRequestLimit.toLocaleString()}
+                            {monthlyRequestsUsed.toLocaleString()}
                         </dd>
                     </div>
                     <div className="grid gap-1 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">

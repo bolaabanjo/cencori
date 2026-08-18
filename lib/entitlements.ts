@@ -95,7 +95,7 @@ const ALL_FEATURES_ENABLED: TierFeatures = {
 // Still enforced (depth limits, not existence gates):
 //   - MEMORY_QUOTA (below) — memory count per project
 //   - LOG_RETENTION_RANGE / clampTimeRange (below) — history depth by tier
-//   - monthly request limits + spend caps (gateway-middleware)
+//   - spend caps (gateway-middleware)
 // ─────────────────────────────────────────────────────────────────
 export const TIER_FEATURES: Record<SubscriptionTier, TierFeatures> = {
   free: {

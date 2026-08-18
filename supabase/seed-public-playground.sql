@@ -9,11 +9,11 @@
 -- Create demo org (skips if slug already exists)
 insert into public.organizations (
     name, slug, subscription_tier, subscription_status,
-    owner_id, monthly_request_limit, monthly_requests_used, credits_balance
+    owner_id, monthly_requests_used, credits_balance
 )
 select
     'Cencori Public Demo', 'cencori-demo', 'free', 'active',
-    id, 100000, 0, 0
+    id, 0, 0
 from auth.users
 where not exists (select 1 from public.organizations where slug = 'cencori-demo')
 order by created_at asc

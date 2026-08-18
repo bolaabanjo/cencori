@@ -35,14 +35,6 @@ type ProvisionedOrganization = {
   name: string;
 };
 
-function getRequestLimit(tier: string): number {
-  switch (tier) {
-    case "free": return 1000;
-    case "pro": return 50000;
-    default: return 1000;
-  }
-}
-
 export default function OnboardingPage() {
   return (
     <Suspense fallback={<div className="flex h-dvh items-center justify-center bg-black"><HugeiconsIcon icon={Loading03Icon} className="size-6 animate-spin text-zinc-400" /></div>}>
@@ -204,7 +196,6 @@ function OnboardingContent() {
             slug: newSlug,
             subscription_tier: initialTier,
             subscription_status: "active",
-            monthly_request_limit: getRequestLimit(initialTier),
             monthly_requests_used: 0,
             owner_id: user.id,
           })

@@ -9,16 +9,15 @@ order: 5
 
 Rate limiting controls how many requests you can make in a given time period. This protects the platform from abuse and ensures fair usage for all users.
 
-Cencori enforces rate limits per project (per-minute) and per organization (monthly request cap).
+Cencori enforces a per-project rate limit (per-minute). There is no monthly request cap on any plan.
 
 ## Default Rate Limits
 
 | Limit | Scope | Value |
 |-------|-------|-------|
 | Per-minute | Per project | **60 requests** (sliding 60s window) |
-| Monthly | Per organization | `organizations.monthly_request_limit` — free tier starts at 1,000/month; Pro ships 50,000/month |
 
-There are no tiered per-minute limits or burst allowances — all tiers share the same 60/min per-project window. Need more ceiling? Add a second project, or upgrade the organization for a higher monthly cap.
+There are no tiered per-minute limits or burst allowances — all tiers share the same 60/min per-project window. Need more throughput? Add a second project.
 
 > Warning: to know, these limits are enforced project-wide across **all** AI endpoints (chat, vision, audio, embeddings), not per endpoint.
 
@@ -30,11 +29,16 @@ Cencori uses a **Redis-backed sliding-window** counter keyed by project id (`rat
 - **Sliding window:** the TTL carries the window forward, so limits are enforced continuously, not in fixed wall-clock minutes.
 - **Fail-closed by default:** if the Redis backend is unavailable the request is rejected with `503 rate_limit_unavailable` unless fail-open mode is enabled for the deployment.
 
-## Monthly Request Cap
+## Monthly Requests
 
-The organization's `monthly_requests_used` counter increments once per successful request (any AI endpoint). When `used >= limit` the gateway returns `429 monthly_request_limit_reached` with body fields `usage: { used, limit, percentage }`, `current_tier`, and `upgrade_url`.
+There is no monthly request ceiling on any plan — free included. The
+organization's `monthly_requests_used` counter still increments once per
+successful request and resets on the monthly cycle (see `cron/reset-usage`), but
+it is a reporting figure only and nothing is refused when it grows.
 
-Resets happen on the monthly cycle (see `cron/reset-usage`).
+What does bound usage is spend, not request count: an organization out of
+credits gets `402 insufficient_credits`, a frozen account gets `403
+billing_frozen`, and per-key spend caps apply where configured.
 
 ## Rate Limit Headers
 
@@ -196,4 +200,3 @@ If you consistently hit limits:
 
 - `503 rate_limit_unavailable`: transient — retry with backoff.
 - `429 rate_limit_exceeded`: wait `Retry-After` seconds.
-- `429 monthly_request_limit_reached`: wait for the monthly reset or upgrade.

@@ -218,7 +218,6 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
                     id,
                     subscription_tier,
                     monthly_requests_used,
-                    monthly_request_limit,
                     credits_balance,
                     billing_frozen
                 )
@@ -251,7 +250,6 @@ export async function validateGatewayRequest(req: NextRequest): Promise<GatewayV
             id: string;
             subscription_tier: string;
             monthly_requests_used: number;
-            monthly_request_limit: number;
             credits_balance: string | number | null;
             billing_frozen: boolean | null;
         };
@@ -352,7 +350,6 @@ return {
                                 id,
                                 subscription_tier,
                                 monthly_requests_used,
-                                monthly_request_limit,
                                 credits_balance,
                                 billing_frozen
                             )
@@ -383,7 +380,6 @@ return {
                             id: string;
                             subscription_tier: string;
                             monthly_requests_used: number;
-                            monthly_request_limit: number;
                             credits_balance: string | number | null;
                             billing_frozen: boolean | null;
                         };
@@ -469,7 +465,6 @@ return {
                         id,
                         subscription_tier,
                         monthly_requests_used,
-                        monthly_request_limit,
                         credits_balance,
                         billing_frozen
                     )
@@ -529,7 +524,6 @@ return {
             id: string;
             subscription_tier: string;
             monthly_requests_used: number;
-            monthly_request_limit: number;
             credits_balance: string | number | null;
             billing_frozen: boolean | null;
         };
@@ -566,36 +560,18 @@ return {
         };
     }
 
-    // ── Monthly limit check ──
-    const currentUsage = organization.monthly_requests_used || 0;
-    const limit = organization.monthly_request_limit || 1000;
-
-    if (currentUsage >= limit && !fullySponsoredKey) {
-        return {
-            success: false,
-            response: addGatewayHeaders(
-                NextResponse.json(
-                    {
-                        error: 'Monthly request limit reached',
-                        message: `You've used ${currentUsage.toLocaleString()} of ${limit.toLocaleString()} requests this month.`,
-                        code: 'monthly_request_limit_reached',
-                        current_tier: tier,
-                        usage: {
-                            used: currentUsage,
-                            limit: limit,
-                            percentage: Math.round((currentUsage / limit) * 100)
-                        },
-                        upgrade_message: tier === 'free'
-                            ? 'Upgrade to Pro for 50,000 requests/month'
-                            : 'Upgrade your plan to get more requests',
-                        upgrade_url: '/billing'
-                    },
-                    { status: 429 }
-                ),
-                { requestId }
-            ),
-        };
-    }
+    // No monthly request ceiling, on any tier.
+    //
+    // Requests were capped per tier (1,000 free / 50,000 pro) and a customer who
+    // crossed the line got a hard 429 mid-month — production traffic stopped
+    // dead, and the 429 told well-behaved SDKs to keep retrying into the wall.
+    // On a usage-billed gateway that cap also refused revenue: past the ceiling
+    // a paying customer is margin, not cost.
+    //
+    // What actually bounds spend still runs below — billing_frozen, the credits
+    // balance, per-key spend caps and rate limits. Those gate on money and
+    // throughput, which is what needed gating all along. `monthly_requests_used`
+    // is still incremented for reporting; nothing reads a limit against it.
 
     // ── Independent enforcement checks in one parallel preflight phase ──
     // These were previously three serial Redis/DB phases (network, credits,

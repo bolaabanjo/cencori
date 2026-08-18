@@ -28,7 +28,6 @@ interface Organization {
     subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     subscription_status: string;
     monthly_requests_used: number;
-    monthly_request_limit: number;
     subscription_current_period_end: string | null;
     credits_balance: number;
     billing_email: string;
@@ -68,7 +67,7 @@ function useBillingData(orgSlug: string) {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('organizations')
-                .select('id, name, subscription_tier, subscription_status, monthly_requests_used, monthly_request_limit, subscription_current_period_end, credits_balance, billing_email, billing_address_line1, billing_address_line2, billing_city, billing_state, billing_zip, billing_country, billing_tax_id')
+                .select('id, name, subscription_tier, subscription_status, monthly_requests_used, subscription_current_period_end, credits_balance, billing_email, billing_address_line1, billing_address_line2, billing_city, billing_state, billing_zip, billing_country, billing_tax_id')
                 .eq('slug', orgSlug)
                 .single();
 
@@ -288,7 +287,6 @@ export default function BillingPage({ params }: PageProps) {
                     currentPeriodEnd={org.subscription_current_period_end}
                     price={isPaidPlanTier(org.subscription_tier) ? CENCORI_PAID_PLANS[org.subscription_tier].prices.month / 100 : 0}
                     monthlyRequestsUsed={org.monthly_requests_used}
-                    monthlyRequestLimit={org.monthly_request_limit}
                     projectCount={projects.length}
                     projectLimit={org.subscription_tier === 'free' ? 1 : 999999}
                     creditBalance={org.credits_balance || 0}

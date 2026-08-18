@@ -4,7 +4,6 @@ import React, { use } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "framer-motion";
 import { cn as clsx } from "@/lib/utils";
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from "@/components/ui/button";
@@ -22,15 +21,7 @@ interface Organization {
     name: string;
     subscription_tier: 'free' | 'pro' | 'team' | 'enterprise';
     monthly_requests_used: number;
-    monthly_request_limit: number;
 }
-
-const REQUEST_LIMIT_FALLBACKS: Record<Organization['subscription_tier'], number> = {
-    free: 1_000,
-    pro: 50_000,
-    team: 250_000,
-    enterprise: Number.POSITIVE_INFINITY,
-};
 
 interface UsageStats {
     total_requests: number;
@@ -206,7 +197,7 @@ function useOrganization(orgSlug: string) {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('organizations')
-                .select('id, name, subscription_tier, monthly_requests_used, monthly_request_limit')
+                .select('id, name, subscription_tier, monthly_requests_used')
                 .eq('slug', orgSlug)
                 .single();
 
@@ -218,7 +209,6 @@ function useOrganization(orgSlug: string) {
                 || data.subscription_tier === 'enterprise'
             ) ? data.subscription_tier : 'free';
             const requestsUsed = Number(data.monthly_requests_used ?? 0);
-            const requestLimit = Number(data.monthly_request_limit);
 
             const organization: Organization = {
                 id: data.id,
@@ -227,9 +217,6 @@ function useOrganization(orgSlug: string) {
                 monthly_requests_used: Number.isFinite(requestsUsed) && requestsUsed >= 0
                     ? requestsUsed
                     : 0,
-                monthly_request_limit: !Number.isNaN(requestLimit) && requestLimit > 0
-                    ? requestLimit
-                    : REQUEST_LIMIT_FALLBACKS[subscriptionTier],
             };
 
             return organization;
@@ -463,14 +450,6 @@ export default function UsagePage({ params }: PageProps) {
     const monthlyRequestsUsed = Number.isFinite(org.monthly_requests_used) && org.monthly_requests_used >= 0
         ? org.monthly_requests_used
         : 0;
-    const monthlyRequestLimit = !Number.isNaN(org.monthly_request_limit) && org.monthly_request_limit > 0
-        ? org.monthly_request_limit
-        : REQUEST_LIMIT_FALLBACKS[org.subscription_tier];
-    const percentage = Number.isFinite(monthlyRequestLimit)
-        ? Math.min((monthlyRequestsUsed / monthlyRequestLimit) * 100, 100)
-        : 0;
-    const isNearLimit = percentage >= 80;
-    const isAtLimit = percentage >= 100;
 
     const topModels = Object.entries(stats?.model_usage || {})
         .sort(([, a], [, b]) => b - a)
@@ -491,9 +470,6 @@ export default function UsagePage({ params }: PageProps) {
     const activity = stats?.daily_requests || buildRequestActivity([], timeRange);
     const activityMaximum = Math.max(...activity.map((point) => point.input_tokens + point.output_tokens), 1);
     const activityLabelInterval = activity.length > 24 ? 5 : activity.length > 12 ? 4 : 1;
-    const remainingRequests = Number.isFinite(monthlyRequestLimit)
-        ? Math.max(monthlyRequestLimit - monthlyRequestsUsed, 0)
-        : Number.POSITIVE_INFINITY;
     const nextReset = new Date();
     nextReset.setMonth(nextReset.getMonth() + 1, 1);
     nextReset.setHours(0, 0, 0, 0);
@@ -595,7 +571,7 @@ export default function UsagePage({ params }: PageProps) {
                     <div className="relative px-5 py-7 sm:px-8 sm:py-9 lg:px-10 lg:py-10">
                         <div>
                             <div>
-                                <p className="text-[9px] font-medium tracking-[0.16em] text-muted-foreground">MONTHLY CAPACITY</p>
+                                <p className="text-[9px] font-medium tracking-[0.16em] text-muted-foreground">REQUESTS THIS MONTH</p>
                                 <h2 id="capacity-heading" className="mt-2 text-sm font-medium">{planLabel} plan</h2>
                             </div>
                         </div>
@@ -603,34 +579,16 @@ export default function UsagePage({ params }: PageProps) {
                         <div className="mt-10 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
                             <div className="flex min-w-0 items-baseline gap-3">
                                 <span className="font-mono text-4xl font-medium leading-none tracking-[-0.075em] tabular-nums sm:text-[3.25rem]">{monthlyRequestsUsed.toLocaleString()}</span>
-                                <span className="truncate text-xs text-muted-foreground">/ {Number.isFinite(monthlyRequestLimit) ? monthlyRequestLimit.toLocaleString() : 'unlimited'}</span>
+                                <span className="truncate text-xs text-muted-foreground">requests</span>
                             </div>
-                            <p className={clsx("font-mono text-xs tabular-nums", isAtLimit ? "text-red-500" : isNearLimit ? "text-amber-500" : "text-muted-foreground")}>
-                                {Number.isFinite(monthlyRequestLimit) ? `${percentage.toFixed(1)}%` : '∞'}
-                            </p>
                         </div>
 
-                        <div className="mt-8 flex h-9 w-full items-center gap-[2px]" aria-label={`${percentage.toFixed(1)}% of monthly quota consumed`}>
-                            {Array.from({ length: 60 }).map((_, index) => {
-                                const filled = index < Math.round((percentage / 100) * 60);
-                                const barColor = isAtLimit ? "bg-red-500" : isNearLimit ? "bg-amber-500" : "bg-emerald-500";
-                                return (
-                                    <motion.span
-                                        key={index}
-                                        initial={{ opacity: 0, scaleY: 0.2 }}
-                                        animate={{ opacity: filled ? 0.9 : 0.12, scaleY: 1 }}
-                                        transition={{ duration: 0.28, delay: index * 0.006, ease: [0.22, 1, 0.36, 1] }}
-                                        className={clsx("h-full min-w-px flex-1 origin-bottom rounded-[1px]", filled ? barColor : "bg-foreground")}
-                                    />
-                                );
-                            })}
-                        </div>
+                        {/* The quota meter that used to sit here charted requests
+                            against a per-tier ceiling. There is no ceiling on any
+                            plan now, so there is nothing to fill. Spend is the
+                            number worth watching, and it has its own tile. */}
 
-                        <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-border/25 pt-5">
-                            <div className="min-w-0">
-                                <dt className="text-[9px] tracking-[0.08em] text-muted-foreground">Remaining</dt>
-                                <dd className="mt-1.5 truncate font-mono text-[11px] tabular-nums">{Number.isFinite(remainingRequests) ? remainingRequests.toLocaleString() : 'Unlimited'}</dd>
-                            </div>
+                        <dl className="mt-8 grid grid-cols-2 gap-4 border-t border-border/25 pt-5">
                             <div className="min-w-0">
                                 <dt className="text-[9px] tracking-[0.08em] text-muted-foreground">Resets</dt>
                                 <dd className="mt-1.5 truncate text-[11px]">{nextReset.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</dd>

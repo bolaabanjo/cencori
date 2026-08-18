@@ -21,7 +21,6 @@ describe("Stripe subscription reconciliation", () => {
       subscription_id: "sub_123",
       subscription_tier: "pro",
       subscription_status: "active",
-      monthly_request_limit: 50_000,
       subscription_current_period_start: "2026-07-01T00:00:00.000Z",
       subscription_current_period_end: "2026-08-01T00:00:00.000Z",
     });
@@ -48,7 +47,6 @@ describe("Stripe subscription reconciliation", () => {
     ).toMatchObject({
       subscription_tier: "free",
       subscription_status: "incomplete",
-      monthly_request_limit: 1_000,
     });
   });
 
@@ -61,7 +59,6 @@ describe("Stripe subscription reconciliation", () => {
     ).toMatchObject({
       subscription_tier: "free",
       subscription_status: "cancelled",
-      monthly_request_limit: 1_000,
     });
   });
 

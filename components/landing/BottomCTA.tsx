@@ -49,7 +49,7 @@ export const BottomCTA = () => {
                 <ul className="space-y-2 pt-2">
                   <li className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Check className="h-3.5 w-3.5 text-foreground shrink-0 animate-pulse" />
-                    <span>50,000 requests/month</span>
+                    <span>Unlimited requests</span>
                   </li>
                   <li className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Check className="h-3.5 w-3.5 text-foreground shrink-0 animate-pulse" />

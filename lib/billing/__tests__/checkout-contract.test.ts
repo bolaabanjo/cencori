@@ -26,8 +26,14 @@ describe("Cencori checkout contract", () => {
   });
 
   test("keeps the public plan promise in the checkout source of truth", () => {
-    expect(CENCORI_PAID_PLANS.pro.requestLimit).toBe(50_000);
-    expect(CENCORI_PAID_PLANS.team.requestLimit).toBe(250_000);
+    // Plans no longer promise a request allowance — requests are uncapped on
+    // every tier, so nothing here should reintroduce a per-plan request number.
+    expect(CENCORI_PAID_PLANS.pro).not.toHaveProperty("requestLimit");
+    expect(CENCORI_PAID_PLANS.team).not.toHaveProperty("requestLimit");
+    for (const plan of Object.values(CENCORI_PAID_PLANS)) {
+      expect(plan.features.some((feature) => /requests?\/month|requests each month/i.test(feature)))
+        .toBe(false);
+    }
     expect(getMonthlyEquivalentCents("pro", "year")).toBeCloseTo(4_083.33, 1);
   });
 
