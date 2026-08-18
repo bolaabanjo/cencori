@@ -1,35 +1,63 @@
 import React from 'react';
+import { Metadata } from 'next';
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+
+export const metadata: Metadata = {
+  title: 'About | Cencori',
+  description:
+    'Cencori is a deep technology company building the computing infrastructure global AI runs on.',
+};
 
 export default function AboutPage() {
   return (
-    <div className="container mx-auto py-12 px-4 max-w-4xl">
-      <h1 className="text-4xl font-bold mb-6">About Cencori</h1>
-      <p className="text-zinc-400 mb-8">
-        Company mission, leadership bios, high-level vision.
-      </p>
+    <main className="container mx-auto py-32 px-6 max-w-2xl min-h-screen flex flex-col justify-center">
+      <header className="mb-12 text-center sm:text-left">
+        <h1 className="text-5xl sm:text-6xl font-serif italic font-normal tracking-tight">
+          What is Cencori?
+        </h1>
+      </header>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Our Mission</h2>
-        <p className="text-zinc-300 leading-relaxed">
-          Cencori is the infrastructure for AI production. We provide a complete platform for shipping AI — from gateway to compute to workflows — so teams can focus on building products, not infrastructure.
+      <div className="space-y-8 text-sm leading-relaxed text-muted-foreground selection:bg-purple-500/30 max-w-lg">
+        <p className="text-foreground font-medium">
+          Cencori is a deep technology company building the computing infrastructure global AI runs on.
         </p>
-      </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Our Vision</h2>
-        <p className="text-zinc-300 leading-relaxed">
-          To be the foundation layer for every AI application — handling security, observability, and scale so developers can ship AI with confidence.
+        <p>
+          The company operates at the intersection of{' '}
+          <span className="text-foreground">computing and artificial intelligence</span>, building the
+          infrastructure required for AI to run reliably across companies, institutions, research
+          environments, critical systems, and the physical world.
         </p>
-      </section>
 
-      <section>
-        <h2 className="text-2xl font-semibold mb-4">Learn more about us.</h2>
-        <p className="text-zinc-300 leading-relaxed">
-          <Link href={siteConfig.links.getStartedUrl} className="text-blue-400 hover:underline">Get Started with Cencori</Link> today or <Link href="mailto:support@fohnai.com" className="text-blue-400 hover:underline">contact us</Link> for more information.
+        <p>
+          Cencori&rsquo;s focus is computing: the systems that make AI possible to execute, operate,
+          control, and scale. As AI becomes embedded across industries, economies, science,
+          infrastructure, and everyday technology, Cencori is building the computing foundation
+          beneath it.
         </p>
-      </section>
-    </div>
+
+        <p className="text-foreground font-medium">
+          Our mission is to make the infrastructure required to build and run AI accessible to
+          everyone, everywhere.
+        </p>
+
+        <p>Put simply:</p>
+
+        <p className="pt-4 text-foreground font-bold italic font-serif text-2xl">
+          AI needs computing. Cencori provides it.
+        </p>
+
+        <p className="pt-12">
+          <Link href="/contact" className="text-foreground underline underline-offset-4 hover:no-underline">
+            Get in touch
+          </Link>
+          {' '}or read the{' '}
+          <Link href="/manifesto" className="text-foreground underline underline-offset-4 hover:no-underline">
+            manifesto
+          </Link>
+          .
+        </p>
+      </div>
+    </main>
   );
 }

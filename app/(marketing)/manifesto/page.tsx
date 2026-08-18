@@ -13,7 +13,7 @@ export default function ManifestoPage() {
           </p>
 
           <p>
-            The intelligence era has arrived, and it does not yet have its infrastructure. Not a wrapper. Not a framework. Not a tool for one part of the problem. The complete foundation—from the silicon that runs computation to the economic layer that turns intelligence into sustainable business—does not exist yet.
+            The AI era has arrived, and the computing beneath it is not ready. Not a wrapper. Not a framework. Not a tool for one part of the problem. The computing foundation that AI actually requires—the systems that let it execute, operate, control, and scale, wherever it runs—does not exist yet.
           </p>
 
           <p>
@@ -21,19 +21,19 @@ export default function ManifestoPage() {
           </p>
 
           <p>
-            Intelligence is not artificial intelligence. Intelligence is the capacity of a system to perceive, reason, decide, and act. Whether the medium is neural networks, quantum computing, or a technology we cannot yet name, thinking systems will always require a foundation beneath them. We build that foundation regardless of which technology powers intelligence in any given decade.
+            Computing is not one layer. It is everything standing between a model and the world: the silicon that executes it, the systems that operate it, the controls that govern it, the networks that carry it. Whether the medium is neural networks, quantum computing, or a technology we cannot yet name, thinking systems will always require computing beneath them. We build that computing regardless of what powers intelligence in any given decade.
           </p>
 
           <p>
-            We refuse to define intelligence by the constraints of a chat window. Intelligence lives in the code of a financial agent processing billions in transactions, in the silicon of a drone navigating terrain it has never seen, in the mechatronics of a surgical robot making decisions measured in microseconds. The infrastructure that powers these systems must span software, hardware, and everything between them. That is what we are building.
+            We refuse to define AI by the constraints of a chat window. AI runs in the code of a financial agent processing billions in transactions, in the silicon of a drone navigating terrain it has never seen, in the mechatronics of a surgical robot making decisions measured in microseconds. The computing that powers these systems must span software, hardware, and everything between them. That is what we are building.
           </p>
 
           <p>
-            Today, building an intelligent product is needlessly broken. Before writing a single line of product code, teams spend months solving infrastructure problems that have nothing to do with their actual vision—routing, security, memory, billing, deployment. This is a waste of human potential on a global scale. Cencori exists to collapse that complexity into a single foundation, moving teams from idea to production in minutes rather than months.
+            Today, the computing that AI requires is scarce, uneven, and available mostly to those who can afford to build it themselves. Entire industries, institutions, and countries are locked out of running AI reliably—not for lack of ideas, but for lack of the foundation beneath them. This is a waste of human potential on a global scale. Our mission is to make the infrastructure required to build and run AI accessible to everyone, everywhere.
           </p>
 
           <p>
-            We are building from Africa. Not because it is convenient, but because the next century of technology will not be written by one continent alone. Africa represents a billion people whose languages, economies, and industries will be shaped by intelligent systems. We believe the infrastructure powering that transformation should be built by people who understand it from the inside, not imported as an afterthought.
+            We are building from Africa. Not because it is convenient, but because the next century of technology will not be written by one continent alone. Africa represents a billion people whose languages, economies, and industries will be shaped by intelligent systems. We believe the computing powering that transformation should be built by people who understand it from the inside, not imported as an afterthought.
           </p>
 
           <p>
@@ -41,7 +41,7 @@ export default function ManifestoPage() {
           </p>
 
           <p>
-            The future belongs to those brave enough to build what the world needs before the world knows it needs it. Cencori is the foundation for every intelligent system that will ever be built.
+            The future belongs to those brave enough to build what the world needs before the world knows it needs it. AI needs computing. Cencori is the computing beneath every intelligent system that will ever be built.
           </p>
 
           <p className="pt-12 text-foreground font-bold italic font-serif text-2xl">

@@ -3,20 +3,20 @@ import { Button } from "@/components/ui/button";
 
 const POSTS = [
   {
-    title: "Model Routing Is the Easy Part",
+    title: "Introducing Cencori Web",
     excerpt:
-      "Connecting to an LLM is easy. Building the governance, billing, and security around it is where the real work starts.",
-    href: "/blog/why-we-built-an-ai-gateway",
-    date: "Apr 23, 2026",
-    category: "Engineering",
+      "Search, fetch, extract, and crawl the web through infrastructure we own — with evidence, citations, and no third-party search API.",
+    href: "/blog/introducing-cencori-web",
+    date: "Aug 8, 2026",
+    category: "Product",
   },
   {
-    title: "Cencori Is Not Just an AI Gateway",
+    title: "Introducing Cencori MCP",
     excerpt:
-      "The gateway is the wedge. The platform is the point — memory, compute, and agents on one control plane.",
-    href: "/blog/cencori-is-not-just-an-ai-gateway",
-    date: "Apr 15, 2026",
-    category: "Strategy",
+      "Cencori is now native to every MCP client — web search, memory, agents, and multimodal tools through one secure server.",
+    href: "/blog/introducing-cencori-mcp",
+    date: "Aug 8, 2026",
+    category: "Product",
   },
   {
     title: "Building an AI Security Layer",
