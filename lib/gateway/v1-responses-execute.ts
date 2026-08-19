@@ -24,6 +24,11 @@ import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import {
+    normalizeResponsesContent,
+    type ResponsesContentPart,
+    toolOutputTurns,
+} from '@/lib/gateway/responses-content';
+import {
     preProcessBuiltInTools,
     executeCodeInterpreter,
     indexFileContent,
@@ -40,10 +45,14 @@ export type ResponseFormat =
     | { type: 'json_object' }
     | { type: 'json_schema'; json_schema: { name: string; description?: string; schema: Record<string, unknown>; strict?: boolean } };
 
+/**
+ * Message content and tool output are a string or a list of content parts. An agent's image tool
+ * answers with parts, and so does a user turn that carries a screenshot.
+ */
 export type ResponseInputItem =
-    | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string }
+    | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string | ResponsesContentPart[] }
     | { type: 'function_call'; id: string; call_id: string; name: string; arguments: string; status?: string }
-    | { type: 'function_call_output'; call_id: string; output: string }
+    | { type: 'function_call_output'; call_id: string; output: string | ResponsesContentPart[] }
     | { type: 'file'; filename: string; content: string; mime_type?: string };
 
 export type ResponsesTool = ResponsesBuiltInTool | Tool;
@@ -179,9 +188,15 @@ function parseInputToMessages(
 
     for (const item of input) {
         switch (item.type) {
-            case 'message':
-                messages.push({ role: item.role, content: item.content });
+            case 'message': {
+                const { text, images } = normalizeResponsesContent(item.content);
+                messages.push({
+                    role: item.role,
+                    content: text,
+                    ...(images.length ? { images } : {}),
+                });
                 break;
+            }
             case 'function_call':
                 messages.push({
                     role: 'assistant',
@@ -190,11 +205,7 @@ function parseInputToMessages(
                 });
                 break;
             case 'function_call_output':
-                messages.push({
-                    role: 'tool',
-                    content: item.output,
-                    toolCallId: item.call_id,
-                });
+                messages.push(...toolOutputTurns(item.output, item.call_id));
                 break;
             case 'file':
                 messages.push({

@@ -6,11 +6,30 @@
  */
 
 /**
+ * An image that travels beside a message's text.
+ *
+ * `url` is either an https URL or a `data:` URL carrying base64 bytes, which is what an agent's
+ * image tool returns.
+ */
+export interface UnifiedImagePart {
+    url: string;
+    detail?: 'auto' | 'low' | 'high';
+}
+
+/**
  * Unified message format across all providers
+ *
+ * `content` stays a string on purpose: every consumer of it — the security pipeline, custom data
+ * rules, masking, token estimation, request logging — reads text. Images ride alongside in
+ * `images` so a multimodal turn reaches vision-capable providers without any of those having to
+ * learn a second content shape. Providers that cannot take images ignore the field, which leaves
+ * them with exactly the text they received before.
  */
 export interface UnifiedMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
+    /** Images accompanying this turn, for providers that accept them. */
+    images?: UnifiedImagePart[];
     /** Tool call ID (for tool role messages) */
     toolCallId?: string;
     /** Tool calls made by the model (for assistant role messages) */
