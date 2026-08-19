@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { fetchRagMetricsResult } from '@/lib/integrations/ragmetrics';
+import { formatIncidentDetail } from '@/lib/security-incident-log';
 
 export async function GET(
     req: NextRequest,
@@ -21,6 +22,36 @@ export async function GET(
             .single();
 
         if (error || !request) {
+            // The logs feed also lists security incidents, which live in their own
+            // table and never produced an ai_requests row (blocked before the
+            // provider call). Fall back to those before giving up.
+            const { data: incident } = await supabaseAdmin
+                .from('security_incidents')
+                .select('*')
+                .eq('id', requestId)
+                .eq('project_id', projectId)
+                .single();
+
+            if (incident) {
+                let incidentKeyInfo = null;
+                if (incident.api_key_id) {
+                    const { data: keyData } = await supabaseAdmin
+                        .from('api_keys')
+                        .select('name, environment')
+                        .eq('id', incident.api_key_id)
+                        .single();
+
+                    if (keyData) {
+                        incidentKeyInfo = {
+                            name: keyData.name,
+                            environment: keyData.environment,
+                        };
+                    }
+                }
+
+                return NextResponse.json(formatIncidentDetail(incident, incidentKeyInfo));
+            }
+
             return NextResponse.json(
                 { error: 'Request not found' },
                 { status: 404 }

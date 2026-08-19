@@ -52,6 +52,54 @@ interface RequestDetailModalProps {
     onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Logged payloads are not one shape: chat logs `messages[]` with string content,
+ * vision logs content parts, the Responses API logs `input`, and some rows have
+ * nothing at all. Show the prompt when we can find it, the raw payload when we
+ * cannot, and an empty state when there is genuinely nothing.
+ */
+function contentToText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content
+            .map(part => {
+                if (typeof part === 'string') return part;
+                const p = part as { text?: unknown; type?: unknown };
+                if (typeof p?.text === 'string') return p.text;
+                return p?.type ? `[${String(p.type)}]` : '';
+            })
+            .filter(Boolean)
+            .join('\n');
+    }
+    return '';
+}
+
+export function extractRequestPrompt(
+    payload: Record<string, unknown> | null | undefined
+): { text: string; raw: string } {
+    if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
+        return { text: '', raw: '' };
+    }
+
+    const messages = (payload as { messages?: unknown }).messages;
+    if (Array.isArray(messages) && messages.length > 0) {
+        const userMessages = messages.filter(
+            (m): m is { role: string; content: unknown } =>
+                !!m && typeof m === 'object' && (m as { role?: unknown }).role === 'user'
+        );
+        const source = userMessages.length > 0 ? userMessages : messages;
+        const text = contentToText((source[source.length - 1] as { content?: unknown })?.content);
+        if (text) return { text, raw: JSON.stringify(payload, null, 2) };
+    }
+
+    // Responses API style: a bare string or a list of input items.
+    const input = (payload as { input?: unknown }).input;
+    const inputText = typeof input === 'string' ? input : contentToText(input);
+    if (inputText) return { text: inputText, raw: JSON.stringify(payload, null, 2) };
+
+    return { text: '', raw: JSON.stringify(payload, null, 2) };
+}
+
 export function RequestDetailModal({ projectId, requestId, open, onOpenChange }: RequestDetailModalProps) {
     const [request, setRequest] = useState<RequestDetail | null>(null);
     const [loading, setLoading] = useState(true);
@@ -219,10 +267,8 @@ export function RequestDetailModal({ projectId, requestId, open, onOpenChange }:
 
                         <TabsContent value="request" className="mt-3 space-y-2">
                             {(() => {
-                                const payload = request.request_payload as Record<string, any> | null;
-                                const messages = payload?.messages as Array<{ role: string; content: string }> | undefined;
-                                const lastUserMessage = messages?.filter(m => m.role === 'user').pop();
-                                const promptContent = lastUserMessage?.content || '';
+                                const { text: promptText, raw: rawPayload } = extractRequestPrompt(request.request_payload);
+                                const copyText = promptText || rawPayload || '';
 
                                 return (
                                     <>
@@ -232,7 +278,8 @@ export function RequestDetailModal({ projectId, requestId, open, onOpenChange }:
                                                 variant="ghost"
                                                 size="icon"
                                                 className="h-6 w-6"
-                                                onClick={() => handleCopy(promptContent, 'request')}
+                                                disabled={!copyText}
+                                                onClick={() => handleCopy(copyText, 'request')}
                                             >
                                                 {copiedField === 'request' ? (
                                                     <Check className="h-3 w-3 text-emerald-500" />
@@ -241,9 +288,15 @@ export function RequestDetailModal({ projectId, requestId, open, onOpenChange }:
                                                 )}
                                             </Button>
                                         </div>
-                                        <pre className="rounded-md bg-secondary/50 p-3 text-[11px] font-mono whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
-                                            {JSON.stringify({ content: promptContent }, null, 2)}
-                                        </pre>
+                                        {copyText ? (
+                                            <pre className="rounded-md bg-secondary/50 p-3 text-[11px] font-mono whitespace-pre-wrap break-words max-h-[280px] overflow-y-auto">
+                                                {copyText}
+                                            </pre>
+                                        ) : (
+                                            <div className="rounded-md border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
+                                                No request payload was recorded for this request.
+                                            </div>
+                                        )}
                                     </>
                                 );
                             })()}
@@ -280,7 +333,11 @@ export function RequestDetailModal({ projectId, requestId, open, onOpenChange }:
                                 </pre>
                             ) : (
                                 <div className="rounded-md border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
-                                    No response data (request was filtered)
+                                    {request.status === 'filtered' || request.status === 'blocked_output'
+                                        ? 'No response data — the request was blocked before a reply was returned.'
+                                        : request.status === 'error'
+                                            ? 'No response data — the request failed.'
+                                            : 'No response payload was recorded for this request.'}
                                 </div>
                             )}
                         </TabsContent>

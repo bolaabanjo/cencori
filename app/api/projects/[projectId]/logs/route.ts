@@ -3,16 +3,7 @@ import { requireProjectAccess } from '@/lib/require-project-access';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { getProjectTier } from '@/lib/require-tier-feature';
 import { clampTimeRange } from '@/lib/entitlements';
-
-function mapIncidentTypeToStatus(incidentType: string, actionTaken?: string): string {
-    if (actionTaken === 'blocked' || incidentType === 'data_rule_block') {
-        return 'blocked_output';
-    }
-    if (incidentType === 'rate_limit_exceeded') {
-        return 'rate_limited';
-    }
-    return 'filtered';
-}
+import { mapIncidentTypeToStatus, incidentReasons } from '@/lib/security-incident-log';
 
 export async function GET(
     req: NextRequest,
@@ -212,7 +203,7 @@ export async function GET(
                 latency_ms: 0,
                 safety_score: incident.risk_score,
                 error_message: incident.description,
-                filtered_reasons: [incident.incident_type],
+                filtered_reasons: incidentReasons(incident),
                 request_preview: incident.input_text?.substring(0, 100) || incident.description || '',
                 evaluation_status: 'skipped',
                 evaluation_score: null,
