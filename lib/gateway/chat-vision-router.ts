@@ -23,6 +23,8 @@ import {
     type GatewayContext,
 } from '@/lib/gateway-middleware';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { textResponsePayload } from '@/lib/gateway/log-payload';
+import { visionRequestPayload } from '@/lib/vision/guarded';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import type { UnifiedMessage } from '@/lib/providers/base';
@@ -339,6 +341,7 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
         markupPercentage: number;
         blocked: boolean;
         streamed: boolean;
+        responseText: string;
     }) => {
         await logGatewayRequest(ctx, {
             endpoint: 'chat',
@@ -361,6 +364,11 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
                 streamed: details.streamed,
                 output_blocked: details.blocked,
             },
+            requestPayload: visionRequestPayload(visionRequest, details.model),
+            // A blocked answer is never returned, so it is not logged.
+            responsePayload: details.blocked
+                ? undefined
+                : textResponsePayload(details.responseText),
         });
         await incrementUsage(ctx, details.cencoriChargeUsd);
         recordEndUserUsage?.({
@@ -424,6 +432,7 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
                         markupPercentage,
                         blocked: !guarded.result.ok,
                         streamed: true,
+                        responseText: guarded.finalText,
                     });
                     if (!guarded.result.ok) {
                         const errorPayload = wireFormat === 'cencori'
@@ -452,6 +461,7 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
                         provider: 'vision-router',
                         status: 'error',
                         errorMessage: message,
+                        requestPayload: visionRequestPayload(visionRequest, upgrade.model),
                     });
                 } finally {
                     controller.close();
@@ -475,6 +485,7 @@ export async function runVisionChat(args: RunVisionChatArgs): Promise<Response> 
         markupPercentage: result.cost.markupPercentage,
         blocked: !guarded.result.ok,
         streamed: false,
+        responseText: guarded.finalText,
     });
 
     if (!guarded.result.ok) {

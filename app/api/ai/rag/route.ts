@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { decryptApiKey } from '@/lib/encryption';
 import { executeGatewayChat } from '@/lib/gateway/chat-executor';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { promptPayload, textResponsePayload, toLoggedMessages } from '@/lib/gateway/log-payload';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import {
@@ -127,6 +128,8 @@ async function searchMemories(
         providerCostUsd,
         cencoriChargeUsd,
         markupPercentage: pricing.cencoriMarkupPercentage,
+        requestPayload: promptPayload(query, { model: embeddingModel }),
+        responsePayload: { embedding_dimensions: queryEmbedding.length },
     });
     await incrementUsage(ctx, cencoriChargeUsd);
 
@@ -163,6 +166,9 @@ export async function POST(req: NextRequest) {
     const validation = await validateGatewayRequest(req);
     if (!validation.success) return validation.response;
     const ctx = validation.context;
+
+    // Kept outside the try so the failure path can still log what was sent.
+    let messagesForLog: Array<{ role: string; content: unknown }> = [];
 
     try {
         let body: Record<string, unknown>;
@@ -217,6 +223,7 @@ export async function POST(req: NextRequest) {
             role: message.role as 'system' | 'user' | 'assistant',
             content: message.content,
         }));
+        messagesForLog = requestedMessages;
         const inputPipeline = await runGatewayInputPipeline({
             supabase: ctx.supabase,
             projectId: ctx.projectId,
@@ -232,6 +239,7 @@ export async function POST(req: NextRequest) {
                 provider: 'unknown',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: { messages: toLoggedMessages(requestedMessages) },
             });
             return errorResponse(ctx, inputPipeline.status, inputPipeline.code, inputPipeline.message);
         }
@@ -350,6 +358,13 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: response.cost.cencoriChargeUsd,
             markupPercentage: response.cost.markupPercentage,
             errorMessage: outputGuard.ok ? undefined : outputGuard.message,
+            // Logged with the retrieved context in place — that is the prompt the
+            // model actually saw.
+            requestPayload: {
+                messages: toLoggedMessages(unifiedMessages),
+                model: requestedModel,
+            },
+            responsePayload: outputGuard.ok ? textResponsePayload(response.content) : undefined,
         });
         await incrementUsage(ctx, response.cost.cencoriChargeUsd);
 
@@ -420,6 +435,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: { messages: toLoggedMessages(messagesForLog) },
         });
         return errorResponse(ctx, 500, 'internal_error', 'RAG request failed.');
     }

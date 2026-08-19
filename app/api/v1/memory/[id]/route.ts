@@ -83,6 +83,8 @@ export async function DELETE(
             provider: 'none',
             status: 'success',
             metadata: { memory_id: toMemoryId(data[0].id) },
+            requestPayload: { operation: 'forget', memory_id: toMemoryId(data[0].id) },
+            responsePayload: { content: `Deleted memory ${toMemoryId(data[0].id)}`, deleted: true },
         });
 
         return respond({ deleted: true, id: toMemoryId(data[0].id) }, 200);

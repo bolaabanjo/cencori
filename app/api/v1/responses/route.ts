@@ -14,6 +14,8 @@ import { extractCencoriApiKeyFromHeaders } from "@/lib/api-keys";
 import { checkEndUserQuota, recordEndUserUsage, type QuotaCheckResult } from "@/lib/end-user-billing";
 import type { UnifiedMessage } from "@/lib/providers/base";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
+import { buildMaskedLogPayloads } from "@/lib/gateway/chat-post-success";
+import { waitUntil } from "@vercel/functions";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import { runV1ResponsesExecution } from "@/lib/gateway/v1-responses-execute";
 import type { ResponsesRequest } from "@/lib/gateway/v1-responses-execute";
@@ -457,21 +459,47 @@ export async function POST(req: NextRequest) {
             tier: (gatewayCtx.tier || "free") as SubscriptionTier,
             recordEndUserUsage: maybeRecordEndUserUsage,
             logSuccess: (meta) => {
-                void logGatewayRequest(activeGatewayCtx, {
-                    endpoint: "/v1/responses",
-                    model: meta.model,
-                    provider: meta.provider,
-                    status: meta.status,
-                    promptTokens: meta.promptTokens,
-                    completionTokens: meta.completionTokens,
-                    totalTokens: meta.totalTokens,
-                    costUsd: meta.cencoriChargeUsd,
-                    providerCostUsd: meta.providerCostUsd,
-                    cencoriChargeUsd: meta.cencoriChargeUsd,
-                    markupPercentage: meta.markupPercentage,
-                    endUserId: endUserId || undefined,
-                    errorMessage: meta.errorMessage,
-                });
+                // Log the prompt and completion the same way /v1/chat/completions
+                // does — masked by the project's custom data rules — otherwise the
+                // console shows a row with nothing to inspect.
+                waitUntil(
+                    (async () => {
+                        const { loggedMessages, loggedResponse } = await buildMaskedLogPayloads({
+                            messages: inputPipeline.messages.map((m) => ({
+                                role: m.role,
+                                content: m.content,
+                            })),
+                            responseText: meta.responseText ?? '',
+                            customRules: inputPipeline.customRules,
+                        });
+
+                        await logGatewayRequest(activeGatewayCtx, {
+                            endpoint: "/v1/responses",
+                            model: meta.model,
+                            provider: meta.provider,
+                            status: meta.status,
+                            promptTokens: meta.promptTokens,
+                            completionTokens: meta.completionTokens,
+                            totalTokens: meta.totalTokens,
+                            costUsd: meta.cencoriChargeUsd,
+                            providerCostUsd: meta.providerCostUsd,
+                            cencoriChargeUsd: meta.cencoriChargeUsd,
+                            markupPercentage: meta.markupPercentage,
+                            endUserId: endUserId || undefined,
+                            errorMessage: meta.errorMessage,
+                            requestPayload: {
+                                messages: loggedMessages,
+                                model,
+                                stream: body.stream || false,
+                            },
+                            responsePayload: meta.responseText !== undefined
+                                ? { content: loggedResponse }
+                                : undefined,
+                        });
+                    })().catch((err) =>
+                        console.error('[Responses] request logging failed:', err)
+                    )
+                );
             },
             incrementUsage: (chargeUsd) => {
                 void incrementUsage(activeGatewayCtx, chargeUsd);

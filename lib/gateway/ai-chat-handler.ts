@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { promptPayload } from '@/lib/gateway/log-payload';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { waitUntil } from '@vercel/functions';
 import type { UnifiedMessage, Tool, UnifiedChatRequest } from '@/lib/providers/base';
@@ -380,6 +381,7 @@ export async function POST(req: NextRequest) {
                                   cencoriChargeUsd: usage.cencoriChargeUsd,
                                   markupPercentage: usage.markupPercentage,
                                   metadata: { source: 'chat_memory_retrieval' },
+                                  requestPayload: promptPayload(lastUserMessageText, { model: usage.model }),
                               }),
                               incrementUsage(ctx, usage.cencoriChargeUsd),
                           ]).then(() => undefined));

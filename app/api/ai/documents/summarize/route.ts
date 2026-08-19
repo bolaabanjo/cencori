@@ -22,6 +22,8 @@ import {
 import { getPricingFromDB } from '@/lib/providers/pricing';
 import { calculateProviderTokenCost } from '@/lib/providers/base';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
+import { describeDocumentInput } from '@/lib/documents/log';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SubscriptionTier } from '@/lib/entitlements';
@@ -37,11 +39,15 @@ export async function POST(req: NextRequest) {
     if (!validation.success) return validation.response;
     const ctx = validation.context;
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let documentForLog = '[document]';
+
     try {
         // Fail before document extraction if the generation model cannot be
         // billed exactly.
         const pricing = await getPricingFromDB('openai', SUMMARY_MODEL);
         const { input, opts } = await parseDocumentRequest(req);
+        documentForLog = describeDocumentInput(input, opts.prompt);
         if (opts.prompt) {
             const promptGuard = await runGatewayInputPipeline({
                 supabase: ctx.supabase,
@@ -52,6 +58,15 @@ export async function POST(req: NextRequest) {
                 messages: [{ role: 'user', content: opts.prompt }],
             });
             if (!promptGuard.ok) {
+                // Without this a guard-blocked prompt leaves no log row at all.
+                await logGatewayRequest(ctx, {
+                    endpoint: 'documents/summarize',
+                    model: SUMMARY_MODEL,
+                    provider: 'openai',
+                    status: 'blocked',
+                    errorMessage: promptGuard.message,
+                    requestPayload: promptPayload(documentForLog),
+                });
                 return addGatewayHeaders(
                     NextResponse.json({ error: promptGuard.code, message: promptGuard.message }, { status: promptGuard.status }),
                     { requestId: ctx.requestId }
@@ -71,6 +86,14 @@ export async function POST(req: NextRequest) {
             messages: [{ role: 'user', content: providerInput }],
         });
         if (!inputPipeline.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'documents/summarize',
+                model: SUMMARY_MODEL,
+                provider: 'openai',
+                status: 'blocked',
+                errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(documentForLog, { model: SUMMARY_MODEL }),
+            });
             return addGatewayHeaders(
                 NextResponse.json({ error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons }, { status: inputPipeline.status }),
                 { requestId: ctx.requestId }
@@ -152,6 +175,10 @@ export async function POST(req: NextRequest) {
             markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: { extract_method: extracted.method, kind: extracted.kind, pageCount: extracted.pageCount },
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+            requestPayload: promptPayload(documentForLog, { model: SUMMARY_MODEL }),
+            responsePayload: outputCheck.ok
+                ? textResponsePayload(summary, { pages: extracted.pageCount })
+                : undefined,
         });
         await incrementUsage(ctx, totalCharge);
 
@@ -192,6 +219,7 @@ export async function POST(req: NextRequest) {
                 status: 'error',
                 errorMessage: error.message,
                 metadata: { code: error.code, ...error.details },
+                requestPayload: promptPayload(documentForLog),
             });
             return addGatewayHeaders(
                 NextResponse.json({ error: error.code, message: error.message, ...error.details }, { status: 400 }),
@@ -206,6 +234,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(documentForLog),
         });
         return addGatewayHeaders(
             NextResponse.json({ error: 'internal_error', message }, { status: 500 }),

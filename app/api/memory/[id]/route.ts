@@ -5,6 +5,7 @@ import {
     logGatewayRequest,
     validateGatewayRequest,
 } from '@/lib/gateway-middleware';
+import { textResponsePayload } from '@/lib/gateway/log-payload';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -74,6 +75,8 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
             provider: 'none',
             status: outputCheck.ok ? 'success' : 'blocked_output',
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+            requestPayload: { operation: 'get', memory_id: id },
+            responsePayload: outputCheck.ok ? textResponsePayload(memory.content) : undefined,
         });
         if (!outputCheck.ok) {
             return respond(
@@ -99,6 +102,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
             provider: 'none',
             status: 'error',
             errorMessage: message,
+            requestPayload: { operation: 'get', memory_id: id },
         });
         return respond({ error: 'internal_error', message }, 500);
     }
@@ -139,6 +143,8 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
             model: 'none',
             provider: 'none',
             status: 'success',
+            requestPayload: { operation: 'delete', memory_id: id },
+            responsePayload: { content: `Deleted memory ${id}`, deleted: true },
         });
         return respond({ deleted: true, id }, 200);
     } catch (error) {
@@ -149,6 +155,7 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
             provider: 'none',
             status: 'error',
             errorMessage: message,
+            requestPayload: { operation: 'delete', memory_id: id },
         });
         return respond({ error: 'internal_error', message }, 500);
     }

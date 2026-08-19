@@ -29,6 +29,7 @@ import {
     mapProviderErrorToHttpResponse,
 } from '@/lib/gateway-reliability';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { toLoggedMessages } from '@/lib/gateway/log-payload';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { safeProviderFetch } from '@/lib/security/outbound-url';
 
@@ -138,6 +139,8 @@ export async function POST(req: NextRequest) {
     const route = '/api/ai/embeddings';
     let provider: EmbeddingProvider | 'unknown' = 'unknown';
     let requestedModel = 'unknown';
+    // Kept outside the try so the failure paths can still log what was sent.
+    let inputsForLog: string[] = [];
 
     try {
         let body: EmbeddingRequest;
@@ -153,6 +156,7 @@ export async function POST(req: NextRequest) {
         requestedModel = model;
 
         const inputs = typeof input === 'string' ? [input] : input;
+        inputsForLog = Array.isArray(inputs) ? inputs : [];
         if (!Array.isArray(inputs) || inputs.length === 0 || inputs.length > 32
             || inputs.some(value => typeof value !== 'string' || !value.trim()
                 || new TextEncoder().encode(value).byteLength > 32 * 1024)
@@ -215,6 +219,7 @@ export async function POST(req: NextRequest) {
                 provider: 'unknown',
                 status: 'blocked',
                 errorMessage: blocked.message,
+                requestPayload: { messages: toLoggedMessages(inputsForLog.map((text) => ({ role: 'user', content: text }))) },
             });
             return addGatewayHeaders(
                 NextResponse.json({ error: blocked.code, message: blocked.message }, { status: blocked.status }),
@@ -299,6 +304,17 @@ export async function POST(req: NextRequest) {
             providerCostUsd: providerCost,
             cencoriChargeUsd: cencoriCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
+            requestPayload: {
+                messages: toLoggedMessages(guardedInput.map((text) => ({ role: 'user', content: text }))),
+                model: result.model,
+                dimensions,
+            },
+            // Vectors are not logged — thousands of floats are not readable and
+            // the caller already has them.
+            responsePayload: {
+                content: `[${result.data.length} embedding vector(s), ${result.data[0]?.embedding?.length ?? 0} dimensions]`,
+                vectors: result.data.length,
+            },
             metadata: {
                 rateLimitStatus: ctx.rateLimit?.status ?? 'unknown',
                 semanticCacheRead: 'disabled',
@@ -359,6 +375,7 @@ export async function POST(req: NextRequest) {
             provider,
             status: 'error',
             errorMessage,
+            requestPayload: { messages: toLoggedMessages(inputsForLog.map((text) => ({ role: 'user', content: text }))) },
             metadata: {
                 rateLimitStatus: ctx.rateLimit?.status ?? 'unknown',
                 semanticCacheRead: 'disabled',

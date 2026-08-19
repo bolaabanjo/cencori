@@ -14,6 +14,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
@@ -52,6 +53,9 @@ export async function POST(req: NextRequest) {
     const respond = (body: unknown, status: number) =>
         addGatewayHeaders(NextResponse.json(body, { status }), { requestId: ctx.requestId });
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let contentForLog = '';
+
     try {
         const body: WriteMemoryRequest = await req.json();
 
@@ -64,6 +68,7 @@ export async function POST(req: NextRequest) {
         }
 
         const content = typeof body.content === 'string' ? body.content.trim() : '';
+        contentForLog = content;
         if (!content) {
             return respond({ error: 'bad_request', message: 'content is required' }, 400);
         }
@@ -130,6 +135,7 @@ export async function POST(req: NextRequest) {
                     provider: 'redis',
                     status: 'error',
                     errorMessage: 'Session memory store unavailable',
+                    requestPayload: promptPayload(content, { scope: 'session' }),
                 });
                 return respond(
                     { error: 'memory_store_unavailable', message: 'Session memory could not be stored.' },
@@ -143,6 +149,8 @@ export async function POST(req: NextRequest) {
                 provider: 'none',
                 status: 'success',
                 metadata: { scope: 'session', content_length: content.length },
+                requestPayload: promptPayload(content, { scope: 'session' }),
+                responsePayload: textResponsePayload(redacted.content, { stored: true }),
             });
 
             return respond(
@@ -186,6 +194,7 @@ export async function POST(req: NextRequest) {
                 provider: result.embeddingProvider ?? 'unknown',
                 status: 'error',
                 errorMessage: 'Memory was not written (blocked by data rules or storage failure)',
+                requestPayload: promptPayload(content, { scope: directive.scope }),
             });
             return respond(
                 {
@@ -204,6 +213,9 @@ export async function POST(req: NextRequest) {
             costUsd: result.embeddingCostUsd,
             cencoriChargeUsd: result.embeddingCostUsd,
             metadata: { scope: directive.scope, content_length: content.length },
+            requestPayload: promptPayload(content, { scope: directive.scope }),
+            // Post-redaction — what was actually stored.
+            responsePayload: textResponsePayload(result.written[0]?.content ?? '', { stored: true }),
         });
         await incrementUsage(ctx, result.embeddingCostUsd);
 
@@ -231,6 +243,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(contentForLog),
         });
 
         return respond({ error: 'internal_error', message }, 500);

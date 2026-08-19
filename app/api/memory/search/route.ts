@@ -9,6 +9,7 @@ import {
     logGatewayRequest,
     validateGatewayRequest,
 } from '@/lib/gateway-middleware';
+import { promptPayload, toLoggedText } from '@/lib/gateway/log-payload';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { getPricingFromDB } from '@/lib/providers/pricing';
@@ -36,10 +37,14 @@ export async function POST(req: NextRequest) {
         { requestId: ctx.requestId },
     );
 
+    // Kept outside the try so the failure path can still log what was asked.
+    let queryForLog = '';
+
     try {
         const body = await req.json() as SearchMemoryRequest;
         const namespace = typeof body.namespace === 'string' ? body.namespace.trim() : '';
         const query = typeof body.query === 'string' ? body.query.trim() : '';
+        queryForLog = query;
         if (!namespace || !query) {
             return respond(
                 { error: 'bad_request', message: 'namespace and query are required' },
@@ -70,6 +75,7 @@ export async function POST(req: NextRequest) {
                 provider: 'none',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(query),
             });
             return respond(
                 { error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons },
@@ -185,6 +191,15 @@ export async function POST(req: NextRequest) {
             markupPercentage: pricing.cencoriMarkupPercentage,
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
             metadata: { namespace_id: namespaceData.id, results: results.length },
+            requestPayload: promptPayload(guardedQuery, { model }),
+            responsePayload: outputCheck.ok
+                ? {
+                    content: results
+                        .map((r: { content?: unknown }, i: number) => `${i + 1}. ${toLoggedText(r.content)}`)
+                        .join('\n'),
+                    results: results.length,
+                }
+                : undefined,
         });
         await incrementUsage(ctx, cencoriCharge);
 
@@ -210,6 +225,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(queryForLog),
         });
         return respond({ error: 'internal_error', message }, 500);
     }

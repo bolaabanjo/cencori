@@ -10,6 +10,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload, redactBinaryRef } from '@/lib/gateway/log-payload';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
@@ -152,9 +153,13 @@ export async function POST(req: NextRequest) {
     }
     const ctx = validation.context;
 
+    // Kept outside the try so the failure path can still log what was sent.
+    let promptForLog = '';
+
     try {
         const body = await req.json() as ImageGenerationRequest;
         const { prompt, model: requestedModel } = body;
+        promptForLog = typeof prompt === 'string' ? prompt : '';
 
         if (typeof prompt !== 'string' || !prompt.trim()) {
             return addGatewayHeaders(
@@ -222,6 +227,7 @@ export async function POST(req: NextRequest) {
                 provider: 'unknown',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(prompt, { model: requestedModel }),
             });
             return addGatewayHeaders(
                 NextResponse.json(
@@ -368,6 +374,21 @@ export async function POST(req: NextRequest) {
             markupPercentage,
             metadata: { prompt_length: prompt.length, numImages: requestedImageCount, size, quality },
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+            requestPayload: promptPayload(body.prompt, { model, size, quality, n: requestedImageCount }),
+            // Generated images are referenced, never inlined — b64 payloads are
+            // megabytes each.
+            responsePayload: outputCheck.ok
+                ? {
+                    content: result.images
+                        .map((image, i) => image.url
+                            ? `[image ${i + 1}: ${redactBinaryRef(image.url)}]`
+                            : `[image ${i + 1}: inline base64, ${image.b64_json?.length ?? 0} chars]`)
+                        .join('\n'),
+                    revised_prompts: result.images
+                        .map(image => image.revisedPrompt)
+                        .filter(Boolean),
+                }
+                : undefined,
         });
         await incrementUsage(ctx, cencoriCharge);
 
@@ -403,6 +424,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage,
+            requestPayload: promptPayload(promptForLog),
         });
 
         return addGatewayHeaders(

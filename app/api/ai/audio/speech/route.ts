@@ -19,6 +19,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload } from '@/lib/gateway/log-payload';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { getUsageUnitPricingFromDB } from '@/lib/providers/pricing';
@@ -46,11 +47,14 @@ export async function POST(req: NextRequest) {
     // Model/provider are needed in the catch block for logging; defaults match the lib.
     let model = 'tts-1';
     let provider = 'openai';
+    // The spoken text, kept for the failure paths' logs.
+    let inputForLog = '';
 
     try {
         const body: SpeechRequest = await req.json();
         model = body.model ?? 'tts-1';
         if (body.provider) provider = body.provider;
+        inputForLog = typeof body.input === 'string' ? body.input : '';
 
         if (typeof body.input !== 'string' || !body.input.trim()) {
             return addGatewayHeaders(
@@ -75,6 +79,7 @@ export async function POST(req: NextRequest) {
                 provider,
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(body.input, { model, voice: body.voice }),
             });
             return addGatewayHeaders(
                 NextResponse.json(
@@ -115,6 +120,19 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: cencoriCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: { streaming },
+            requestPayload: promptPayload(guardedInput, {
+                model: resolved.model,
+                voice: body.voice,
+                response_format: body.response_format,
+                speed: body.speed,
+                stream: streaming,
+            }),
+            // Audio bytes are not logged — the console describes them instead.
+            responsePayload: {
+                content: `[audio: ${body.response_format ?? 'mp3'}, ${result.charCount} characters synthesized]`,
+                format: body.response_format ?? 'mp3',
+                characters: result.charCount,
+            },
         });
         await incrementUsage(ctx, cencoriCharge);
 
@@ -144,6 +162,7 @@ export async function POST(req: NextRequest) {
                     provider,
                     status: 'error',
                     errorMessage: error.message,
+                    requestPayload: promptPayload(inputForLog, { model }),
                 });
             }
             return addGatewayHeaders(
@@ -161,6 +180,7 @@ export async function POST(req: NextRequest) {
             provider,
             status: 'error',
             errorMessage,
+            requestPayload: promptPayload(inputForLog, { model }),
         });
 
         return addGatewayHeaders(

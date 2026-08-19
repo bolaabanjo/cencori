@@ -11,6 +11,7 @@ import {
 import { executeGatewayChat } from '@/lib/gateway/chat-executor';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { getCache, saveCache, computeCacheKey } from '@/lib/cache';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
@@ -45,6 +46,9 @@ export async function POST(req: NextRequest) {
         { requestId: ctx.requestId },
     );
 
+    // Kept outside the try so the failure path can still log what was sent.
+    let promptForLog = '';
+
     try {
         let body: Record<string, unknown>;
         try {
@@ -52,6 +56,7 @@ export async function POST(req: NextRequest) {
         } catch {
             return respondError(400, 'invalid_json', 'Request body must be valid JSON.');
         }
+        promptForLog = typeof body.prompt === 'string' ? body.prompt : '';
 
         if (typeof body.prompt !== 'string' || !body.prompt.trim()) {
             return respondError(400, 'invalid_prompt', 'prompt must be a non-empty string.');
@@ -101,6 +106,7 @@ export async function POST(req: NextRequest) {
                 provider: 'unknown',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(body.prompt, { model: requestedModel }),
             });
             return respondError(inputPipeline.status, inputPipeline.code, inputPipeline.message);
         }
@@ -145,6 +151,11 @@ export async function POST(req: NextRequest) {
                     cencoriChargeUsd: 0,
                     markupPercentage: 0,
                     metadata: { cache: 'exact' },
+                    requestPayload: promptPayload(guardedPrompt, { model: requestedModel }),
+                    responsePayload: textResponsePayload(
+                        (safePayload as { choices?: Array<{ text?: unknown }> }).choices?.[0]?.text ?? '',
+                        { finishReason: 'cached' }
+                    ),
                 });
 
                 const response = NextResponse.json({
@@ -209,6 +220,11 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: providerResponse.cost.cencoriChargeUsd,
             markupPercentage: providerResponse.cost.markupPercentage,
             errorMessage: outputGuard.ok ? undefined : outputGuard.message,
+            requestPayload: promptPayload(guardedPrompt, { model: requestedModel }),
+            // A guard-blocked completion is never delivered, so it is not logged.
+            responsePayload: outputGuard.ok
+                ? textResponsePayload(providerResponse.content)
+                : undefined,
         });
         await incrementUsage(ctx, providerResponse.cost.cencoriChargeUsd);
 
@@ -282,6 +298,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(promptForLog),
         });
         return respondError(500, 'internal_error', 'Completion request failed.');
     }

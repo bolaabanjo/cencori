@@ -16,6 +16,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { MEMORY_CONTENT_MAX_CHARS } from '@/lib/memory';
@@ -39,9 +40,13 @@ export async function POST(req: NextRequest) {
     }
     const ctx = validation.context;
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let contentForLog = '';
+
     try {
         const body: StoreMemoryRequest = await req.json();
         const { namespace, content, embedding, metadata = {}, expiresAt } = body;
+        contentForLog = typeof content === 'string' ? content : '';
 
         if (typeof namespace !== 'string' || !namespace.trim()) {
             return addGatewayHeaders(
@@ -114,6 +119,7 @@ export async function POST(req: NextRequest) {
                 provider: 'none',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(content, { namespace }),
             });
             return addGatewayHeaders(
                 NextResponse.json(
@@ -240,6 +246,7 @@ export async function POST(req: NextRequest) {
                 provider: providerName,
                 status: 'error',
                 errorMessage: 'Failed to store memory',
+                requestPayload: promptPayload(contentForLog, { model, namespace }),
             });
 
             return addGatewayHeaders(
@@ -267,6 +274,8 @@ export async function POST(req: NextRequest) {
                 embedded: !usingClientEmbedding,
                 content_length: guardedContent.length,
             },
+            requestPayload: promptPayload(guardedContent, { model, namespace }),
+            responsePayload: textResponsePayload(memory?.content ?? guardedContent, { stored: true }),
         });
         await incrementUsage(ctx, cencoriCharge);
 
@@ -294,6 +303,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage,
+            requestPayload: promptPayload(contentForLog),
         });
 
         return addGatewayHeaders(

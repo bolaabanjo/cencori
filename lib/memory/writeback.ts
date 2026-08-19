@@ -5,6 +5,7 @@
  */
 
 import type { GatewayContext } from '@/lib/gateway-middleware';
+import { toLoggedMessages, toLoggedText } from '@/lib/gateway/log-payload';
 import { logGatewayRequest, incrementUsage } from '@/lib/gateway-middleware';
 import type { createAdminClient } from '@/lib/supabaseAdmin';
 import type { SubscriptionTier } from '@/lib/entitlements';
@@ -440,6 +441,8 @@ export async function runChatMemoryWriteback(params: {
         }
 
         let writtenCount = 0;
+        // What actually landed, post-redaction — logged as the writeback's result.
+        let writtenFacts: Array<{ content: string }> = [];
         let quotaExceeded = false;
         let embeddingCostUsd = 0;
         let embeddingModel: string | undefined;
@@ -463,6 +466,7 @@ export async function runChatMemoryWriteback(params: {
                 settings.sessionTtlSeconds
             );
             writtenCount = items.length;
+            writtenFacts = items;
         } else {
             const result = await writeMemories({
                 supabase,
@@ -481,6 +485,7 @@ export async function runChatMemoryWriteback(params: {
                 },
             });
             writtenCount = result.written.length;
+            writtenFacts = result.written;
             quotaExceeded = result.quotaExceeded;
             embeddingCostUsd = result.embeddingCostUsd;
             embeddingModel = result.embeddingModel;
@@ -546,6 +551,20 @@ export async function runChatMemoryWriteback(params: {
                     }
                     : {}),
             },
+            requestPayload: {
+                messages: toLoggedMessages([
+                    { role: 'user', content: userText },
+                    { role: 'assistant', content: assistantText },
+                ]),
+                model: extraction.model,
+                scope: directive.scope,
+            },
+            // The facts extracted from the exchange, post-redaction.
+            responsePayload: {
+                content: writtenFacts.map((fact) => `• ${toLoggedText(fact.content)}`).join('\n'),
+                written: writtenCount,
+                extracted: extraction.facts.length,
+            },
         });
 
         if (totalCost > 0) {
@@ -567,6 +586,12 @@ export async function runChatMemoryWriteback(params: {
                 status: 'error',
                 errorMessage: message,
                 metadata: { scope: directive.scope, stage: 'writeback_exception' },
+                requestPayload: {
+                    messages: toLoggedMessages([
+                        { role: 'user', content: userText },
+                        { role: 'assistant', content: assistantText },
+                    ]),
+                },
             });
         } catch (logError) {
             // Never let the failure logger become a new unhandled rejection

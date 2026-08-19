@@ -23,6 +23,8 @@ import {
 import { getPricingFromDB } from '@/lib/providers/pricing';
 import { calculateProviderTokenCost } from '@/lib/providers/base';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
+import { describeDocumentInput } from '@/lib/documents/log';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SubscriptionTier } from '@/lib/entitlements';
@@ -50,8 +52,13 @@ export async function POST(req: NextRequest) {
     if (!validation.success) return validation.response;
     const ctx = validation.context;
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let documentForLog = '[document]';
+    let questionForLog = '';
+
     try {
         const question = await extractQuestion(req);
+        questionForLog = question;
         if (!question) {
             return addGatewayHeaders(
                 NextResponse.json({ error: 'bad_request', message: '`question` field is required' }, { status: 400 }),
@@ -64,6 +71,7 @@ export async function POST(req: NextRequest) {
         const pricing = await getPricingFromDB('openai', QUERY_MODEL);
 
         const { input, opts } = await parseDocumentRequest(req);
+        documentForLog = describeDocumentInput(input, opts.prompt);
         if (opts.prompt) {
             const promptGuard = await runGatewayInputPipeline({
                 supabase: ctx.supabase,
@@ -74,6 +82,15 @@ export async function POST(req: NextRequest) {
                 messages: [{ role: 'user', content: opts.prompt }],
             });
             if (!promptGuard.ok) {
+                // Without this a guard-blocked prompt leaves no log row at all.
+                await logGatewayRequest(ctx, {
+                    endpoint: 'documents/query',
+                    model: QUERY_MODEL,
+                    provider: 'openai',
+                    status: 'blocked',
+                    errorMessage: promptGuard.message,
+                    requestPayload: promptPayload(`${documentForLog}\n\nQuestion: ${questionForLog}`),
+                });
                 return addGatewayHeaders(
                     NextResponse.json({ error: promptGuard.code, message: promptGuard.message }, { status: promptGuard.status }),
                     { requestId: ctx.requestId }
@@ -93,6 +110,14 @@ export async function POST(req: NextRequest) {
             messages: [{ role: 'user', content: providerInput }],
         });
         if (!inputPipeline.ok) {
+            await logGatewayRequest(ctx, {
+                endpoint: 'documents/query',
+                model: QUERY_MODEL,
+                provider: 'openai',
+                status: 'blocked',
+                errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(`${documentForLog}\n\nQuestion: ${questionForLog}`, { model: QUERY_MODEL }),
+            });
             return addGatewayHeaders(
                 NextResponse.json({ error: inputPipeline.code, message: inputPipeline.message, reasons: inputPipeline.reasons }, { status: inputPipeline.status }),
                 { requestId: ctx.requestId }
@@ -171,6 +196,8 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: totalCharge,
             markupPercentage: pricing.cencoriMarkupPercentage,
             metadata: { extract_method: extracted.method, kind: extracted.kind, pageCount: extracted.pageCount, question_length: question.length },
+            requestPayload: promptPayload(`${documentForLog}\n\nQuestion: ${question}`, { model: QUERY_MODEL }),
+            responsePayload: outputCheck.ok ? textResponsePayload(answer) : undefined,
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
         });
         await incrementUsage(ctx, totalCharge);
@@ -212,6 +239,7 @@ export async function POST(req: NextRequest) {
                 status: 'error',
                 errorMessage: error.message,
                 metadata: { code: error.code, ...error.details },
+                requestPayload: promptPayload(`${documentForLog}\n\nQuestion: ${questionForLog}`),
             });
             return addGatewayHeaders(
                 NextResponse.json({ error: error.code, message: error.message, ...error.details }, { status: 400 }),
@@ -226,6 +254,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(`${documentForLog}\n\nQuestion: ${questionForLog}`),
         });
         return addGatewayHeaders(
             NextResponse.json({ error: 'internal_error', message }, { status: 500 }),

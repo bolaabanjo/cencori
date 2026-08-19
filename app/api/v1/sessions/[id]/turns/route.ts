@@ -14,6 +14,7 @@ import { checkEndUserQuota, recordEndUserUsage, type QuotaCheckResult } from "@/
 import type { UnifiedMessage } from "@/lib/providers/base";
 import type { ResponseInputItem } from "@/lib/gateway/v1-responses-execute";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
+import { buildMaskedLogPayloads } from "@/lib/gateway/chat-post-success";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import type { ResponsesRequest } from "@/lib/gateway/v1-responses-execute";
 import type { SubscriptionTier } from "@/lib/entitlements";
@@ -21,6 +22,7 @@ import { resolveAgentContext } from "@/lib/gateway/agent-context";
 import { executeSessionTurn, expireStaleSessions } from "@/lib/gateway/session-engine";
 import type { TurnRequestBody } from "@/lib/gateway/session-types";
 import { waitUntil } from "@vercel/functions";
+import { promptPayload } from '@/lib/gateway/log-payload';
 import {
     buildMemoryBlock,
     getProjectMemorySettings,
@@ -320,6 +322,7 @@ export async function POST(
                                 cencoriChargeUsd: usage.cencoriChargeUsd,
                                 markupPercentage: usage.markupPercentage,
                                 metadata: { source: "session_memory_retrieval" },
+                                requestPayload: promptPayload(lastUserMessageText, { model: usage.model }),
                             }),
                             incrementUsage(activeGatewayCtx, usage.cencoriChargeUsd),
                         ]).then(() => undefined));
@@ -433,21 +436,46 @@ export async function POST(
             endUserId,
             tier: (gatewayCtx.tier || "free") as SubscriptionTier,
             logSuccess: (meta) => {
-                void logGatewayRequest(activeGatewayCtx, {
-                    endpoint: "/v1/sessions/:id/turns",
-                    model: meta.model,
-                    provider: meta.provider,
-                    status: meta.status,
-                    promptTokens: meta.promptTokens,
-                    completionTokens: meta.completionTokens,
-                    totalTokens: meta.totalTokens,
-                    costUsd: meta.cencoriChargeUsd,
-                    providerCostUsd: meta.providerCostUsd,
-                    cencoriChargeUsd: meta.cencoriChargeUsd,
-                    markupPercentage: meta.markupPercentage,
-                    endUserId: endUserId || undefined,
-                    errorMessage: meta.errorMessage,
-                });
+                // Turns are logged with their prompt and completion (masked by the
+                // project's data rules) so the console row is inspectable.
+                waitUntil(
+                    (async () => {
+                        const { loggedMessages, loggedResponse } = await buildMaskedLogPayloads({
+                            messages: guardedInput.map((m) => ({
+                                role: m.role,
+                                content: m.content,
+                            })),
+                            responseText: meta.responseText ?? '',
+                            customRules: inputPipeline.customRules,
+                        });
+
+                        await logGatewayRequest(activeGatewayCtx, {
+                            endpoint: "/v1/sessions/:id/turns",
+                            model: meta.model,
+                            provider: meta.provider,
+                            status: meta.status,
+                            promptTokens: meta.promptTokens,
+                            completionTokens: meta.completionTokens,
+                            totalTokens: meta.totalTokens,
+                            costUsd: meta.cencoriChargeUsd,
+                            providerCostUsd: meta.providerCostUsd,
+                            cencoriChargeUsd: meta.cencoriChargeUsd,
+                            markupPercentage: meta.markupPercentage,
+                            endUserId: endUserId || undefined,
+                            errorMessage: meta.errorMessage,
+                            requestPayload: {
+                                messages: loggedMessages,
+                                model,
+                                stream: true,
+                            },
+                            responsePayload: meta.responseText !== undefined
+                                ? { content: loggedResponse }
+                                : undefined,
+                        });
+                    })().catch((err) =>
+                        console.error('[Sessions] turn logging failed:', err)
+                    )
+                );
             },
             incrementUsage: (chargeUsd) => {
                 void incrementUsage(activeGatewayCtx, chargeUsd);

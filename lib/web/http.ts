@@ -25,6 +25,9 @@ export async function runWebRoute(
     const respond = (body: unknown, status: number) =>
         addGatewayHeaders(NextResponse.json(body, { status }), { requestId: ctx.requestId });
 
+    // Kept outside the try so the failure path can still log what was sent.
+    let bodyForLog: Record<string, unknown> | null = null;
+
     try {
         let body: unknown;
         try {
@@ -36,6 +39,7 @@ export async function runWebRoute(
             throw new WebRuntimeError('invalid_request', 'Request body must be a JSON object');
         }
 
+        bodyForLog = body as Record<string, unknown>;
         const result = await operation(body as Record<string, unknown>, ctx);
         await logGatewayRequest(ctx, {
             endpoint,
@@ -43,6 +47,9 @@ export async function runWebRoute(
             provider: 'cencori',
             status: 'success',
             metadata: result.metadata,
+            // Without these the console shows a web row with nothing to inspect.
+            requestPayload: body as Record<string, unknown>,
+            responsePayload: result.body as Record<string, unknown>,
         });
         await incrementUsage(ctx, 0);
         return respond(result.body, result.status ?? 200);
@@ -58,6 +65,7 @@ export async function runWebRoute(
             status: 'error',
             errorMessage: runtimeError.message,
             metadata: { code: runtimeError.code },
+            requestPayload: bodyForLog ?? undefined,
         });
         return respond({
             error: runtimeError.code,

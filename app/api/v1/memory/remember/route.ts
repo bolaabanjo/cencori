@@ -15,6 +15,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { toLoggedMessages, toLoggedText } from '@/lib/gateway/log-payload';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import {
     MEMORY_CONTENT_MAX_CHARS,
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest) {
     const respond = (body: unknown, status: number) =>
         addGatewayHeaders(NextResponse.json(body, { status }), { requestId: ctx.requestId });
 
+    // Kept outside the try so the failure path can still log what was sent.
+    let exchangeForLog: Array<{ role: string; content: unknown }> = [];
+
     try {
         const body: RememberRequest = await req.json();
 
@@ -63,6 +67,10 @@ export async function POST(req: NextRequest) {
 
         const userText = typeof body.user === 'string' ? body.user.trim() : '';
         const assistantText = typeof body.assistant === 'string' ? body.assistant.trim() : '';
+        exchangeForLog = [
+            { role: 'user', content: userText },
+            { role: 'assistant', content: assistantText },
+        ];
         if (!userText && !assistantText) {
             return respond(
                 { error: 'bad_request', message: 'Provide at least one of `user` or `assistant`.' },
@@ -121,6 +129,20 @@ export async function POST(req: NextRequest) {
                 extracted: result.extracted,
                 written: result.written.length,
             },
+            requestPayload: {
+                messages: toLoggedMessages([
+                    { role: 'user', content: userText },
+                    { role: 'assistant', content: assistantText },
+                ]),
+                model: result.model,
+                scope: directive.scope,
+            },
+            // The facts extracted from the exchange, post-redaction.
+            responsePayload: {
+                content: result.written.map(m => `• ${toLoggedText(m.content)}`).join('\n'),
+                written: result.written.length,
+                extracted: result.extracted,
+            },
         });
 
         if (result.costUsd > 0) {
@@ -156,6 +178,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: { messages: toLoggedMessages(exchangeForLog) },
         });
 
         return respond({ error: 'internal_error', message }, 500);

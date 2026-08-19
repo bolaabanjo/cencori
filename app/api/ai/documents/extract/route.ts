@@ -22,6 +22,8 @@ import {
     MAX_DOCUMENT_BYTES,
 } from '@/lib/documents/extract';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
+import { describeDocumentInput } from '@/lib/documents/log';
 import type { SubscriptionTier } from '@/lib/entitlements';
 
 export async function OPTIONS() {
@@ -33,8 +35,12 @@ export async function POST(req: NextRequest) {
     if (!validation.success) return validation.response;
     const ctx = validation.context;
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let documentForLog = '[document]';
+
     try {
         const { input, opts } = await parseDocumentRequest(req);
+        documentForLog = describeDocumentInput(input, opts.prompt);
         if (opts.prompt) {
             const promptGuard = await runGatewayInputPipeline({
                 supabase: ctx.supabase,
@@ -45,6 +51,15 @@ export async function POST(req: NextRequest) {
                 messages: [{ role: 'user', content: opts.prompt }],
             });
             if (!promptGuard.ok) {
+                // Without this a guard-blocked prompt leaves no log row at all.
+                await logGatewayRequest(ctx, {
+                    endpoint: 'documents/extract',
+                    model: 'unknown',
+                    provider: 'unknown',
+                    status: 'blocked',
+                    errorMessage: promptGuard.message,
+                    requestPayload: promptPayload(documentForLog),
+                });
                 return addGatewayHeaders(
                     NextResponse.json(
                         { error: promptGuard.code, message: promptGuard.message, reasons: promptGuard.reasons },
@@ -74,6 +89,7 @@ export async function POST(req: NextRequest) {
                 providerCostUsd: result.cost?.providerCostUsd ?? 0,
                 cencoriChargeUsd: result.cost?.cencoriChargeUsd ?? 0,
                 errorMessage: contentGuard.message,
+                requestPayload: promptPayload(documentForLog, { model: result.model }),
             });
             await incrementUsage(ctx, result.cost?.cencoriChargeUsd ?? 0);
             return addGatewayHeaders(
@@ -99,6 +115,8 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: result.cost?.cencoriChargeUsd ?? 0,
             markupPercentage: result.cost?.markupPercentage ?? 0,
             metadata: { method: result.method, kind: result.kind, pageCount: result.pageCount },
+            requestPayload: promptPayload(documentForLog, { model: result.model ?? 'pdf-parse' }),
+            responsePayload: textResponsePayload(result.text, { pages: result.pageCount }),
         });
         await incrementUsage(ctx, result.cost?.cencoriChargeUsd ?? 0);
 
@@ -112,6 +130,7 @@ export async function POST(req: NextRequest) {
                 status: 'error',
                 errorMessage: error.message,
                 metadata: { code: error.code, ...error.details },
+                requestPayload: promptPayload(documentForLog),
             });
             return addGatewayHeaders(
                 NextResponse.json({ error: error.code, message: error.message, ...error.details }, { status: 400 }),
@@ -127,6 +146,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(documentForLog),
         });
         return addGatewayHeaders(
             NextResponse.json({ error: 'internal_error', message }, { status: 500 }),

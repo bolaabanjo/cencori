@@ -13,6 +13,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload } from '@/lib/gateway/log-payload';
 import {
     MEMORY_EMBEDDING_MODEL,
     getProjectMemorySettings,
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
     const respond = (body: unknown, status: number) =>
         addGatewayHeaders(NextResponse.json(body, { status }), { requestId: ctx.requestId });
 
+    // Kept outside the try so the failure path can still log what was asked.
+    let queryForLog = '';
+
     try {
         const body: SearchMemoryRequest = await req.json();
 
@@ -61,6 +65,7 @@ export async function POST(req: NextRequest) {
         }
 
         const query = typeof body.query === 'string' ? body.query.trim() : '';
+        queryForLog = query;
         if (!query && body.scope !== 'session') {
             return respond({ error: 'bad_request', message: 'query is required' }, 400);
         }
@@ -114,6 +119,11 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: embeddingUsage?.cencoriChargeUsd ?? 0,
             markupPercentage: embeddingUsage?.markupPercentage ?? 0,
             metadata: { scope: parsed.directive.scope, results: results.length },
+            requestPayload: promptPayload(query, { scope: parsed.directive.scope }),
+            responsePayload: {
+                content: results.map((m, i) => `${i + 1}. ${m.content}`).join('\n'),
+                results: results.length,
+            },
         });
         await incrementUsage(ctx, embeddingUsage?.cencoriChargeUsd ?? 0);
 
@@ -146,6 +156,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: promptPayload(queryForLog),
         });
 
         return respond({ error: 'internal_error', message }, 500);

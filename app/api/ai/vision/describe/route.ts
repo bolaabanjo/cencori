@@ -11,8 +11,8 @@ import {
     handleCorsPreFlight,
     logGatewayRequest,
 } from '@/lib/gateway-middleware';
-import { parseVisionRequest, VisionValidationError } from '@/lib/vision/analyze';
-import { executeGuardedVision } from '@/lib/vision/guarded';
+import { parseVisionRequest, VisionValidationError, type VisionAnalyzeRequest } from '@/lib/vision/analyze';
+import { executeGuardedVision, visionRequestPayload } from '@/lib/vision/guarded';
 import { ProviderError } from '@/lib/providers/errors';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 
@@ -29,8 +29,12 @@ export async function POST(req: NextRequest) {
     if (!validation.success) return validation.response;
     const ctx = validation.context;
 
+    // Kept outside the try so the failure paths can still log what was sent.
+    let requestForLog: VisionAnalyzeRequest | null = null;
+
     try {
         const request = await parseVisionRequest(req);
+        requestForLog = request;
         request.prompt = request.prompt || DEFAULT_PROMPT;
 
         const execution = await executeGuardedVision({ ctx, request, endpoint: 'vision/describe' });
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
                 provider: failure.provider || 'unknown',
                 status: 'error',
                 errorMessage: failure.message,
+                requestPayload: requestForLog ? visionRequestPayload(requestForLog) : undefined,
             });
             return addGatewayHeaders(
                 NextResponse.json(
@@ -92,6 +97,7 @@ export async function POST(req: NextRequest) {
             provider: 'unknown',
             status: 'error',
             errorMessage: message,
+            requestPayload: requestForLog ? visionRequestPayload(requestForLog) : undefined,
         });
 
         return addGatewayHeaders(

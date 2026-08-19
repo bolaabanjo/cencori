@@ -6,6 +6,37 @@ import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import type { SubscriptionTier } from '@/lib/entitlements';
 import { analyzeVision, type VisionAnalyzeRequest, type VisionAnalyzeResult } from './analyze';
+import { redactBinaryRef, textResponsePayload, toLoggedText } from '@/lib/gateway/log-payload';
+
+/**
+ * Describe the images without embedding them: base64 frames are megabytes that
+ * would bloat every log row and tell the reader nothing.
+ */
+function describeVisionImages(request: VisionAnalyzeRequest): string[] {
+    const images = request.images?.length ? request.images : request.image ? [request.image] : [];
+    return images.map((image) => {
+        if (image.url) return redactBinaryRef(image.url);
+        if (image.base64) return `[inline ${image.mimeType || 'image'}, ${image.base64.length} chars]`;
+        return '[image]';
+    });
+}
+
+export function visionRequestPayload(request: VisionAnalyzeRequest, model?: string) {
+    const images = describeVisionImages(request);
+    return {
+        messages: [
+            {
+                role: 'user',
+                content: [
+                    toLoggedText(request.prompt || 'Describe this image in detail.'),
+                    ...images.map((image) => `[image: ${image}]`),
+                ].join('\n'),
+            },
+        ],
+        model: model || request.model,
+        images: images.length,
+    };
+}
 
 export type GuardedVisionResult =
     | { ok: true; result: VisionAnalyzeResult }
@@ -29,6 +60,16 @@ export async function executeGuardedVision(params: {
     });
 
     if (!inputPipeline.ok) {
+        // Without this a guard-blocked vision request leaves no log row at all.
+        await logGatewayRequest(ctx, {
+            endpoint,
+            model: request.model || 'unknown',
+            provider: 'unknown',
+            status: 'blocked',
+            errorMessage: inputPipeline.message,
+            endUserId: endUserId || undefined,
+            requestPayload: visionRequestPayload(request),
+        });
         return {
             ok: false,
             response: addGatewayHeaders(
@@ -78,6 +119,9 @@ export async function executeGuardedVision(params: {
         markupPercentage: result.cost.markupPercentage,
         endUserId: endUserId || undefined,
         errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+        requestPayload: visionRequestPayload(request, result.model),
+        // A blocked analysis is never returned, so it is not logged.
+        responsePayload: outputCheck.ok ? textResponsePayload(result.analysis) : undefined,
     });
     await incrementUsage(ctx, result.cost.cencoriChargeUsd);
 

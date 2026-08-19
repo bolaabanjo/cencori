@@ -9,6 +9,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload, toLoggedText } from '@/lib/gateway/log-payload';
 
 interface ModerationRequest {
     input: string | string[];
@@ -27,9 +28,13 @@ export async function POST(req: NextRequest) {
     }
     const ctx = validation.context;
 
+    // Kept outside the try so the failure path can still log what was sent.
+    let inputForLog = '';
+
     try {
         const body: ModerationRequest = await req.json();
         const { input, model = 'text-moderation-latest' } = body;
+        inputForLog = Array.isArray(input) ? input.join('\n') : String(input ?? '');
 
         if (!input || (Array.isArray(input) && input.length === 0)) {
             return addGatewayHeaders(
@@ -83,6 +88,16 @@ export async function POST(req: NextRequest) {
             cencoriChargeUsd: 0,
             markupPercentage: 0,
             metadata: { flagged: anyFlagged, results_count: response.results.length },
+            requestPayload: promptPayload(inputText, { model }),
+            responsePayload: {
+                flagged: anyFlagged,
+                results: response.results.map((r) => ({
+                    flagged: r.flagged,
+                    categories: Object.entries(r.categories)
+                        .filter(([, on]) => on)
+                        .map(([name]) => name),
+                })),
+            },
         });
         await incrementUsage(ctx);
 
@@ -103,6 +118,9 @@ export async function POST(req: NextRequest) {
                 incident_type: 'content_moderation',
                 severity: 'medium',
                 description: `Content flagged for: ${flaggedCategories.join(', ')}`,
+                // Without input_text the incident opens blank in the console.
+                input_text: toLoggedText(inputText),
+                details: { reasons: flaggedCategories },
                 metadata: { categories: flaggedCategories, request_id: ctx.requestId },
                 created_at: new Date().toISOString(),
             });
@@ -131,6 +149,7 @@ export async function POST(req: NextRequest) {
             provider: 'openai',
             status: 'error',
             errorMessage,
+            requestPayload: promptPayload(inputForLog),
         });
 
         return addGatewayHeaders(

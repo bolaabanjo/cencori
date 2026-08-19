@@ -39,6 +39,7 @@ import {
     toVisionGuardMessages,
 } from "@/lib/gateway/chat-vision-router";
 import { waitUntil } from "@vercel/functions";
+import { promptPayload } from '@/lib/gateway/log-payload';
 import {
     buildMemoryBlock,
     getProjectMemorySettings,
@@ -107,13 +108,21 @@ const normalizeGatewayModelId = (modelId: string): string => {
     return aliases[strippedModel] || strippedModel;
 };
 
+/** Pull the assistant text out of a cached completion, whatever shape it was stored in. */
+function extractCachedResponseText(cached: unknown): string {
+    if (!cached || typeof cached !== 'object') return '';
+    const record = cached as { choices?: Array<{ message?: { content?: unknown } }>; content?: unknown };
+    const choice = Array.isArray(record.choices) ? record.choices[0] : null;
+    if (typeof choice?.message?.content === 'string') return choice.message.content;
+    if (typeof record.content === 'string') return record.content;
+    return '';
+}
+
 function buildCachedOpenAiStreamResponse(cached: Record<string, any>): NextResponse {
     const encoder = new TextEncoder();
     const model = typeof cached.model === 'string' ? cached.model : 'cached';
     const choice = Array.isArray(cached.choices) ? cached.choices[0] : null;
-    const content = typeof choice?.message?.content === 'string'
-        ? choice.message.content
-        : typeof cached.content === 'string' ? cached.content : '';
+    const content = extractCachedResponseText(cached);
     const finishReason = typeof choice?.finish_reason === 'string'
         ? choice.finish_reason
         : 'stop';
@@ -567,6 +576,7 @@ export async function POST(req: NextRequest) {
                                 cencoriChargeUsd: usage.cencoriChargeUsd,
                                 markupPercentage: usage.markupPercentage,
                                 metadata: { source: "chat_memory_retrieval" },
+                                requestPayload: promptPayload(lastUserMessageText, { model: usage.model }),
                             }),
                             incrementUsage(activeGatewayCtx, usage.cencoriChargeUsd),
                         ]).then(() => undefined));
@@ -760,7 +770,9 @@ export async function POST(req: NextRequest) {
                                 environment: gatewayCtx.environment,
                             });
 
-                            // Log as cached request (zero cost)
+                            // Log as cached request (zero cost). The payloads come
+                            // from the cache hit itself so a served-from-cache row
+                            // is still inspectable in the console.
                             void logGatewayRequest(activeGatewayCtx, {
                                 endpoint: '/v1/chat/completions',
                                 model,
@@ -774,6 +786,15 @@ export async function POST(req: NextRequest) {
                                 cencoriChargeUsd: 0,
                                 markupPercentage: 0,
                                 endUserId: endUserId || undefined,
+                                requestPayload: {
+                                    messages: normalizedMsgs,
+                                    model,
+                                    stream: shouldStream,
+                                },
+                                responsePayload: {
+                                    content: extractCachedResponseText(cacheResult.response),
+                                    finishReason: 'cached',
+                                },
                             });
                             void incrementUsage(gatewayCtx, 0);
 

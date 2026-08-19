@@ -143,6 +143,11 @@ type V1ResponseExecuteParams = {
         cencoriChargeUsd: number;
         markupPercentage: number;
         errorMessage?: string;
+        /**
+         * Model output, so the request log has something to show in the console.
+         * Left unset on guard-blocked paths — nothing was delivered to the caller.
+         */
+        responseText?: string;
     }) => void;
     incrementUsage: (chargeUsd: number) => void;
     agentId?: string | null;
@@ -612,6 +617,7 @@ export async function runV1ResponsesExecution(
                 providerCostUsd: result.cost.providerCostUsd,
                 cencoriChargeUsd: result.cost.cencoriChargeUsd,
                 markupPercentage: result.cost.markupPercentage,
+                responseText: content,
             });
             params.incrementUsage(result.cost.cencoriChargeUsd);
             params.recordEndUserUsage({
@@ -903,6 +909,7 @@ export async function runV1ResponsesExecution(
                                 providerCostUsd,
                                 cencoriChargeUsd,
                                 markupPercentage,
+                                responseText: fullText,
                             });
                             params.incrementUsage(cencoriChargeUsd);
                             params.recordEndUserUsage({

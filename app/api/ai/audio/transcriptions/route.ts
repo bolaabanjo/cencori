@@ -19,6 +19,7 @@ import {
     logGatewayRequest,
     incrementUsage,
 } from '@/lib/gateway-middleware';
+import { promptPayload, textResponsePayload } from '@/lib/gateway/log-payload';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
@@ -73,10 +74,15 @@ export async function POST(req: NextRequest) {
     // Model/provider are needed in the catch block for logging.
     let model = 'whisper-1';
     let provider = 'openai';
+    // Audio bytes are never logged; this describes the upload instead.
+    let audioForLog = '[audio file]';
 
     try {
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
+        if (file) {
+            audioForLog = `[audio file: ${file.name || 'upload'}, ${file.type || 'unknown type'}, ${file.size} bytes]`;
+        }
         model = (formData.get('model') as string) || 'whisper-1';
         const language = formData.get('language') as string | null;
         const prompt = formData.get('prompt') as string | null;
@@ -129,6 +135,7 @@ export async function POST(req: NextRequest) {
                 provider: formData.get('provider') as string || 'openai',
                 status: 'blocked',
                 errorMessage: inputPipeline.message,
+                requestPayload: promptPayload(audioForLog, { model }),
             });
             return addGatewayHeaders(
                 NextResponse.json(
@@ -191,6 +198,16 @@ export async function POST(req: NextRequest) {
                 diarization: Boolean(result.segments?.some((s) => s.speaker)),
             },
             errorMessage: outputCheck.ok ? undefined : outputCheck.message,
+            requestPayload: promptPayload(audioForLog, {
+                model: result.model,
+                language: language || undefined,
+                prompt: prompt || undefined,
+                response_format: responseFormat,
+            }),
+            // A blocked transcript is not returned, so it is not logged either.
+            responsePayload: outputCheck.ok
+                ? textResponsePayload(finalTranscript, { language: result.language })
+                : undefined,
         });
         await incrementUsage(ctx, cencoriCharge);
 
@@ -248,6 +265,7 @@ export async function POST(req: NextRequest) {
                     provider,
                     status: 'error',
                     errorMessage: error.message,
+                    requestPayload: promptPayload(audioForLog, { model }),
                 });
             }
             return addGatewayHeaders(
@@ -265,6 +283,7 @@ export async function POST(req: NextRequest) {
             provider,
             status: 'error',
             errorMessage,
+            requestPayload: promptPayload(audioForLog, { model }),
         });
 
         return addGatewayHeaders(

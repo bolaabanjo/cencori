@@ -262,6 +262,21 @@ export async function POST(
                         cencoriChargeUsd: meta.cencoriChargeUsd,
                         markupPercentage: meta.markupPercentage,
                         errorMessage: meta.errorMessage,
+                        // The "prompt" for a resumed turn is the approved tool
+                        // output that was fed back to the model.
+                        requestPayload: {
+                            messages: guardedToolResults.map((result) => ({
+                                role: 'tool',
+                                content: typeof result.output === 'string'
+                                    ? result.output
+                                    : JSON.stringify(result.output ?? ''),
+                            })),
+                            model: meta.model,
+                            stream: true,
+                        },
+                        responsePayload: meta.responseText !== undefined
+                            ? { content: meta.responseText }
+                            : undefined,
                     });
                 },
                 incrementUsage: (chargeUsd) => {
