@@ -78,7 +78,7 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'codestral-latest': { 'openai': 'gpt-4.1', 'anthropic': 'claude-sonnet-4-5' },
 
     // Groq models → fallbacks
-    'llama-3.3-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'groq/compound': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
     'llama-3.3-70b-specdec': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
     'llama-3.1-70b-versatile': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
     'mixtral-8x7b-32768': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4-5', 'google': 'gemini-2.5-flash-lite' },

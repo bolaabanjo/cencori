@@ -7,28 +7,11 @@
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { ModelPricing } from './base';
 import { PricingUnavailableError } from './errors';
+import { hasStaticPricing, isExplicitlyFree } from './free-models';
 
-const EXPLICITLY_FREE_MODELS = new Set([
-    // Cencori's public free-model catalog. These intentionally bypass the
-    // database pricing lookup and are never charged to the customer.
-    'groq:llama-3.3-70b-versatile',
-    'groq:llama-3.1-8b-instant',
-    'groq:groq/compound',
-    'groq:groq/compound-mini',
-    'cerebras:gpt-oss-120b',
-    'cerebras:zai-glm-4.7',
-    // Maximo Atlas ran here as a free preview until 2026-07-22. It is now
-    // billed from the model_pricing row deployed in
-    // 20260803_120000_maximo_atlas_paid_pricing.sql.
-]);
-
-export function isExplicitlyFree(provider: string, model: string): boolean {
-    return EXPLICITLY_FREE_MODELS.has(`${provider}:${model}`);
-}
-
-export function hasStaticPricing(provider: string, model: string): boolean {
-    return isExplicitlyFree(provider, model);
-}
+// Re-exported so existing `from './pricing'` imports keep resolving; the
+// definitions live in free-models.ts, which pulls in no server-only code.
+export { hasStaticPricing, isExplicitlyFree };
 
 const PRICING_CACHE_TTL_MS = 5 * 60 * 1000;
 const pricingCache = new Map<string, { pricing: ModelPricing; expiresAt: number }>();

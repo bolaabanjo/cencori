@@ -137,6 +137,16 @@ export class ProviderRouter {
             return 'qwen';
         }
 
+        // OpenRouter's free tier. The `:free` suffix is an OpenRouter-only
+        // convention — the same id without it is a different, paid listing, and
+        // no other provider serves the suffixed form. Matched BEFORE the generic
+        // "provider/model" split below, which would otherwise route
+        // `nvidia/...:free` to a nonexistent `nvidia` provider and
+        // `openai/gpt-oss-20b:free` to the paid OpenAI account.
+        if (modelName.endsWith(':free')) {
+            return 'openrouter';
+        }
+
         // Explicit provider prefix format: "provider/model"
         // e.g., "openai/gpt-4", "anthropic/claude-3-opus"
         if (modelName.includes('/')) {
@@ -208,6 +218,13 @@ export class ProviderRouter {
         if (modelName.includes('/')) {
             // HuggingFace model IDs use author/model format — never strip
             if (detectedProvider === 'huggingface') {
+                return MODEL_ALIASES[modelName] || modelName;
+            }
+            // OpenRouter ids are always `vendor/model` and the vendor half is
+            // part of the id it expects upstream, not a routing prefix. Stripping
+            // it would send `nvidia/nemotron-...` upstream as `nemotron-...`,
+            // which OpenRouter does not serve.
+            if (detectedProvider === 'openrouter') {
                 return MODEL_ALIASES[modelName] || modelName;
             }
             const [prefix] = modelName.split('/');

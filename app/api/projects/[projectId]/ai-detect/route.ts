@@ -223,7 +223,7 @@ function getDefaultModelForProvider(provider: string): string {
         openai: 'gpt-4o-mini',
         anthropic: 'claude-3-haiku-20240307',
         google: 'gemini-1.5-flash',
-        groq: 'llama-3.1-8b-instant',
+        groq: 'groq/compound-mini',
         mistral: 'mistral-small-latest',
         together: 'meta-llama/Llama-3-8b-chat-hf',
         perplexity: 'llama-3.1-sonar-small-128k-online',

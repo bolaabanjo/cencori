@@ -40,6 +40,7 @@ import { Slider } from "@/components/ui/slider";
 import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { SUPPORTED_PROVIDERS } from "@/lib/providers/config";
+import { publicProviderDisplayName, publicProviderLabel } from "@/lib/providers/branding";
 import { cn } from "@/lib/utils";
 import { getSessions, saveSession, deleteSession, generateSessionId } from "@/lib/playground-history";
 import type { PlaygroundSession } from "@/lib/playground-history";
@@ -84,8 +85,10 @@ const allCatalogModels: FlatModel[] = SUPPORTED_PROVIDERS.flatMap((provider) =>
     provider.models.map((model) => ({
         id: model.id,
         name: model.name,
-        providerId: provider.id,
-        providerName: provider.name,
+        // Free-tier models list under Cencori, matching the model catalog and
+        // /v1/models — see lib/providers/branding.ts.
+        providerId: publicProviderLabel(provider.id, model.id),
+        providerName: publicProviderDisplayName(provider.id, provider.name, model.id),
         free: Boolean(model.free),
         contextWindow: model.contextWindow,
         type: Array.isArray(model.type) ? model.type : [model.type],

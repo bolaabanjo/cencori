@@ -179,8 +179,8 @@ export type V1ExecuteResult =
     | { ok: true; response: NextResponse }
     | { ok: false; status: number; body: Record<string, unknown> };
 
-function v1ProviderFailureResult(error: unknown, providerHint?: string): V1ExecuteResult {
-    const failure = mapProviderErrorToHttpResponse(error, providerHint);
+function v1ProviderFailureResult(error: unknown, providerHint?: string, model?: string): V1ExecuteResult {
+    const failure = mapProviderErrorToHttpResponse(error, providerHint, model);
     const body: Record<string, unknown> = {
         error: {
             message: failure.message,
@@ -946,6 +946,6 @@ export async function runV1ProviderExecution(
             response: new NextResponse(stream, { headers: streamHeaders }),
         };
     } catch (error) {
-        return v1ProviderFailureResult(error);
+        return v1ProviderFailureResult(error, undefined, params.model);
     }
 }

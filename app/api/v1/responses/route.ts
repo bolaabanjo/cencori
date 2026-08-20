@@ -14,6 +14,12 @@ import { extractCencoriApiKeyFromHeaders } from "@/lib/api-keys";
 import { checkEndUserQuota, recordEndUserUsage, type QuotaCheckResult } from "@/lib/end-user-billing";
 import type { UnifiedMessage } from "@/lib/providers/base";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
+import { normalizeResponsesContent, toolOutputTurns } from "@/lib/gateway/responses-content";
+import {
+    MAX_TEXT_FIELD_BYTES,
+    utf8Bytes,
+    validateResponsesInput,
+} from "@/lib/gateway/responses-input";
 import { buildMaskedLogPayloads } from "@/lib/gateway/chat-post-success";
 import { waitUntil } from "@vercel/functions";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
@@ -77,102 +83,6 @@ const normalizeGatewayModelId = (modelId: string): string => {
 
     return aliases[strippedModel] || strippedModel;
 };
-
-// An agent turn resends its whole conversation as input items — every message, function call, and
-// function call output — so a coding session legitimately reaches hundreds of items. The aggregate
-// byte cap below, not the item count, is what bounds the payload.
-const MAX_INPUT_ITEMS = 2000;
-const MAX_TOTAL_TEXT_BYTES = 8 * 1024 * 1024;
-const MAX_INLINE_FILES = 20;
-const MAX_INLINE_FILE_BYTES = 512 * 1024;
-const MAX_TOTAL_INLINE_FILE_BYTES = 2 * 1024 * 1024;
-const MAX_TEXT_FIELD_BYTES = 1024 * 1024;
-const MAX_FILENAME_LENGTH = 255;
-
-function utf8Bytes(value: string): number {
-    return new TextEncoder().encode(value).byteLength;
-}
-
-function validateResponsesInput(input: unknown): string | null {
-    if (typeof input === 'string') {
-        if (!input.trim()) return 'Input must not be empty.';
-        if (utf8Bytes(input) > MAX_TEXT_FIELD_BYTES) {
-            return 'Input text exceeds the 1 MiB limit.';
-        }
-        return null;
-    }
-
-    if (!Array.isArray(input) || input.length === 0) {
-        return 'Missing input. Provide a string or a non-empty array of input items.';
-    }
-    if (input.length > MAX_INPUT_ITEMS) {
-        return `Input may contain at most ${MAX_INPUT_ITEMS} items.`;
-    }
-
-    let fileCount = 0;
-    let totalFileBytes = 0;
-    let totalTextBytes = 0;
-    for (const rawItem of input) {
-        if (!rawItem || typeof rawItem !== 'object') return 'Every input item must be an object.';
-        const item = rawItem as Record<string, unknown>;
-
-        if (item.type === 'message') {
-            if (!['user', 'assistant', 'system'].includes(String(item.role))) {
-                return 'Message input items require a valid role.';
-            }
-            if (typeof item.content !== 'string' || utf8Bytes(item.content) > MAX_TEXT_FIELD_BYTES) {
-                return 'Message content must be a string no larger than 1 MiB.';
-            }
-            totalTextBytes += utf8Bytes(item.content);
-        } else if (item.type === 'function_call') {
-            if (typeof item.id !== 'string' || typeof item.call_id !== 'string'
-                || typeof item.name !== 'string' || typeof item.arguments !== 'string') {
-                return 'Function call input items require string id, call_id, name, and arguments fields.';
-            }
-            if (utf8Bytes(item.arguments) > MAX_TEXT_FIELD_BYTES) {
-                return 'Function call arguments exceed the 1 MiB limit.';
-            }
-            totalTextBytes += utf8Bytes(item.arguments);
-        } else if (item.type === 'function_call_output') {
-            if (typeof item.call_id !== 'string' || typeof item.output !== 'string') {
-                return 'Function call output items require string call_id and output fields.';
-            }
-            if (utf8Bytes(item.output) > MAX_TEXT_FIELD_BYTES) {
-                return 'Function call output exceeds the 1 MiB limit.';
-            }
-            totalTextBytes += utf8Bytes(item.output);
-        } else if (item.type === 'file') {
-            fileCount += 1;
-            if (fileCount > MAX_INLINE_FILES) return `Input may contain at most ${MAX_INLINE_FILES} inline files.`;
-            if (typeof item.filename !== 'string' || !item.filename.trim()
-                || item.filename.length > MAX_FILENAME_LENGTH || /[\0\r\n]/.test(item.filename)) {
-                return 'Inline files require a valid filename no longer than 255 characters.';
-            }
-            if (typeof item.content !== 'string' || item.content.length === 0) {
-                return 'Inline file content must be a non-empty string.';
-            }
-            if (item.mime_type !== undefined && typeof item.mime_type !== 'string') {
-                return 'Inline file mime_type must be a string when provided.';
-            }
-            const fileBytes = utf8Bytes(item.content);
-            if (fileBytes > MAX_INLINE_FILE_BYTES) {
-                return 'An inline file exceeds the 512 KiB per-file limit.';
-            }
-            totalFileBytes += fileBytes;
-            if (totalFileBytes > MAX_TOTAL_INLINE_FILE_BYTES) {
-                return 'Inline files exceed the 2 MiB combined limit.';
-            }
-        } else {
-            return 'Unsupported input item type.';
-        }
-
-        if (totalTextBytes > MAX_TOTAL_TEXT_BYTES) {
-            return 'Input text exceeds the 8 MiB combined limit.';
-        }
-    }
-
-    return null;
-}
 
 export async function OPTIONS() {
     return handleCorsPreFlight();
@@ -391,7 +301,12 @@ export async function POST(req: NextRequest) {
         } else {
             for (const item of input) {
                 if (item.type === 'message') {
-                    inputMessages.push({ role: item.role, content: item.content });
+                    const { text, images } = normalizeResponsesContent(item.content);
+                    inputMessages.push({
+                        role: item.role,
+                        content: text,
+                        ...(images.length ? { images } : {}),
+                    });
                 } else if (item.type === 'function_call') {
                     inputMessages.push({
                         role: 'assistant',
@@ -403,7 +318,7 @@ export async function POST(req: NextRequest) {
                         }],
                     });
                 } else if (item.type === 'function_call_output') {
-                    inputMessages.push({ role: 'tool', content: item.output, toolCallId: item.call_id });
+                    inputMessages.push(...toolOutputTurns(item.output, item.call_id));
                 } else if (item.type === 'file') {
                     inputMessages.push({
                         role: 'user',

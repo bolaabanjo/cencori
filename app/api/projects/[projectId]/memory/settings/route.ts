@@ -21,7 +21,7 @@ const MEMORY_MODEL_CHOICES = [
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'Default. Managed, fast, cheap.' },
     { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', hint: 'Better extraction on messy exchanges.' },
     { value: 'gpt-oss-120b', label: 'GPT-OSS 120B', hint: 'Cerebras. Not Google, no Gemini dependency.' },
-    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', hint: 'Groq. Fast, open, no Gemini dependency.' },
+    { value: 'groq/compound', label: 'Groq Compound', hint: 'Groq. Fast, open, no Gemini dependency.' },
 ];
 
 /**

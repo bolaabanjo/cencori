@@ -211,13 +211,25 @@ export interface ImageGenerationResponse {
 // ── Responses API (OpenAI-compatible) ──
 
 /**
+ * A content part on a message or a tool result. Text and images both travel this way; a tool that
+ * returns an image — an agent's `view_image`, say — answers with parts rather than a string.
+ */
+export type ResponseContentPart =
+    | { type: 'input_text' | 'output_text' | 'text'; text: string }
+    | {
+        type: 'input_image' | 'image_url';
+        /** An https URL or a `data:` URL carrying the image bytes. */
+        image_url: string | { url: string; detail?: 'auto' | 'low' | 'high' };
+    };
+
+/**
  * A response input item for the Responses API.
  * Can be a message, function call, or function call output.
  */
 export type ResponseInputItem =
-    | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string }
+    | { type: 'message'; role: 'user' | 'assistant' | 'system'; content: string | ResponseContentPart[] }
     | { type: 'function_call'; id: string; call_id: string; name: string; arguments: string; status?: string }
-    | { type: 'function_call_output'; call_id: string; output: string }
+    | { type: 'function_call_output'; call_id: string; output: string | ResponseContentPart[] }
     | { type: 'file'; filename: string; content: string; mime_type?: string };
 
 /**

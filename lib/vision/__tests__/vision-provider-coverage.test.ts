@@ -25,10 +25,11 @@ import { upgradeModelForVision } from '@/lib/gateway/chat-vision-router';
 const KNOWN_UNROUTABLE: Record<string, string> = {
     // Tagged vision before the OpenAI-compatible vision path existed. Cerebras
     // is on the OpenAI wire format so the mechanism would cover it, but the
-    // repo's CEREBRAS_API_KEY answers "Wrong API Key", so image support could
-    // not be verified against the live model — and an unverified capability
-    // claim is the bug this file exists to catch.
-    'cerebras:gemma-4-31b': 'image support unverified — provider key rejected',
+    // account is unfunded — every model returns 402 payment_required as of
+    // 2026-08-20 — so image support still cannot be verified against the live
+    // model, and an unverified capability claim is the bug this file exists to
+    // catch. Register it once the account is funded and an image round-trips.
+    'cerebras:gemma-4-31b': 'image support unverified — account unfunded (402)',
 };
 
 function visionTaggedCatalogModels(): Array<{ key: string; id: string }> {

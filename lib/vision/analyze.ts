@@ -53,6 +53,16 @@ export const VISION_PROVIDER_LIMITS = {
         maxBytes: 20 * 1024 * 1024,
         notes: 'HEIC/HEIF supported. Max 20MB per image inline.',
     },
+    openrouter: {
+        // OpenRouter proxies to whichever upstream serves the model, so the
+        // binding limit is the upstream's, not OpenRouter's, and it varies per
+        // model. The cross-provider safe set is applied for the same reason as
+        // Maximo below: anything valid here stays valid if the request falls
+        // over to another provider.
+        formats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+        maxBytes: 5 * 1024 * 1024,
+        notes: 'Limits are the upstream model\'s and vary; the cross-provider safe set is applied.',
+    },
     maximo: {
         // Maximo publishes no image format or size limits, so the cross-provider
         // safe set applies: anything accepted here is accepted everywhere, which
@@ -96,7 +106,7 @@ export class VisionValidationError extends Error {
  * here plus its models in VISION_MODELS is all it takes; nothing about the
  * payload changes.
  */
-export const OPENAI_COMPATIBLE_VISION_PROVIDERS = ['maximo'] as const;
+export const OPENAI_COMPATIBLE_VISION_PROVIDERS = ['maximo', 'openrouter'] as const;
 
 export type OpenAICompatibleVisionProvider = typeof OPENAI_COMPATIBLE_VISION_PROVIDERS[number];
 
@@ -171,6 +181,14 @@ const VISION_MODELS: Record<string, ModelInfo> = {
     // Maximo (OpenAI wire format)
     'maximo-atlas-1.2': { provider: 'maximo', apiModel: 'maximo-atlas-1.2', description: 'Atlas 1.2 — agentic coding with visual understanding, 1M context' },
     'maximo-atlas-1.1': { provider: 'maximo', apiModel: 'maximo-atlas-1.1', description: 'Atlas 1.1 — agentic coding, 1M context' },
+    // OpenRouter free tier (OpenAI wire format). Cost nothing to run, which
+    // makes them the only vision models that work while the OpenAI and
+    // Anthropic accounts are unfunded. Image understanding was verified against
+    // the live models on 2026-08-20 — both named the shapes, colours and
+    // left-to-right order in a generated test image — rather than inferred from
+    // the "vl"/"omni" in their ids.
+    'nvidia/nemotron-nano-12b-v2-vl:free': { provider: 'openrouter', apiModel: 'nvidia/nemotron-nano-12b-v2-vl:free', description: 'Free vision — 12B VL, 128k context' },
+    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': { provider: 'openrouter', apiModel: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', description: 'Free vision — 30B omni-modal reasoning, 256k context' },
 };
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -752,6 +770,11 @@ const VISION_FALLBACK_CANDIDATES: Array<{ provider: VisionProvider; modelKey: st
     { provider: 'google', modelKey: 'gemini-2.5-flash' },
     { provider: 'openai', modelKey: 'gpt-4o-mini' },
     { provider: 'anthropic', modelKey: 'claude-3-5-haiku-latest' },
+    // Last resort, and the only one that cannot fail for billing reasons: the
+    // three above are a rate-limited free Gemini tier and two paid accounts, so
+    // an unfunded window takes out every vision request at once. Ordered last so
+    // it changes nothing while the others are healthy.
+    { provider: 'openrouter', modelKey: 'nvidia/nemotron-nano-12b-v2-vl:free' },
 ];
 
 /**

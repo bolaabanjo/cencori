@@ -6,7 +6,7 @@
  * Cencori picks the backend, and picks SEVERAL: the call fans out across free
  * managed providers in order and returns the first success.
  *
- *   Groq Llama  →  Cerebras gpt-oss
+ *   Groq Compound  →  Cerebras gpt-oss
  *
  * Generation is deliberately Google-free: Gemini does only embeddings for
  * memory (its dedicated project has generative models retired for new projects
@@ -38,7 +38,7 @@ export const MEMORY_LLM_CHAIN: string[] = (process.env.MEMORY_LLM_CHAIN
     ?.split(',')
     .map(s => s.trim())
     .filter(Boolean)) ?? [
-    'llama-3.3-70b-versatile',  // Groq — free, capable, higher rate limits (primary)
+    'groq/compound',            // Groq — free, capable, higher rate limits (primary)
     'gpt-oss-120b',             // Cerebras — free, strong reconcile quality (fallback)
     // Gemini is intentionally NOT here: memory's generation stays Google-free
     // (Gemini serves embeddings only). Add a current Gemini model to

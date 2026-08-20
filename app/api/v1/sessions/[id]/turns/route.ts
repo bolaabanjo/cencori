@@ -13,6 +13,7 @@ import { extractCencoriApiKeyFromHeaders } from "@/lib/api-keys";
 import { checkEndUserQuota, recordEndUserUsage, type QuotaCheckResult } from "@/lib/end-user-billing";
 import type { UnifiedMessage } from "@/lib/providers/base";
 import type { ResponseInputItem } from "@/lib/gateway/v1-responses-execute";
+import { normalizeResponsesContent, toolOutputTurns } from "@/lib/gateway/responses-content";
 import { runGatewayInputPipeline } from "@/lib/gateway/input-guard";
 import { buildMaskedLogPayloads } from "@/lib/gateway/chat-post-success";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
@@ -244,7 +245,12 @@ export async function POST(
             ? [{ role: 'user' as const, content: input }]
             : (input as ResponseInputItem[]).flatMap(item => {
                 if (item.type === 'message') {
-                    return [{ role: item.role, content: item.content }] as UnifiedMessage[];
+                    const { text, images } = normalizeResponsesContent(item.content);
+                    return [{
+                        role: item.role,
+                        content: text,
+                        ...(images.length ? { images } : {}),
+                    }] as UnifiedMessage[];
                 }
                 if (item.type === 'function_call') {
                     return [{
@@ -258,11 +264,7 @@ export async function POST(
                     }] as unknown as UnifiedMessage[];
                 }
                 if (item.type === 'function_call_output') {
-                    return [{
-                        role: 'tool',
-                        content: item.output,
-                        toolCallId: item.call_id,
-                    }] as UnifiedMessage[];
+                    return toolOutputTurns(item.output, item.call_id) as UnifiedMessage[];
                 }
                 if (item.type === 'file') {
                     return [{

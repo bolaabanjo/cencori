@@ -153,8 +153,6 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://console.groq.com/docs',
         keyPrefix: 'gsk_',
         models: [
-            { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', type: ['chat'], contextWindow: 128000, description: 'Groq-hosted versatile Llama 3.3 model', free: true },
-            { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', type: ['chat'], contextWindow: 128000, description: 'Ultra-fast inference', free: true },
             { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', type: ['chat', 'reasoning'], contextWindow: 131072, description: 'Groq production model' },
             { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B', type: ['chat', 'reasoning'], contextWindow: 131072, description: 'Groq production model' },
             { id: 'groq/compound', name: 'Compound', type: ['chat'], contextWindow: 131072, description: 'Groq compound AI system', free: true },
@@ -239,6 +237,39 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6 (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 262144, description: 'General-purpose Kimi K2 generation' },
             { id: 'qwen/qwen3.8-max', name: 'Qwen 3.8 Max (via OpenRouter)', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Alibaba flagship, 1M context' },
             { id: 'qwen/qwen3-coder-plus', name: 'Qwen 3 Coder Plus (via OpenRouter)', type: ['code', 'chat'], contextWindow: 1000000, description: 'Code-specialised Qwen, 1M context' },
+
+            // ── Zero-cost tier (`:free`) ──────────────────────────────────────
+            // OpenRouter serves these at no charge, so they cost Cencori nothing
+            // and are billed to the customer at zero (see EXPLICITLY_FREE_MODELS
+            // in pricing.ts — the two lists must stay in sync or the catalog test
+            // fails). They replace the Groq Llama and Cerebras models that used to
+            // carry the free tier: Groq decommissioned the former and the Cerebras
+            // account is unfunded (402 on every model).
+            //
+            // Every id below returned a 200 with real content on 2026-08-20. The
+            // `:free` listings are rate-limited and can 429 under load, so they are
+            // a fallback pool rather than a capacity guarantee. Excluded after
+            // testing: `z-ai/glm-5.2:free` and `google/gemma-4-*:free` (429 from
+            // upstream on repeat attempts).
+            //
+            // Most of these are reasoning models that spend the first tokens on a
+            // hidden reasoning trace, so a small max_tokens returns empty content.
+            // `poolside/laguna-s-2.1:free` and `nvidia/nemotron-nano-12b-v2-vl:free`
+            // answer cleanly at low budgets, which is why the first-test and
+            // default paths use those two.
+            { id: 'poolside/laguna-s-2.1:free', name: 'Laguna S 2.1 (free)', type: ['chat'], contextWindow: 262144, description: 'Free tier. Clean short answers, no reasoning preamble', free: true },
+            { id: 'poolside/laguna-xs-2.1:free', name: 'Laguna XS 2.1 (free)', type: ['chat'], contextWindow: 262144, description: 'Free tier. Smallest Laguna', free: true },
+            { id: 'nvidia/nemotron-nano-12b-v2-vl:free', name: 'Nemotron Nano 12B VL (free)', type: ['chat', 'vision'], contextWindow: 128000, description: 'Free tier. Reads images; answers cleanly at low token budgets', free: true },
+            { id: 'nvidia/nemotron-nano-9b-v2:free', name: 'Nemotron Nano 9B (free)', type: ['chat'], contextWindow: 128000, description: 'Free tier. Small, fast', free: true },
+            { id: 'nvidia/nemotron-3-nano-30b-a3b:free', name: 'Nemotron 3 Nano 30B (free)', type: ['chat', 'reasoning'], contextWindow: 256000, description: 'Free tier. 30B MoE reasoning model', free: true },
+            { id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', name: 'Nemotron 3 Nano Omni 30B (free)', type: ['chat', 'reasoning', 'vision'], contextWindow: 256000, description: 'Free tier. Omni-modal; reads images', free: true },
+            { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron 3 Super 120B (free)', type: ['chat', 'reasoning'], contextWindow: 262144, description: 'Free tier. 120B MoE, strongest free reasoning', free: true },
+            { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'Nemotron 3 Ultra 550B (free)', type: ['chat', 'reasoning'], contextWindow: 1000000, description: 'Free tier. 550B MoE, 1M context; overloads under load', free: true },
+            { id: 'nvidia/nemotron-3.5-lightning:free', name: 'Nemotron 3.5 Lightning (free)', type: ['chat', 'reasoning'], contextWindow: 1000000, description: 'Free tier. 1M context, low latency', free: true },
+            { id: 'openai/gpt-oss-20b:free', name: 'GPT OSS 20B (free)', type: ['chat', 'reasoning'], contextWindow: 131072, description: 'Free tier. 20B open-weight reasoning model', free: true },
+            { id: 'cohere/north-mini-code:free', name: 'North Mini Code (free)', type: ['code', 'chat'], contextWindow: 256000, description: 'Free tier. Code-specialised', free: true },
+            { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots 3 Note Preview (free)', type: ['chat', 'reasoning'], contextWindow: 512000, description: 'Free tier. 512k context', free: true },
+            { id: 'liquid/lfm-2.5-2.6b:free', name: 'LFM 2.5 2.6B (free)', type: ['chat'], contextWindow: 128000, description: 'Free tier. Tiny, cheapest to run', free: true },
         ],
     },
     {
@@ -318,8 +349,14 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         docsUrl: 'https://docs.cerebras.ai',
         keyPrefix: 'csk-',
         models: [
-            { id: 'gpt-oss-120b', name: 'GPT OSS 120B (Cerebras)', type: ['chat'], contextWindow: 131072, description: '120B open model, 3000 tok/s inference', free: true },
-            { id: 'zai-glm-4.7', name: 'Z.AI GLM 4.7 (Cerebras)', type: ['chat'], contextWindow: 131072, description: 'Preview, 355B MoE model on Cerebras', free: true },
+            // The Cerebras account is unfunded: every model returns 402
+            // payment_required as of 2026-08-20, so none of these can carry the
+            // free tier any more. `free: true` was removed rather than the rows
+            // themselves — the models come back the moment the account is topped
+            // up, and they bill from their model_pricing rows when it is.
+            // `zai-glm-4.7` is gone entirely: Cerebras archived it (404
+            // model_archived), so it is not orderable at any price.
+            { id: 'gpt-oss-120b', name: 'GPT OSS 120B (Cerebras)', type: ['chat'], contextWindow: 131072, description: '120B open model, 3000 tok/s inference' },
             { id: 'gemma-4-31b', name: 'Gemma 4 31B (Cerebras)', type: ['chat', 'vision'], contextWindow: 131072, description: 'Multimodal production model on Cerebras' },
         ],
     },

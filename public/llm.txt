@@ -78,7 +78,7 @@ For existing products, preserve the app's current auth, database, routing, UI, a
 Fast first-test model IDs (the first is a free model — no upstream provider key required):
 
 ```text
-llama-3.1-8b-instant   # free, no provider key — use for the first test
+groq/compound-mini   # free, no provider key — use for the first test
 claude-opus-5          # flagship, most capable (needs Anthropic access)
 claude-sonnet-5
 gemini-3.1-pro-preview
@@ -118,7 +118,7 @@ npx create-cencori-app my-ai-app --template nextjs --dev
 3. The generated `.env.example` should use `CENCORI_API_KEY=csk_...`.
 4. The Next.js template uses `cencori/vercel` with `streamText()` and `toUIMessageStreamResponse()`.
 5. The TanStack template keeps Cencori calls on the server.
-6. The default first-test model is `llama-3.1-8b-instant` (free, no upstream provider key needed); users can switch to `claude-sonnet-4.5`, `gemini-2.5-flash`, or `gpt-4o` after provider access is confirmed.
+6. The default first-test model is `groq/compound-mini` (free, no upstream provider key needed); users can switch to `claude-sonnet-4.5`, `gemini-2.5-flash`, or `gpt-4o` after provider access is confirmed.
 7. `--api-key` verifies Cencori authentication only. Users may still need provider access for the selected model.
 8. If key verification is temporarily unavailable, scaffolding may continue and the generated app reads `CENCORI_API_KEY` from the env file.
 9. After scaffolding, run `npm run dev` and confirm a request appears in dashboard Logs.
@@ -1034,14 +1034,14 @@ One Cencori project key can be used across many models.
 Choose the model per request:
 
 ```typescript
-await cencori.ai.chat({ model: 'llama-3.1-8b-instant', messages }); // free, no provider key
+await cencori.ai.chat({ model: 'groq/compound-mini', messages }); // free, no provider key
 await cencori.ai.chat({ model: 'claude-opus-5', messages });        // flagship, most capable
 await cencori.ai.chat({ model: 'claude-sonnet-5', messages });
 await cencori.ai.chat({ model: 'gemini-3.1-pro-preview', messages });
 ```
 
 Flagship model: `claude-opus-5` (Anthropic's most capable, released 2026-07-24).
-It requires Anthropic provider access; use `llama-3.1-8b-instant` for a free first test.
+It requires Anthropic provider access; use `groq/compound-mini` for a free first test.
 
 ## MCP Server (for AI agents)
 

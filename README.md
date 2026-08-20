@@ -99,7 +99,7 @@ const cencori = new Cencori(); // reads CENCORI_API_KEY
 
 const response = await cencori.ai.chat({
   messages: [{ role: 'user', content: 'Hello!' }],
-  model: 'llama-3.1-8b-instant' // free to start; flagship: 'claude-opus-5', also 'claude-sonnet-5', 'gemini-3.1-pro-preview'
+  model: 'groq/compound-mini' // free to start; flagship: 'claude-opus-5', also 'claude-sonnet-5', 'gemini-3.1-pro-preview'
 });
 
 console.log(response.content);
@@ -113,7 +113,7 @@ cencori = Cencori()  # reads CENCORI_API_KEY
 
 response = cencori.ai.chat(
     messages=[{"role": "user", "content": "Hello!"}],
-    model="llama-3.1-8b-instant"  # free to start; flagship: "claude-opus-5", also "claude-sonnet-5", "gemini-3.1-pro-preview"
+    model="groq/compound-mini"  # free to start; flagship: "claude-opus-5", also "claude-sonnet-5", "gemini-3.1-pro-preview"
 )
 
 print(response.content)
@@ -136,7 +136,7 @@ func main() {
     )
     
     resp, _ := client.Chat.Create(context.Background(), &cencori.ChatParams{
-        Model: "llama-3.1-8b-instant",
+        Model: "groq/compound-mini",
         Messages: []cencori.Message{
             {Role: "user", Content: "Hello!"},
         },

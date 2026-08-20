@@ -10,6 +10,7 @@ import {
     RateLimitError,
     ServiceUnavailableError,
 } from '@/lib/providers/errors';
+import { publicFailureMessage, publicProviderLabel } from '@/lib/providers/branding';
 
 const DEFAULT_SEMANTIC_CACHE_DIMENSIONS = 768;
 
@@ -124,7 +125,13 @@ function stripProviderPrefix(message: string): string {
 
 export function mapProviderErrorToHttpResponse(
     error: unknown,
-    providerHint?: string
+    providerHint?: string,
+    /**
+     * The model that was requested. Supplied by callers that know it so a
+     * Cencori-served model reports `cencori` as its provider instead of the
+     * upstream Cencori happens to route it through.
+     */
+    model?: string
 ): ProviderHttpErrorDetails {
     const providerError = error instanceof ProviderError
         ? error
@@ -133,22 +140,30 @@ export function mapProviderErrorToHttpResponse(
             : null;
 
     if (!providerError) {
+        const raw = error instanceof Error ? error.message : 'Unexpected internal error.';
         return {
             status: 500,
             error: 'internal_error',
-            message: error instanceof Error ? error.message : 'Unexpected internal error.',
+            // The failover aggregate arrives here as a plain Error when no
+            // provider hint is available, so scrub it before it reaches a client.
+            message: providerHint ? publicFailureMessage(raw, providerHint, model) : raw,
             provider: null,
         };
     }
 
-    const message = stripProviderPrefix(providerError.message);
+    const label = publicProviderLabel(providerError.provider, model ?? '');
+    const message = publicFailureMessage(
+        stripProviderPrefix(providerError.message),
+        providerError.provider,
+        model,
+    );
 
     if (providerError instanceof AuthenticationError) {
         return {
             status: 401,
             error: 'provider_auth_error',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -157,7 +172,7 @@ export function mapProviderErrorToHttpResponse(
             status: 429,
             error: 'provider_rate_limited',
             message,
-            provider: providerError.provider,
+            provider: label,
             retryAfter: providerError.retryAfter,
         };
     }
@@ -167,7 +182,7 @@ export function mapProviderErrorToHttpResponse(
             status: 400,
             error: 'provider_invalid_request',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -176,7 +191,7 @@ export function mapProviderErrorToHttpResponse(
             status: 404,
             error: 'provider_model_not_found',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -185,7 +200,7 @@ export function mapProviderErrorToHttpResponse(
             status: 403,
             error: 'provider_content_filtered',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -194,7 +209,7 @@ export function mapProviderErrorToHttpResponse(
             status: 403,
             error: 'model_access_denied',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -203,7 +218,7 @@ export function mapProviderErrorToHttpResponse(
             status: 503,
             error: 'provider_unavailable',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -212,7 +227,7 @@ export function mapProviderErrorToHttpResponse(
             status: 503,
             error: 'pricing_unavailable',
             message,
-            provider: providerError.provider,
+            provider: label,
         };
     }
 
@@ -220,6 +235,6 @@ export function mapProviderErrorToHttpResponse(
         status: 502,
         error: 'provider_error',
         message,
-        provider: providerError.provider,
+        provider: label,
     };
 }

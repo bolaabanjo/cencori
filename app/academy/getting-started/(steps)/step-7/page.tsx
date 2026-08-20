@@ -40,7 +40,7 @@ export default function Step7Page() {
 const cencori = new Cencori();
 
 const stream = cencori.ai.chatStream({
-  model: 'llama-3.1-8b-instant',
+  model: 'groq/compound-mini',
   messages: [
     { role: 'user', content: 'Write a short poem about coding' }
   ],
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   const { messages } = await req.json();
 
   const stream = cencori.ai.chatStream({
-    model: 'llama-3.1-8b-instant',
+    model: 'groq/compound-mini',
     messages,
   });
 
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   const result = await streamText({
-    model: cencori('llama-3.1-8b-instant'),
+    model: cencori('groq/compound-mini'),
     messages: convertToModelMessages(messages),
   });
 

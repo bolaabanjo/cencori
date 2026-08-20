@@ -8,10 +8,17 @@ import { UnifiedMessage, ToolCall } from './base';
 
 /**
  * OpenAI message format
+ *
+ * `content` widens to a part list only for a turn that carries images; text-only turns keep the
+ * plain string every provider on this wire format has always received.
  */
+export type OpenAIContentPart =
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } };
+
 export interface OpenAIMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
+    content: string | OpenAIContentPart[];
     tool_call_id?: string;
     tool_calls?: ToolCall[];
 }
@@ -64,10 +71,29 @@ export interface GeminiMessage {
 export function toOpenAIMessages(messages: UnifiedMessage[]): OpenAIMessage[] {
     return messages.map(msg => ({
         role: msg.role,
-        content: msg.content,
+        content: toOpenAIContent(msg),
         ...(msg.toolCallId ? { tool_call_id: msg.toolCallId } : {}),
         ...(msg.tool_calls && msg.tool_calls.length > 0 ? { tool_calls: msg.tool_calls } : {}),
     }));
+}
+
+/**
+ * A `tool` message may not carry images on this wire format, so images attached to one are left
+ * behind rather than sent where they would be rejected. The Responses surface never produces that
+ * shape — it moves an image tool's output onto the user turn that follows it.
+ */
+function toOpenAIContent(msg: UnifiedMessage): string | OpenAIContentPart[] {
+    if (!msg.images?.length || msg.role === 'tool') return msg.content;
+
+    const parts: OpenAIContentPart[] = [];
+    if (msg.content) parts.push({ type: 'text', text: msg.content });
+    for (const image of msg.images) {
+        parts.push({
+            type: 'image_url',
+            image_url: { url: image.url, ...(image.detail ? { detail: image.detail } : {}) },
+        });
+    }
+    return parts;
 }
 
 /**

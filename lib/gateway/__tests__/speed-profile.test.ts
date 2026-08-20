@@ -27,7 +27,7 @@ describe('speed routing profile', () => {
     });
 
     it('routes, bounds output, and retains system plus newest context', () => {
-        process.env.CENCORI_SPEED_MODEL = 'llama-3.1-8b-instant';
+        process.env.CENCORI_SPEED_MODEL = 'groq/compound-mini';
         process.env.CENCORI_SPEED_MAX_TOKENS = '128';
         process.env.CENCORI_SPEED_MAX_INPUT_TOKENS = '10';
         const result = applySpeedProfile({
@@ -41,7 +41,7 @@ describe('speed routing profile', () => {
             ],
         });
 
-        expect(result.model).toBe('llama-3.1-8b-instant');
+        expect(result.model).toBe('groq/compound-mini');
         expect(result.maxTokens).toBe(128);
         expect(result.messages.map((message) => message.role)).toEqual(['system', 'user']);
         expect(result.messages[1].content).toBe('new question');
