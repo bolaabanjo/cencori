@@ -1073,21 +1073,6 @@ Feature selection: `CENCORI_MCP_FEATURES` accepts `docs`, `guidance`, `gateway`,
 
 Safety: Web tools carry `openWorldHint: true`, and retrieved content is untrusted. Anything that costs money, enqueues work, or changes state is opt-in via env. Security-sensitive actions (API keys, billing, access, governance activation) are **never** executed by the MCP—the `how_to_*` tools return steps and a dashboard link.
 
-## Basecode
-
-Basecode is Cencori's own desktop coding agent for macOS. It is a product, not an integration
-surface: do not add it to a codebase, install it as a dependency, or wire application code to it.
-
-What it is useful to know:
-- It runs on the user's machine, scoped to a workspace folder, and edits files and runs commands there.
-- It signs in with a Cencori account over PKCE, not with an API key pasted into the app.
-- It calls models through the user's Cencori project, so its model list reflects that project's
-  provider access, and its traffic appears in the project's normal logs, analytics, and cost tracking.
-- It supports user-supplied MCP servers via `basecode.user.toml` in its agent home directory.
-
-If a user asks how to configure, sign in to, or extend Basecode, use the documentation links below
-rather than inferring behaviour from this contract.
-
 ## Decision Rules For Code Agents
 
 When integrating Cencori into a project:
@@ -1115,7 +1100,4 @@ When integrating Cencori into a project:
 - Cencori Web API: https://cencori.com/docs/api/web
 - Build a Web Research Agent: https://cencori.com/docs/guides/build-a-web-research-agent
 - MCP Server: https://cencori.com/docs/mcp
-- Basecode: https://cencori.com/docs/basecode
-- Basecode modes and permissions: https://cencori.com/docs/basecode/modes
-- Basecode MCP configuration: https://cencori.com/docs/basecode/mcp
 - Continue: https://cencori.com/docs/agentic-engineering/desktop/continue
