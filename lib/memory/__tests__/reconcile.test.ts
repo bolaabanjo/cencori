@@ -133,7 +133,7 @@ describe('resolveMemoryModel (managed: Gemini or open GPT-OSS)', () => {
     it('allows open managed models (Cerebras gpt-oss, Groq llama), not Google', () => {
         expect(resolveMemoryModel('gpt-oss-120b')).toBe('gpt-oss-120b');
         expect(resolveMemoryModel('openai/gpt-oss-120b')).toBe('openai/gpt-oss-120b');
-        expect(resolveMemoryModel('llama-3.3-70b-versatile')).toBe('llama-3.3-70b-versatile');
+        expect(resolveMemoryModel('groq/compound')).toBe('groq/compound');
     });
 
     it('coerces OpenAI/Anthropic/unknown (or empty) to the managed default', () => {

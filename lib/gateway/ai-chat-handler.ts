@@ -85,6 +85,10 @@ export async function POST(req: NextRequest) {
     const wrap = (response: NextResponse, ctx?: GatewayContext) =>
         ctx ? addGatewayHeaders(response, { requestId: ctx.requestId }) : response;
 
+    // Declared out here so the catch below can name the model when branding the
+    // failure — `model` itself is scoped to the try block.
+    let modelForBranding: string | undefined;
+
     try {
         const validation = await validateGatewayRequest(req);
         if (!validation.success) {
@@ -135,6 +139,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const rawMessages = body.messages;
         const model: string | undefined = body.model;
+        modelForBranding = model;
         const temperature: number | undefined =
             typeof body.temperature === 'number' ? body.temperature : undefined;
         const maxTokens: number | undefined =
@@ -809,7 +814,7 @@ export async function POST(req: NextRequest) {
         return wrap(finalResponse, ctx);
     } catch (error: unknown) {
         console.error('[API] Error:', error);
-        const providerFailure = mapProviderErrorToHttpResponse(error);
+        const providerFailure = mapProviderErrorToHttpResponse(error, undefined, modelForBranding);
         return NextResponse.json(
             {
                 error: providerFailure.error,

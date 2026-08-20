@@ -544,7 +544,7 @@ export async function POST(req: Request) {
     const selectedModel = model || cencoriConfig.defaultModel;
 
     const result = streamText({
-        model: cencori('llama-3.3-70b-versatile'),
+        model: cencori('groq/compound'),
         messages: await convertToModelMessages(messages),
         temperature: cencoriConfig.temperature,
         maxOutputTokens: cencoriConfig.maxTokens,

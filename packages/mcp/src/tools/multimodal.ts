@@ -44,7 +44,7 @@ export function registerMultimodalTools(server: McpServer, client: PlatformClien
             title: 'Generate text (chat completion)',
             description: 'Run a chat completion through the Cencori gateway. Incurs usage/cost.',
             inputSchema: {
-                model: z.string().describe('Model id, e.g. llama-3.1-8b-instant or claude-opus-5.'),
+                model: z.string().describe('Model id, e.g. groq/compound-mini or claude-opus-5.'),
                 messages: messageSchema,
                 temperature: z.number().min(0).max(2).optional(),
                 max_tokens: z.number().int().positive().optional(),

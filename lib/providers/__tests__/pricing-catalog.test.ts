@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SUPPORTED_PROVIDERS } from '../config';
@@ -24,6 +24,29 @@ const unitPricedModels = new Set(
     )].map(match => `${match[1]}:${match[2]}`)
 );
 
+// A provider can decommission a model after we priced it. Later migrations
+// retire those rows (is_active = false) rather than deleting them, so historical
+// ai_requests rows still resolve the price that applied at the time. Collect
+// every such retirement so a decommissioned model is not expected to still be
+// advertised in the chat catalog.
+const retiredModels = new Set(
+    readdirSync(resolve(process.cwd(), 'supabase/migrations'))
+        .filter(name => name.endsWith('.sql'))
+        .flatMap(name => {
+            const sql = readFileSync(
+                resolve(process.cwd(), 'supabase/migrations', name),
+                'utf8'
+            );
+            return [...sql.matchAll(
+                /UPDATE\s+model_pricing\s+SET\s+is_active\s*=\s*false[\s\S]*?WHERE\s+provider\s*=\s*'([^']+)'[\s\S]*?model_name\s+IN\s*\(([^)]*)\)/gi
+            )].flatMap(match => {
+                const provider = match[1];
+                return [...match[2].matchAll(/'([^']+)'/g)]
+                    .map(model => `${provider}:${model[1]}`);
+            });
+        })
+);
+
 // Embeddings are served by the embeddings route rather than the chat catalog.
 const serviceOnlyModels = new Set([
     'openai:text-embedding-3-small',
@@ -46,7 +69,8 @@ describe('reviewed managed pricing catalog', () => {
             .map(row => `${row.provider}:${row.model}`)
             .filter(key => !catalog.has(key)
                 && !serviceOnlyModels.has(key)
-                && !unitPricedModels.has(key));
+                && !unitPricedModels.has(key)
+                && !retiredModels.has(key));
 
         expect(missing).toEqual([]);
     });

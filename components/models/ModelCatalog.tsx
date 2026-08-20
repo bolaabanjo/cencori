@@ -18,6 +18,7 @@ import {
     Stepfun, Baseten, Alibaba, Baidu, ZAI,
 } from "@lobehub/icons";
 import { SUPPORTED_PROVIDERS, type AIModel } from "@/lib/providers/config";
+import { CENCORI_PROVIDER_LABEL, publicProviderDisplayName, publicProviderLabel } from "@/lib/providers/branding";
 import { Search, ChevronDown, ChevronUp, Copy, Check, Brain } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -74,6 +75,18 @@ const HelixIcon = ({ size }: { size: number }) => (
     <img src="/providers/helix.svg" alt="Helix" width={size} height={size} style={{ width: size, height: size }} />
 );
 
+// Models Cencori serves on its own accounts carry Cencori's mark rather than the
+// upstream's — see lib/providers/branding.ts. Two files so the logo stays legible
+// on either background.
+const CencoriIcon = ({ size }: { size: number }) => (
+    <>
+        <img src="/logo%20black.svg" alt="Cencori" width={size} height={size}
+             className="dark:hidden" style={{ width: size, height: size }} />
+        <img src="/logo%20white.svg" alt="Cencori" width={size} height={size}
+             className="hidden dark:block" style={{ width: size, height: size }} />
+    </>
+);
+
 // ─── Provider icon mapping ──────────────────────────────────────────────────
 
 const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
@@ -109,6 +122,7 @@ const PROVIDER_ICONS: Record<string, (size: number) => React.ReactNode> = {
     alibaba: (s) => <Alibaba.Color size={s} />,
     baidu: (s) => <Baidu.Color size={s} />,
     zai: (s) => <ZAI size={s} />,
+    [CENCORI_PROVIDER_LABEL]: (s) => <CencoriIcon size={s} />,
     maximo: (s) => <MaximoIcon size={s} />,
     helix: (s) => <HelixIcon size={s} />,
 };
@@ -291,8 +305,13 @@ function flattenModels(): FlatModel[] {
         for (const model of provider.models) {
             models.push({
                 ...model,
-                providerId: provider.id,
-                providerName: provider.name,
+                // A free-tier model is served on Cencori's own upstream account,
+                // so it is listed under Cencori rather than the vendor Cencori
+                // happens to route it through. Paid models keep their real
+                // provider. Filtering keys off providerId, so branding it here
+                // is what puts these rows under the Cencori filter too.
+                providerId: publicProviderLabel(provider.id, model.id),
+                providerName: publicProviderDisplayName(provider.id, provider.name, model.id),
                 index: 0,
             });
         }
@@ -352,6 +371,21 @@ export function ModelCatalog() {
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 1500);
     }, []);
+
+    // Provider filter options come from the branded rows, not SUPPORTED_PROVIDERS:
+    // `cencori` is not a catalog provider, and a provider whose models are all
+    // Cencori-served must not linger in the list with nothing behind it.
+    const providerOptions = useMemo(() => {
+        const seen = new Map<string, string>();
+        for (const m of allModels) {
+            if (!seen.has(m.providerId)) seen.set(m.providerId, m.providerName);
+        }
+        return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) =>
+            a.id === CENCORI_PROVIDER_LABEL ? -1
+                : b.id === CENCORI_PROVIDER_LABEL ? 1
+                    : a.name.localeCompare(b.name)
+        );
+    }, [allModels]);
 
     // Unique types
     const types = useMemo(() => {
@@ -477,7 +511,7 @@ export function ModelCatalog() {
                                 <span className="truncate text-foreground">
                                     {providerFilter === "all"
                                         ? "All Providers"
-                                        : SUPPORTED_PROVIDERS.find((p) => p.id === providerFilter)?.name || providerFilter}
+                                        : providerOptions.find((p) => p.id === providerFilter)?.name || providerFilter}
                                 </span>
                                 <ChevronDown className={cn(
                                     "shrink-0 h-3.5 w-3.5 text-muted-foreground/60 transition-transform ml-auto",
@@ -501,7 +535,7 @@ export function ModelCatalog() {
                                         </span>
                                         All Providers
                                     </button>
-                                    {SUPPORTED_PROVIDERS.map((p) => (
+                                    {providerOptions.map((p) => (
                                         <button
                                             key={p.id}
                                             onClick={() => { setProviderFilter(p.id); setIsProviderOpen(false); }}

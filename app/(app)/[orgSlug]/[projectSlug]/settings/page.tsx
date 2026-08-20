@@ -218,7 +218,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
 
   // Provider Settings state
   const [defaultProvider, setDefaultProvider] = useState('groq');
-  const [defaultModel, setDefaultModel] = useState('llama-3.1-8b-instant');
+  const [defaultModel, setDefaultModel] = useState('groq/compound-mini');
   const [requestsPerMinute, setRequestsPerMinute] = useState('60');
   const [tokensPerDay, setTokensPerDay] = useState('1000000');
   const [concurrentRequests, setConcurrentRequests] = useState('10');
@@ -362,7 +362,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
     if (providerSettings?.settings) {
       const s = providerSettings.settings;
       setDefaultProvider(s.default_provider || 'groq');
-      setDefaultModel(s.default_model || 'llama-3.1-8b-instant');
+      setDefaultModel(s.default_model || 'groq/compound-mini');
       setRequestsPerMinute(String(s.requests_per_minute || 60));
       setTokensPerDay(String(s.tokens_per_day || 1000000));
       setConcurrentRequests(String(s.concurrent_requests || 10));
@@ -1337,7 +1337,7 @@ export default function ProjectSettingsPage({ params }: PageProps) {
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <span className="text-[10px] text-muted-foreground">Default Model</span>
                   <span className="text-[10px] font-mono">
-                    {providerSettings?.settings?.default_model || 'llama-3.1-8b-instant'}
+                    {providerSettings?.settings?.default_model || 'groq/compound-mini'}
                   </span>
                 </div>
               </div>

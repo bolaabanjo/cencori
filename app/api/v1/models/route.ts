@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import crypto from 'crypto';
 import { SUPPORTED_PROVIDERS } from '@/lib/providers/config';
+import { publicProviderLabel } from '@/lib/providers/branding';
 import { addGatewayHeaders, handleCorsPreFlight } from '@/lib/gateway-middleware';
 import { extractGatewayCallerIdentity, logApiGatewayRequest } from '@/lib/api-gateway-logs';
 import { extractCencoriApiKeyFromHeaders } from '@/lib/api-keys';
@@ -38,7 +39,10 @@ const MODELS = SUPPORTED_PROVIDERS.flatMap(provider =>
     provider.models.map(model => ({
         id: model.id,
         object: 'model' as const,
-        owned_by: provider.id,
+        // Free-tier models run on Cencori's own upstream accounts, so Cencori is
+        // the provider the customer actually deals with. Paid models keep their
+        // real vendor id. See lib/providers/branding.ts.
+        owned_by: publicProviderLabel(provider.id, model.id),
         name: model.name,
         type: model.type,
         context_window: model.contextWindow,

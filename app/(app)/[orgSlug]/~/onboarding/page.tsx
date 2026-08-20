@@ -596,8 +596,8 @@ export default function OnboardingPage({ params }: PageProps) {
                   activeLang === "python"
                     ? `response = cencori.ai.chat(\n    messages=[{"role": "user", "content": "Hello!"}]\n)\nprint(response.content)`
                     : activeLang === "typescript"
-                      ? `const response = await cencoriClient.chat.completions.create({\n  model: "llama-3.1-8b-instant",\n  messages: [{ role: "user", content: "Hello!" }],\n});\nconsole.log(response.choices[0].message.content);`
-                      : `const response = await fetch("https://api.cencori.com/v1/chat/completions", {\n  method: "POST",\n  headers: {\n    "CENCORI_API_KEY": "${apiKey ?? "csk_your_api_key_here"}",\n    "Content-Type": "application/json",\n  },\n  body: JSON.stringify({\n    model: "llama-3.1-8b-instant",\n    messages: [{ role: "user", content: "Hello!" }],\n  }),\n});\n\nconst data = await response.json();\nconsole.log(data.choices[0].message.content);`,
+                      ? `const response = await cencoriClient.chat.completions.create({\n  model: "groq/compound-mini",\n  messages: [{ role: "user", content: "Hello!" }],\n});\nconsole.log(response.choices[0].message.content);`
+                      : `const response = await fetch("https://api.cencori.com/v1/chat/completions", {\n  method: "POST",\n  headers: {\n    "CENCORI_API_KEY": "${apiKey ?? "csk_your_api_key_here"}",\n    "Content-Type": "application/json",\n  },\n  body: JSON.stringify({\n    model: "groq/compound-mini",\n    messages: [{ role: "user", content: "Hello!" }],\n  }),\n});\n\nconst data = await response.json();\nconsole.log(data.choices[0].message.content);`,
                   setCopiedRequest
                 )}>
                   {activeLang === "python" && (
@@ -611,7 +611,7 @@ export default function OnboardingPage({ params }: PageProps) {
                   {activeLang === "typescript" && (
                     <>
                       <code className="block text-[11px] font-mono"><span className="text-purple-400">const</span> <span className="text-blue-400">response</span> <span className="text-zinc-400">=</span> <span className="text-purple-400">await</span> <span className="text-zinc-100">cencoriClient.chat.completions.create</span><span className="text-zinc-300">({"{"}</span></code>
-                      <code className="block text-[11px] font-mono">  <span className="text-zinc-300">model:</span> <span className="text-emerald-400">&quot;llama-3.1-8b-instant&quot;</span><span className="text-zinc-300">,</span></code>
+                      <code className="block text-[11px] font-mono">  <span className="text-zinc-300">model:</span> <span className="text-emerald-400">&quot;groq/compound-mini&quot;</span><span className="text-zinc-300">,</span></code>
                       <code className="block text-[11px] font-mono">  <span className="text-zinc-300">messages:</span> <span className="text-zinc-300">[{"{"}</span> <span className="text-zinc-100">role:</span> <span className="text-emerald-400">&quot;user&quot;</span><span className="text-zinc-300">,</span> <span className="text-zinc-100">content:</span> <span className="text-emerald-400">&quot;Hello!&quot;</span> <span className="text-zinc-300">{"}"}],</span></code>
                       <code className="block text-[11px] font-mono"><span className="text-zinc-300">{"}"});</span></code>
                       <code className="block text-[11px] font-mono"><span className="text-zinc-100">console.log</span><span className="text-zinc-300">(</span><span className="text-zinc-100">response.choices[0].message.content</span><span className="text-zinc-300">)</span><span className="text-zinc-400">;</span></code>
@@ -626,7 +626,7 @@ export default function OnboardingPage({ params }: PageProps) {
                       <code className="block text-[11px] font-mono">    <span className="text-emerald-400">&quot;Content-Type&quot;</span><span className="text-zinc-400">:</span> <span className="text-emerald-400">&quot;application/json&quot;</span><span className="text-zinc-300">,</span></code>
                       <code className="block text-[11px] font-mono">  <span className="text-zinc-300">{"}"},</span></code>
                       <code className="block text-[11px] font-mono">  <span className="text-zinc-300">body:</span> <span className="text-zinc-100">JSON.stringify</span><span className="text-zinc-300">({"{"}</span></code>
-                      <code className="block text-[11px] font-mono">    <span className="text-zinc-100">model:</span> <span className="text-emerald-400">&quot;llama-3.1-8b-instant&quot;</span><span className="text-zinc-300">,</span></code>
+                      <code className="block text-[11px] font-mono">    <span className="text-zinc-100">model:</span> <span className="text-emerald-400">&quot;groq/compound-mini&quot;</span><span className="text-zinc-300">,</span></code>
                       <code className="block text-[11px] font-mono">    <span className="text-zinc-100">messages:</span> <span className="text-zinc-300">[{"{"}</span> <span className="text-zinc-100">role:</span> <span className="text-emerald-400">&quot;user&quot;</span><span className="text-zinc-300">,</span> <span className="text-zinc-100">content:</span> <span className="text-emerald-400">&quot;Hello!&quot;</span> <span className="text-zinc-300">{"}"}],</span></code>
                       <code className="block text-[11px] font-mono">  <span className="text-zinc-300">{"}"}),</span></code>
                       <code className="block text-[11px] font-mono"><span className="text-zinc-300">{"}"});</span></code>

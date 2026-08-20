@@ -61,13 +61,13 @@ describe('API-key model access and sponsorship', () => {
 
         expect(resolveApiKeyModelAccess({
             ...access,
-            provider: 'cerebras',
-            model: 'gpt-oss-120b',
+            provider: 'openrouter',
+            model: 'poolside/laguna-s-2.1:free',
         })).toEqual({ allowed: true, billingMode: 'standard' });
         expect(resolveApiKeyModelAccess({
             ...access,
             provider: 'groq',
-            model: 'llama-3.3-70b-versatile',
+            model: 'groq/compound',
         }).allowed).toBe(true);
         expect(resolveApiKeyModelAccess({
             ...access,
@@ -81,8 +81,8 @@ describe('API-key model access and sponsorship', () => {
 
         expect(resolveApiKeyModelAccess({
             ...access,
-            provider: 'cerebras',
-            model: 'gpt-oss-120b',
+            provider: 'openrouter',
+            model: 'poolside/laguna-s-2.1:free',
         }).allowed).toBe(false);
         expect(resolveApiKeyModelAccess({
             ...access,

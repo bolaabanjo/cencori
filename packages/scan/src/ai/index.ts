@@ -225,7 +225,7 @@ export async function generateFixes(
                     'Authorization': `Bearer ${apiKey}`,
                 },
                 body: JSON.stringify({
-                    model: 'llama-3.1-8b-instant', // Use Groq (generous free tier)
+                    model: 'groq/compound-mini', // Use Groq (generous free tier)
                     messages: [
                         {
                             role: 'system',

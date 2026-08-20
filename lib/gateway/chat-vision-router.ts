@@ -110,6 +110,11 @@ const VISION_CAPABLE_PATTERNS = [
     /^gemini-2\.5/i,
     /^gemini-3/i,
     /^maximo-atlas-1\.[12]/i,
+    // OpenRouter free vision models. Without these an image request naming one
+    // would be "upgraded" to gpt-4o-mini — moving a working free request onto
+    // the unfunded OpenAI account. Both are registered in VISION_MODELS.
+    /^nvidia\/nemotron-nano-12b-v2-vl:free$/i,
+    /^nvidia\/nemotron-3-nano-omni-30b-a3b-reasoning:free$/i,
 ];
 
 function isVisionCapable(model: string): boolean {

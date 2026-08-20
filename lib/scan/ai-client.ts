@@ -30,7 +30,7 @@ function getProviders(): ProviderConfig[] {
         {
             name: "groq",
             baseURL: "https://api.groq.com/openai/v1",
-            model: "llama-3.3-70b-versatile",
+            model: "groq/compound",
             apiKey: process.env.GROQ_API_KEY,
         },
     ];
@@ -278,7 +278,7 @@ export async function streamWithFallback(
  *   Keeps raw delta.reasoning tokens private for internal answer drafting.
  *
  * Phase 2 — content generation with fallback chain:
- *   Cerebras llama3.1-8b → Groq llama-3.3-70b-versatile → Gemini
+ *   Cerebras llama3.1-8b → Groq Compound → Gemini
  *   Streams delta.content → SSE: {"type":"content","content":"..."}
  *
  * Visible investigation state:
@@ -533,11 +533,11 @@ export async function streamWithReasoning(
     const groqKey = process.env.GROQ_API_KEY;
     if (groqKey) {
         try {
-            console.log("[AI Client] Phase 2: Groq llama-3.3-70b-versatile...");
+            console.log("[AI Client] Phase 2: Groq Compound...");
             const ok = await streamOpenAIContent(
                 "https://api.groq.com/openai/v1",
                 groqKey,
-                "llama-3.3-70b-versatile",
+                "groq/compound",
                 contentMessages,
             );
             if (ok) {

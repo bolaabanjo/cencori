@@ -313,8 +313,8 @@ function buildResponsesJson(params: {
     };
 }
 
-function providerFailureResult(error: unknown): V1ResponseExecuteResult {
-    const failure = mapProviderErrorToHttpResponse(error);
+function providerFailureResult(error: unknown, model?: string): V1ResponseExecuteResult {
+    const failure = mapProviderErrorToHttpResponse(error, undefined, model);
     const body: Record<string, unknown> = {
         error: {
             message: failure.message,
@@ -999,7 +999,7 @@ export async function runV1ResponsesExecution(
             }),
         };
     } catch (error) {
-        return providerFailureResult(error);
+        return providerFailureResult(error, params.model);
     }
 }
 

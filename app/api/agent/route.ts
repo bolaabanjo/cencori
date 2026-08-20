@@ -44,7 +44,7 @@ Rules:
 - You currently have read-only access. You can analyze and recommend, but never claim you performed an action or changed configuration. If asked to make a change, state that limitation briefly and offer the safest next step.
 `;
 
-const AGENT_MODEL = "llama-3.3-70b-versatile";
+const AGENT_MODEL = "groq/compound";
 
 function isChatMessage(value: unknown): value is ChatMessage {
     if (!value || typeof value !== "object") return false;
