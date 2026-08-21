@@ -47,6 +47,8 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'maximo-atlas-1.1': 'maximo',
     // Helix (Launchverse) — autonomous engineering agent personas
     'helix-advisor': 'helix',
+    // OpenRouter stealth preview (`stealth/` prefix → nonexistent stealth provider)
+    'stealth/ox-alpha': 'openrouter',
 };
 
 /**

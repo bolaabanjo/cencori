@@ -40,6 +40,12 @@ const EXPLICITLY_FREE_MODELS = new Set([
     'openrouter:cohere/north-mini-code:free',
     'openrouter:dots-studio/dots-3-note-preview:free',
     'openrouter:liquid/lfm-2.5-2.6b:free',
+    // Stealth preview: OpenRouter serves `stealth/ox-alpha` at $0/$0 while the
+    // anonymous-operator preview lasts. Free membership mirrors the `free: true`
+    // tag in config.ts. Unlike the rest of this list it is not a permanent
+    // zero-cost tier — when the preview ends the id 404s upstream and must be
+    // removed from here and the catalog together.
+    'openrouter:stealth/ox-alpha',
     // Maximo Atlas ran here as a free preview until 2026-07-22. It is now
     // billed from the model_pricing row deployed in
     // 20260803_120000_maximo_atlas_paid_pricing.sql.

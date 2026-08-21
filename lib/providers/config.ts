@@ -270,6 +270,22 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'cohere/north-mini-code:free', name: 'North Mini Code (free)', type: ['code', 'chat'], contextWindow: 256000, description: 'Free tier. Code-specialised', free: true },
             { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots 3 Note Preview (free)', type: ['chat', 'reasoning'], contextWindow: 512000, description: 'Free tier. 512k context', free: true },
             { id: 'liquid/lfm-2.5-2.6b:free', name: 'LFM 2.5 2.6B (free)', type: ['chat'], contextWindow: 128000, description: 'Free tier. Tiny, cheapest to run', free: true },
+
+            // ── Stealth preview ───────────────────────────────────────────
+            // `stealth/ox-alpha` is an anonymous frontier model OpenRouter is
+            // stress-testing publicly. Verified against
+            // https://openrouter.ai/api/v1/models on 2026-08-21:
+            // 1,048,576 context / 131,072 max output, text+image+video input,
+            // mandatory reasoning (efforts max/high/low), tools and structured
+            // output supported, priced $0/$0 for the duration of the preview.
+            //
+            // Caveats worth surfacing to users: the operator is anonymous and
+            // retains prompts/completions (not used for training), so it must not
+            // be presented as a zero-data-retention option; the preview can end
+            // without notice, at which point the id starts 404ing upstream like
+            // any retired model. Community fingerprinting points at a GLM 5.x
+            // checkpoint but nothing is confirmed — do not document a lineage.
+            { id: 'stealth/ox-alpha', name: 'Ox Alpha (stealth preview)', type: ['chat', 'reasoning', 'code', 'vision'], contextWindow: 1048576, description: 'Anonymous stealth preview. Coding & long-horizon agentic work, text/image/video input, reasoning effort low→max. Free while the preview lasts; provider retains prompts', free: true },
         ],
     },
     {

@@ -1,0 +1,83 @@
+---
+title: "Ox Alpha: The Stealth Model Is Live on Cencori"
+slug: "ox-alpha-stealth-preview-on-cencori"
+date: "2026-08-21"
+excerpt: "Ox Alpha — the anonymous frontier stealth model everyone is stress-testing — is now available on Cencori. Free during the preview, with a 1M-token context window, text/image/video input, reasoning effort control, and tool calling."
+tags: ["Product", "AI Models", "Release", "Free", "Preview"]
+category: "changelog"
+published: true
+---
+
+**Ox Alpha** is live on Cencori.
+
+A frontier-class model with an anonymous operator appeared on OpenRouter this week and immediately became the most probed model on the internet. It's now available through Cencori's AI gateway under its upstream ID, `stealth/ox-alpha` — completely free while the stealth preview lasts.
+
+Nobody has confirmed who built it. Community fingerprinting (tokenizer behavior, response styling, multimodal handling) points toward Z.ai's GLM 5.x family, with Xiaomi's MiMo team as the other leading theory — but that's speculation, and we won't pretend otherwise.
+
+## Why This Matters
+
+Early testers are reporting genuinely frontier-tier results in coding and long-horizon agentic work — the kind of output usually reserved for flagship models. Combined with a $0 price tag and a 1M-token context window, it's worth trying today, with eyes open about what "stealth" means for production use.
+
+## Key Specs
+
+| | |
+|---|---|
+| **Context Window** | 1,048,576 tokens |
+| **Max Output** | 131,072 tokens |
+| **Pricing** | Free during the stealth preview ($0 / $0 per 1M tokens) |
+| **Input** | Text + Image + Video |
+| **Output** | Text |
+| **Capabilities** | Reasoning (mandatory; efforts low/high/max), Tool/Function Calling, Structured Outputs |
+
+Reasoning cannot be disabled on this model — the default effort is `max`. If you need faster responses at lower cost-per-latency, set the effort explicitly to `low`.
+
+## Using Ox Alpha in Cencori
+
+### SDK
+
+```typescript
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const response = await cencori.ai.chat({
+  model: 'stealth/ox-alpha',
+  messages: [
+    { role: 'user', content: 'Design a rate limiter for a multi-tenant API.' }
+  ]
+});
+```
+
+### REST API
+
+```bash
+curl -X POST https://cencori.com/api/ai/chat \
+  -H "CENCORI_API_KEY: $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "stealth/ox-alpha",
+    "messages": [
+      {"role": "user", "content": "Write a Python script to analyze server logs."}
+    ]
+  }'
+```
+
+## What We Shipped in Cencori
+
+- `stealth/ox-alpha` added to our OpenRouter catalog routing
+- Billed to Cencori customers at zero during the preview
+- Full support for streaming, tool calling, structured outputs, and reasoning-effort control
+- Cencori's security logging, data rules, and observability apply automatically
+
+## Notes for Production Teams
+
+Read this section before sending anything sensitive:
+
+- **The operator is anonymous.** OpenRouter knows who they are; you don't. Prompts and completions are retained by the provider but stated not to be used for training. This is *not* a zero-data-retention model — keep confidential workloads on providers with contractual guarantees.
+- **The preview can end without notice.** When it does, the model ID stops resolving and requests will fail upstream. Treat Ox Alpha as an experiment, not a dependency — route anything critical to a stable fallback model.
+- **The free pricing dies with the preview.** If the model survives into general availability, expect a real price and possibly a new model ID.
+- Use the canonical ID `stealth/ox-alpha` exactly as written — the `stealth/` prefix is part of the ID.
+
+## References
+
+- [Cencori Models Catalog](/docs/ai/models)
