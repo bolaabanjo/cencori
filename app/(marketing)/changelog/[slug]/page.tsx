@@ -27,11 +27,10 @@ export async function generateMetadata({ params }: ChangelogPostPageProps): Prom
 
     if (!post) return { title: "Post Not Found" };
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cencori.com';
-
-    const ogImage = post.coverImage
-        ? `${baseUrl}${post.coverImage.startsWith('/') ? '' : '/'}${post.coverImage}`
-        : `${baseUrl}/blog/og/v1/${post.slug}.jpg`;
+    // Relative on purpose — see the note in blog/[slug]/page.tsx. Absolute
+    // URLs built from NEXT_PUBLIC_APP_URL pointed X's crawler at
+    // cencori.vercel.app, which 404s for Twitterbot.
+    const ogImage = post.coverImage ?? `/blog/og/v1/${post.slug}.jpg`;
 
     return {
         title: post.title,

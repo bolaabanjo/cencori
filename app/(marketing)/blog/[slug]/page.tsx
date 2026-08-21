@@ -22,11 +22,11 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 
     if (!post) return { title: "Post Not Found" };
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cencori.com';
-
-    const ogImage = post.coverImage
-        ? `${baseUrl}${post.coverImage.startsWith('/') ? '' : '/'}${post.coverImage}`
-        : `${baseUrl}/blog/og/v1/${post.slug}.jpg`;
+    // Relative on purpose: Next resolves these against the root layout's
+    // metadataBase (cencori.com). Building an absolute URL here from
+    // NEXT_PUBLIC_APP_URL leaked cencori.vercel.app into the card tags in
+    // production, and X's crawler gets a 404 on that domain — no preview card.
+    const ogImage = post.coverImage ?? `/blog/og/v1/${post.slug}.jpg`;
 
     return {
         title: post.title,
