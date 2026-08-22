@@ -42,6 +42,8 @@ const OPENAI_COMPATIBLE_ENV_VARS: Record<string, string[]> = {
     maximo: ['MAXIMO_API_KEY', 'MAXIMOAI_API_KEY'],
     // Helix customer key (provisioned via the Launchverse partner secret).
     helix: ['HELIX_API_KEY'],
+    // Centaur stealth-preview key (partner-provisioned, one-week window).
+    centaur: ['CENTAUR_API_KEY'],
 };
 
 function firstConfiguredEnv(names: string[]): string | undefined {

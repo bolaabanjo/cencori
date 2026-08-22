@@ -399,6 +399,23 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
             { id: 'helix-advisor', name: 'Helix Advisor', type: ['chat', 'reasoning', 'code'], contextWindow: 128000, description: 'Autonomous engineering agent (advisor mode) by Launchverse — architecture, debugging, and planning guidance. Read-only.' },
         ],
     },
+    {
+        id: 'centaur',
+        name: 'Centaur',
+        icon: '/providers/centaur.svg',
+        website: '',
+        docsUrl: '',
+        keyPrefix: '',
+        // Stealth preview from a partner lab, served under a codename for one
+        // week while they finish tuning. Free to customers for that window
+        // (see EXPLICITLY_FREE_MODELS) — when it lifts, this entry needs real
+        // pricing rows and probably a new model id. Specs below are what the
+        // partner has confirmed so far; context window is an unconfirmed
+        // placeholder pending their final card.
+        models: [
+            { id: 'centaur', name: 'Centaur', type: ['chat', 'reasoning'], contextWindow: 128000, description: 'Stealth preview. Frontier reasoning model under a codename — free while the preview lasts.', free: true },
+        ],
+    },
     // ── Voice providers (BYOK) ──────────────────────────────────
     // Models are chosen per-call on the Voice endpoints, so these carry no
     // `models` list here — the entry exists so users can add a BYOK key and the

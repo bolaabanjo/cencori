@@ -16,16 +16,29 @@ describe('free model tier', () => {
         provider.models.filter(model => model.free).map(model => [provider.id, model.id] as const)
     );
 
+    // Centair ships under a codename while the partner lab stays anonymous;
+    // MODEL_ALIASES rewrites it to the id their endpoint actually serves.
+    // Everything else in the free tier must pass through unchanged.
+    const ALIASED_FREE_MODELS = new Set(['centaur']);
+
     it('routes every advertised free model to the provider that serves it', () => {
         expect(freeModels.length).toBeGreaterThan(0);
         for (const [providerId, modelId] of freeModels) {
             expect(router.detectProvider(modelId), `detectProvider(${modelId})`).toBe(providerId);
+            if (ALIASED_FREE_MODELS.has(modelId)) continue;
             expect(
                 router.normalizeModelName(modelId, providerId),
                 `normalizeModelName(${modelId}) must reach the provider unchanged`
             ).toBe(modelId);
             expect(isExplicitlyFree(providerId, modelId), `${modelId} must bypass pricing`).toBe(true);
         }
+    });
+
+    it('rewrites the centaur codename to its upstream id and keeps both free', () => {
+        expect(router.detectProvider('centaur')).toBe('centaur');
+        expect(router.normalizeModelName('centaur', 'centaur')).toBe('julian-origin');
+        expect(isExplicitlyFree('centaur', 'centaur')).toBe(true);
+        expect(isExplicitlyFree('centaur', 'julian-origin')).toBe(true);
     });
 
     it('sends `:free` ids to OpenRouter rather than the vendor in their prefix', () => {

@@ -21,6 +21,10 @@ const MODEL_ALIASES: Record<string, string> = {
     'claude-opus-4.6': 'claude-opus-4-6',
     'claude-opus-4.7': 'claude-opus-4-7',
     'claude-opus-4.8': 'claude-opus-4-8',
+    // Centaur is the public codename; the upstream endpoint only answers to
+    // its internal id. Normalization happens before billing and the upstream
+    // call, so pricing keys must use the internal id (see free-models.ts).
+    'centaur': 'julian-origin',
 };
 
 // Explicit model-to-provider mapping for models whose IDs would route to the wrong provider via prefix matching
@@ -47,6 +51,8 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'maximo-atlas-1.1': 'maximo',
     // Helix (Launchverse) — autonomous engineering agent personas
     'helix-advisor': 'helix',
+    // Centaur stealth preview (bare id, no provider prefix to infer from)
+    'centaur': 'centaur',
     // OpenRouter stealth preview (`stealth/` prefix → nonexistent stealth provider)
     'stealth/ox-alpha': 'openrouter',
 };

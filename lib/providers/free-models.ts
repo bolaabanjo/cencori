@@ -46,6 +46,13 @@ const EXPLICITLY_FREE_MODELS = new Set([
     // zero-cost tier — when the preview ends the id 404s upstream and must be
     // removed from here and the catalog together.
     'openrouter:stealth/ox-alpha',
+    // Centaur stealth preview, free for a one-week window agreed with the
+    // partner lab (ends 2026-08-29). Two keys on purpose: the catalog id
+    // (`centaur`, what pricing-catalog.test.ts iterates) and the upstream id
+    // (`julian-origin`, what MODEL_ALIASES normalizes to before billing and
+    // inference). When the window lifts, remove both and add real pricing rows.
+    'centaur:centaur',
+    'centaur:julian-origin',
     // Maximo Atlas ran here as a free preview until 2026-07-22. It is now
     // billed from the model_pricing row deployed in
     // 20260803_120000_maximo_atlas_paid_pricing.sql.
