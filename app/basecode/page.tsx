@@ -46,7 +46,7 @@ export default function BasecodePage() {
           <h1 className="max-w-2xl text-balance text-4xl font-semibold tracking-[-0.06em] sm:text-5xl md:text-6xl">
             Powerful coding agent for everyone, everywhere.
           </h1>
-          <p className="mt-5 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="mt-5 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-white">
             Build something different
           </p>
           <Button
@@ -56,7 +56,7 @@ export default function BasecodePage() {
             <a href="#download">Download for macOS</a>
           </Button>
         </header>
-        <section className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-white/15 bg-white/[0.03] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+        <section className="mx-auto max-w-4xl overflow-hidden rounded-lg border border-white/15 bg-white/[0.03] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
           <Image
             alt="Basecode desktop workspace showing an agent task and code review"
             className="block h-auto w-full"
