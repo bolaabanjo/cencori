@@ -17,6 +17,11 @@ vi.mock('@/lib/providers/circuit-breaker', () => ({
     isCircuitOpen: (...args: unknown[]) => mockIsCircuitOpen(...args),
     recordSuccess: (...args: unknown[]) => mockRecordSuccess(...args),
     recordFailure: (...args: unknown[]) => mockRecordFailure(...args),
+    // Real implementation, not a stub: these tests assert which circuit was opened, and a stubbed
+    // key would let a regression in the scoping pass unnoticed.
+    circuitKey: (provider: string, model?: string) => (model ? `${provider}::${model}` : provider),
+    circuitProvider: (key: string) =>
+        key.indexOf('::') === -1 ? key : key.slice(0, key.indexOf('::')),
 }));
 
 vi.mock('@/lib/providers/failover', () => ({
@@ -184,7 +189,9 @@ describe('executeGatewayChat failover', () => {
     });
 
     it('skips primary when circuit is open and uses fallback', async () => {
-        mockIsCircuitOpen.mockImplementation(async (provider: string) => provider === 'openai');
+        // Scoped key: opening 'openai' alone no longer gates anything, which is the containment
+        // this test now pins — only the failing provider+model pair is short-circuited.
+        mockIsCircuitOpen.mockImplementation(async (key: string) => key === 'openai::gpt-4o');
 
         const primaryChat = vi.fn().mockResolvedValue(mockResponse('should not run'));
         const fallbackChat = vi.fn().mockResolvedValue(mockResponse('circuit fallback'));
@@ -293,7 +300,7 @@ describe('executeGatewayChat failover', () => {
     });
 
     it('skips fallback provider with open circuit and tries next', async () => {
-        mockIsCircuitOpen.mockImplementation(async (provider: string) => provider === 'anthropic');
+        mockIsCircuitOpen.mockImplementation(async (key: string) => key === 'anthropic::claude-sonnet-4');
         mockGetFallbackChain.mockReturnValue(['anthropic', 'google']);
 
         const primaryChat = vi.fn().mockRejectedValue(new Error('openai down'));
@@ -386,7 +393,7 @@ describe('executeGatewayChat failover', () => {
             } as never,
         })).rejects.toThrow();
 
-        const isCircuitCall = mockIsCircuitOpen.mock.calls.find(([p]) => p === 'openai');
+        const isCircuitCall = mockIsCircuitOpen.mock.calls.find(([key]) => key === 'openai::gpt-4o');
         expect(isCircuitCall).toBeDefined();
         const configArg = isCircuitCall![1];
         expect(configArg).toMatchObject({
@@ -395,7 +402,9 @@ describe('executeGatewayChat failover', () => {
             timeoutMs: 30000,
         });
 
-        const recordFailureCall = mockRecordFailure.mock.calls.find(([p]) => p === 'openai');
+        const recordFailureCall = mockRecordFailure.mock.calls.find(
+            ([key]) => key === 'openai::gpt-4o'
+        );
         expect(recordFailureCall).toBeDefined();
         expect(recordFailureCall![1]).toMatchObject({
             enabled: true,

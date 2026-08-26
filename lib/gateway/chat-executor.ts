@@ -4,7 +4,13 @@ import {
     type UnifiedChatResponse,
     type StreamChunk,
 } from '@/lib/providers/base';
-import { isCircuitOpen, recordSuccess, recordFailure, type CircuitBreakerConfig } from '@/lib/providers/circuit-breaker';
+import {
+    circuitKey,
+    isCircuitOpen,
+    recordSuccess,
+    recordFailure,
+    type CircuitBreakerConfig,
+} from '@/lib/providers/circuit-breaker';
 import { getFallbackChain, getFallbackModel, isNonRetryableError } from '@/lib/providers/failover';
 import { triggerFallbackWebhook } from '@/lib/webhooks';
 import { hasFeature, type SubscriptionTier } from '@/lib/entitlements';
@@ -191,8 +197,11 @@ export async function executeGatewayChat(params: {
     let lastError: Error | null = null;
     const fallbackErrors: string[] = [];
 
-    if (failoverAllowed && (await isCircuitOpen(providerName, cbConfig))) {
-        lastError = new Error(`Provider ${providerName} circuit is open`);
+    // Scoped to the model: a provider is only short-circuited for the model that kept failing,
+    // so one retired model cannot speak for everything else the provider serves.
+    const primaryCircuit = circuitKey(providerName, model);
+    if (failoverAllowed && (await isCircuitOpen(primaryCircuit, cbConfig))) {
+        lastError = new Error(`Provider ${providerName} circuit is open for ${model}`);
     } else {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -203,7 +212,7 @@ export async function executeGatewayChat(params: {
                     PROVIDER_TIMEOUT_MS,
                     `${providerName} primary`
                 );
-                await recordSuccess(providerName);
+                await recordSuccess(primaryCircuit);
                 const response = applyResponseBillingMode(providerResponse, resolved.billingMode);
                 return {
                     ...response,
@@ -226,7 +235,7 @@ export async function executeGatewayChat(params: {
                 }
             }
         }
-        await recordFailure(providerName, cbConfig);
+        await recordFailure(primaryCircuit, cbConfig);
     }
 
     if (params.googleOnly || !failoverAllowed || !settings.enableFallback || !lastError) {
@@ -236,7 +245,21 @@ export async function executeGatewayChat(params: {
 
     const fallbackChain = getFallbackChain(providerName, settings.configuredFallback);
     for (const fallbackProviderName of fallbackChain) {
-        if (await isCircuitOpen(fallbackProviderName, cbConfig)) continue;
+        // Resolved before the circuit check so the circuit is keyed on what will actually run.
+        // A fallback serves a different model than the primary, and recording its outcome under
+        // the primary's model would blame a model this provider was never asked for.
+        let fallbackModel: string;
+        try {
+            fallbackModel = await getFallbackModel(
+                model,
+                fallbackProviderName,
+                settings.configuredFallbackModel
+            );
+        } catch {
+            continue;
+        }
+        const fallbackCircuit = circuitKey(fallbackProviderName, fallbackModel);
+        if (await isCircuitOpen(fallbackCircuit, cbConfig)) continue;
 
         if (!router.hasProvider(fallbackProviderName)) {
             const initialized = await initializeBYOKProviders(
@@ -251,7 +274,6 @@ export async function executeGatewayChat(params: {
 
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
-            const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
             const fallbackBillingMode = assertApiKeyModelAccess({
                 allowedModels: params.allowedModels,
                 sponsoredModels: params.sponsoredModels,
@@ -265,7 +287,7 @@ export async function executeGatewayChat(params: {
                 `${fallbackProviderName} fallback`
             );
             const response = applyResponseBillingMode(providerResponse, fallbackBillingMode);
-            await recordSuccess(fallbackProviderName);
+            await recordSuccess(fallbackCircuit);
 
             void triggerFallbackWebhook(params.projectId, {
                 original_provider: providerName,
@@ -289,7 +311,7 @@ export async function executeGatewayChat(params: {
             const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
             fallbackErrors.push(`${fallbackProviderName}: ${msg}`);
             console.warn(`[Gateway/Failover] Fallback ${fallbackProviderName} failed:`, fallbackError);
-            await recordFailure(fallbackProviderName, cbConfig);
+            await recordFailure(fallbackCircuit, cbConfig);
         }
     }
 
@@ -338,6 +360,9 @@ export async function* streamGatewayChat(params: {
 
     let lastError: Error | null = null;
     const fallbackErrors: string[] = [];
+    // Scoped to the model, as in executeGatewayChat: one failing model must not short-circuit
+    // every other model the same provider serves.
+    const primaryCircuit = circuitKey(providerName, model);
 
     // Speed-profile hedging: the secondary request is not created unless the
     // primary misses the first-token threshold. The first usable stream wins;
@@ -347,7 +372,7 @@ export async function* streamGatewayChat(params: {
         && params.hedgeDelayMs > 0
         && failoverAllowed
         && settings.enableFallback
-        && !(await isCircuitOpen(providerName, cbConfig))
+        && !(await isCircuitOpen(primaryCircuit, cbConfig))
     ) {
         let hedgeFallbackProviderName: string | null = null;
         let hedgeFallbackModel: string | null = null;
@@ -364,7 +389,7 @@ export async function* streamGatewayChat(params: {
                 secondary: async () => {
                     const fallbackChain = getFallbackChain(providerName, settings.configuredFallback);
                     for (const candidate of fallbackChain) {
-                        if (await isCircuitOpen(candidate, cbConfig)) continue;
+                        if (await isCircuitOpen(circuitKey(candidate, model), cbConfig)) continue;
                         if (!router.hasProvider(candidate)) {
                             const initialized = await initializeBYOKProviders(
                                 router,
@@ -423,7 +448,7 @@ export async function* streamGatewayChat(params: {
             }
 
             if (winner === 'secondary') {
-                await recordSuccess(hedgeFallbackProviderName!);
+                await recordSuccess(circuitKey(hedgeFallbackProviderName!, model));
                 void triggerFallbackWebhook(params.projectId, {
                     original_provider: providerName,
                     original_model: model,
@@ -433,7 +458,7 @@ export async function* streamGatewayChat(params: {
                     request_id: params.requestId,
                 });
             } else {
-                await recordSuccess(providerName);
+                await recordSuccess(primaryCircuit);
             }
             return;
         } catch (error) {
@@ -446,7 +471,7 @@ export async function* streamGatewayChat(params: {
         }
     }
 
-    if (!(await isCircuitOpen(providerName, cbConfig))) {
+    if (!(await isCircuitOpen(primaryCircuit, cbConfig))) {
         const maxRetries = failoverAllowed ? settings.maxRetries : 1;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             let emitted = false;
@@ -465,14 +490,14 @@ export async function* streamGatewayChat(params: {
                         billingMode: resolved.billingMode,
                     };
                 }
-                await recordSuccess(providerName);
+                await recordSuccess(primaryCircuit);
                 return;
             } catch (error) {
                 lastError = error instanceof Error ? error : new Error(String(error));
                 // Once bytes have reached the caller, retrying or switching
                 // providers would splice two independent answers together.
                 if (emitted) {
-                    await recordFailure(providerName, cbConfig);
+                    await recordFailure(primaryCircuit, cbConfig);
                     throw lastError;
                 }
                 if (isNonRetryableError(error)) throw error;
@@ -481,7 +506,7 @@ export async function* streamGatewayChat(params: {
                 }
             }
         }
-        await recordFailure(providerName, cbConfig);
+        await recordFailure(primaryCircuit, cbConfig);
     } else {
         lastError = new Error(`Provider ${providerName} circuit is open`);
     }
@@ -492,7 +517,21 @@ export async function* streamGatewayChat(params: {
 
     const fallbackChain = getFallbackChain(providerName, settings.configuredFallback);
     for (const fallbackProviderName of fallbackChain) {
-        if (await isCircuitOpen(fallbackProviderName, cbConfig)) continue;
+        // Resolved before the circuit check so the circuit is keyed on what will actually run.
+        // A fallback serves a different model than the primary, and recording its outcome under
+        // the primary's model would blame a model this provider was never asked for.
+        let fallbackModel: string;
+        try {
+            fallbackModel = await getFallbackModel(
+                model,
+                fallbackProviderName,
+                settings.configuredFallbackModel
+            );
+        } catch {
+            continue;
+        }
+        const fallbackCircuit = circuitKey(fallbackProviderName, fallbackModel);
+        if (await isCircuitOpen(fallbackCircuit, cbConfig)) continue;
 
         if (!router.hasProvider(fallbackProviderName)) {
             const initialized = await initializeBYOKProviders(
@@ -508,7 +547,6 @@ export async function* streamGatewayChat(params: {
         let fallbackEmitted = false;
         try {
             const fallbackProvider = router.getProvider(fallbackProviderName);
-            const fallbackModel = await getFallbackModel(model, fallbackProviderName, settings.configuredFallbackModel);
             const fallbackBillingMode = assertApiKeyModelAccess({
                 allowedModels: params.allowedModels,
                 sponsoredModels: params.sponsoredModels,
@@ -532,7 +570,7 @@ export async function* streamGatewayChat(params: {
                 };
             }
 
-            await recordSuccess(fallbackProviderName);
+            await recordSuccess(fallbackCircuit);
             void triggerFallbackWebhook(params.projectId, {
                 original_provider: providerName,
                 original_model: model,
@@ -546,7 +584,7 @@ export async function* streamGatewayChat(params: {
             const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
             fallbackErrors.push(`${fallbackProviderName}: ${msg}`);
             console.warn(`[Gateway/Failover/Stream] Fallback ${fallbackProviderName} failed:`, fallbackError);
-            await recordFailure(fallbackProviderName, cbConfig);
+            await recordFailure(fallbackCircuit, cbConfig);
             if (fallbackEmitted) {
                 throw fallbackError;
             }

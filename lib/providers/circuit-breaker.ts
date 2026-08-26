@@ -196,6 +196,32 @@ export async function recordFailure(provider: string, config?: Partial<CircuitBr
     await saveCircuitState(provider, circuit);
 }
 
+/** Separates the provider from the model in a scoped circuit key. */
+const CIRCUIT_SCOPE_SEPARATOR = '::';
+
+/**
+ * The key a circuit is tracked under.
+ *
+ * Scoping by model as well as provider is what keeps one broken model from taking out a healthy
+ * provider. `stealth/ox-alpha` retiring — a hard 404 on every call — tripped the shared
+ * `openrouter` circuit, and because that circuit gates *every* openrouter-routed model for the
+ * timeout window, an unrelated request routed there would have failed for an hour on the strength
+ * of a model it never asked for.
+ *
+ * A provider that is genuinely down still trips: every model on it fails, so each one opens its
+ * own circuit. That costs `failureThreshold` failures per model rather than in total, which is the
+ * price of not letting a single bad model speak for the rest.
+ */
+export function circuitKey(provider: string, model?: string): string {
+    return model ? `${provider}${CIRCUIT_SCOPE_SEPARATOR}${model}` : provider;
+}
+
+/** The provider half of a circuit key, for reporting a scoped circuit against its provider. */
+export function circuitProvider(key: string): string {
+    const separator = key.indexOf(CIRCUIT_SCOPE_SEPARATOR);
+    return separator === -1 ? key : key.slice(0, separator);
+}
+
 /**
  * Get current circuit state for monitoring
  */
@@ -246,7 +272,31 @@ export async function getAllCircuitStates(): Promise<Record<string, CircuitState
         });
     }
 
+    // Circuits are tracked per provider *and* model, so the bare provider keys read above no
+    // longer see most trips. Fold what this instance knows about scoped circuits back under their
+    // provider — worst state wins — or a provider with every model failing would report healthy.
+    // In-memory only: Redis holds these under keys this function cannot enumerate without a scan,
+    // and health has always been best-effort rather than authoritative.
+    memoryCircuits.forEach((state, key) => {
+        const provider = circuitProvider(key);
+        if (provider === key) return;
+        const current = states[provider];
+        if (!current || rankCircuitState(state.state) > rankCircuitState(current.state)) {
+            states[provider] = { ...state };
+            return;
+        }
+        if (state.state === current.state && state.failures > current.failures) {
+            states[provider] = { ...state };
+        }
+    });
+
     return states;
+}
+
+/** Open is worse than half-open, which is worse than closed. */
+function rankCircuitState(state: CircuitState['state']): number {
+    if (state === 'open') return 2;
+    return state === 'half-open' ? 1 : 0;
 }
 
 /**
