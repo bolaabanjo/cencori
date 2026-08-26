@@ -13,6 +13,10 @@ import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
 import { settleStreamUsage } from '@/lib/gateway/stream-usage';
+import {
+    STREAM_GUARD_EMIT_BATCH_CHARS,
+    STREAM_GUARD_HOLDBACK_CHARS,
+} from '@/lib/gateway/stream-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 import { buildCencoriChatResponse } from '@/lib/gateway/ai-chat-support';
@@ -164,16 +168,7 @@ function buildOpenAiStreamChunk(model: string, delta: Record<string, unknown>, f
     };
 }
 
-/**
- * Streaming output is held behind a compact rolling boundary. Twenty-four
- * characters cover the bounded secret/PII suffixes detected by the output
- * scanner (SSNs, card numbers, phone numbers, and the terminal portion of an
- * email) without forcing a fast model to generate ~80 tokens before TTFT.
- * Every release still runs the cumulative guard, and completion runs a final
- * full-output guard, so reducing the boundary does not skip security checks.
- */
-export const STREAM_GUARD_HOLDBACK_CHARS = 24;
-export const STREAM_GUARD_EMIT_BATCH_CHARS = 8;
+export { STREAM_GUARD_EMIT_BATCH_CHARS, STREAM_GUARD_HOLDBACK_CHARS };
 
 export type V1ExecuteResult =
     | { ok: true; response: NextResponse }

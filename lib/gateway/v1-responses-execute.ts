@@ -21,6 +21,10 @@ import { calculateGatewayCharge } from '@/lib/gateway/model-access';
 import type { QuotaCheckResult } from '@/lib/end-user-billing';
 import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
+import {
+    STREAM_GUARD_EMIT_BATCH_CHARS,
+    STREAM_GUARD_HOLDBACK_CHARS,
+} from '@/lib/gateway/stream-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
 import { runGatewayInputPipeline } from '@/lib/gateway/input-guard';
 import {
@@ -674,6 +678,87 @@ export async function runV1ResponsesExecution(
                 const collectedToolCalls: Record<string, { id: string; name: string; arguments: string }> = {};
                 const collectedBuiltinToolOutputs: ToolCallOutput[] = [...preProcessResult.toolOutputs];
 
+                /**
+                 * How much of the raw `fullText` has been released, and the detokenized text that
+                 * release produced.
+                 *
+                 * This endpoint used to accumulate the whole answer and emit it as a single
+                 * `output_text.delta` once the guard approved it, so time-to-first-token equalled
+                 * full generation time: a turn that generated for twelve seconds showed nothing
+                 * for twelve. `/v1/chat/completions` solves the same problem without buffering —
+                 * hold back a short rolling boundary, run the cumulative guard before every
+                 * release, and run the full-output guard at completion — and that is what runs
+                 * here now. No text reaches the client that the guard has not already seen.
+                 */
+                let releasedRawLength = 0;
+                let emittedText = '';
+                /** Set when a mid-stream check fails: stop releasing and let completion report it. */
+                let guardBlockedRelease = false;
+                /**
+                 * Structured output replaces `fullText` wholesale with the schema tool's arguments
+                 * at completion, so there is no prefix that can be released early: whatever the
+                 * model emits as text is discarded. That mode stays buffered.
+                 */
+                const releasesIncrementally = !(forceSchemaResult && schemaToolName);
+
+                const detokenize = (text: string) =>
+                    effectiveTokenMap.size > 0 ? deTokenize(text, effectiveTokenMap) : text;
+
+                /**
+                 * Never split a tokenization placeholder (for example "[EMAIL_1]") at the release
+                 * boundary. A partial placeholder cannot be detokenized and would leak the
+                 * internal marker to the client.
+                 */
+                const safeReleaseEnd = (proposedEnd: number) => {
+                    let safeEnd = proposedEnd;
+                    if (effectiveTokenMap.size > 0 && proposedEnd < fullText.length) {
+                        const prefix = fullText.slice(0, proposedEnd);
+                        for (const placeholder of effectiveTokenMap.keys()) {
+                            const maxPartialLength = Math.min(placeholder.length - 1, prefix.length);
+                            for (let partialLength = maxPartialLength; partialLength > 0; partialLength--) {
+                                if (prefix.endsWith(placeholder.slice(0, partialLength))) {
+                                    safeEnd = Math.min(safeEnd, proposedEnd - partialLength);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Avoid emitting half of a UTF-16 surrogate pair.
+                    if (safeEnd > 0) {
+                        const previousCodeUnit = fullText.charCodeAt(safeEnd - 1);
+                        if (previousCodeUnit >= 0xd800 && previousCodeUnit <= 0xdbff) {
+                            safeEnd -= 1;
+                        }
+                    }
+                    return Math.max(releasedRawLength, safeEnd);
+                };
+
+                /** Emits everything approved so far that the client has not already received. */
+                const releaseApprovedText = () => {
+                    const releaseEnd = safeReleaseEnd(
+                        Math.max(releasedRawLength, fullText.length - STREAM_GUARD_HOLDBACK_CHARS)
+                    );
+                    if (releaseEnd <= releasedRawLength) return;
+
+                    const approvedText = detokenize(fullText.slice(0, releaseEnd));
+                    // Detokenizing a longer prefix must not rewrite what the client already has.
+                    if (!approvedText.startsWith(emittedText)) return;
+
+                    const delta = approvedText.slice(emittedText.length);
+                    releasedRawLength = releaseEnd;
+                    if (!delta) return;
+                    emittedText = approvedText;
+                    controller.enqueue(
+                        encoder.encode(
+                            buildResponsesStreamChunk({
+                                type: 'response.output_text.delta',
+                                data: { delta, index: 0 },
+                            })
+                        )
+                    );
+                };
+
                 try {
                     for await (const chunk of streamGatewayChat({
                         supabase: params.supabase,
@@ -702,6 +787,33 @@ export async function runV1ResponsesExecution(
                                 if (tc.function?.name) collectedToolCalls[key].name = tc.function.name;
                                 if (tc.function?.arguments) {
                                     collectedToolCalls[key].arguments += tc.function.arguments;
+                                }
+                            }
+                        }
+
+                        // Release what the guard has approved, so the client sees the answer as it
+                        // is produced rather than in one burst at the end. A failed check stops
+                        // further release; completion still runs the full-output guard and reports
+                        // the block, so nothing the guard rejected can reach the client.
+                        if (releasesIncrementally && !guardBlockedRelease && !chunk.finishReason) {
+                            const releasableCharacters =
+                                fullText.length - releasedRawLength - STREAM_GUARD_HOLDBACK_CHARS;
+                            if (releasableCharacters >= STREAM_GUARD_EMIT_BATCH_CHARS) {
+                                const incrementalCheck = await runGatewayOutputGuard({
+                                    supabase: params.supabase,
+                                    projectId: gatewayCtx.projectId,
+                                    apiKeyId: gatewayCtx.apiKeyId,
+                                    environment: gatewayCtx.environment,
+                                    outputText: detokenize(fullText),
+                                    inputText,
+                                    inputSecurity,
+                                    conversationHistory: messages,
+                                    endUserId: params.endUserId,
+                                });
+                                if (incrementalCheck.ok) {
+                                    releaseApprovedText();
+                                } else {
+                                    guardBlockedRelease = true;
                                 }
                             }
                         }
@@ -817,14 +929,23 @@ export async function runV1ResponsesExecution(
                                 return;
                             }
 
-                            // Output is buffered until the guard approves it;
-                            // no unsafe prefix can escape before a later block.
-                            if (fullText) {
+                            // Everything still held back: the rolling boundary above, plus the
+                            // whole answer when this stream never released incrementally. The
+                            // full-output guard has just passed, so the remainder is approved.
+                            // `fullText` is detokenized by this point, and `emittedText` is the
+                            // detokenized prefix already sent, so the difference is what is owed.
+                            // If the prefix ever disagreed, re-sending the whole answer would give
+                            // the client the prefix twice. `output_text.done` below carries the
+                            // authoritative full text, so emitting nothing extra is the safe side.
+                            const remainder = fullText.startsWith(emittedText)
+                                ? fullText.slice(emittedText.length)
+                                : '';
+                            if (remainder) {
                                 controller.enqueue(
                                     encoder.encode(
                                         buildResponsesStreamChunk({
                                             type: 'response.output_text.delta',
-                                            data: { delta: fullText, index: 0 },
+                                            data: { delta: remainder, index: 0 },
                                         })
                                     )
                                 );
@@ -995,7 +1116,15 @@ export async function runV1ResponsesExecution(
         return {
             ok: true,
             response: new NextResponse(stream, {
-                headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+                // `no-transform` and `X-Accel-Buffering: no` match /v1/chat/completions: without
+                // them an intermediary is free to re-buffer the body, which would undo the
+                // incremental release above before it ever reached the client.
+                headers: {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache, no-transform',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no',
+                },
             }),
         };
     } catch (error) {
