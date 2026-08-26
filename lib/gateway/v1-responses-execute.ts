@@ -121,6 +121,14 @@ export type ResponsesResponse = {
     output: ResponsesOutputItem[];
     usage: ResponsesUsage;
     status: 'completed' | 'failed' | 'in_progress';
+    /**
+     * Why a failed response failed, in the response object where the Responses API puts it.
+     *
+     * Clients read `response.error.message` — a sibling of `response` is not looked at — so a
+     * failed stream that omits this reports itself as a bare "upstream response failed" and the
+     * real cause never leaves the gateway.
+     */
+    error?: { code: string; message: string };
     metadata?: Record<string, string>;
 };
 
@@ -257,6 +265,7 @@ function buildResponsesJson(params: {
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
     status?: 'completed' | 'failed';
     annotations?: Array<{ type: string; start_index: number; end_index: number; url: string; title?: string }>;
+    error?: { code: string; message: string };
     metadata?: Record<string, string>;
 }): ResponsesResponse {
     const output: ResponsesOutputItem[] = [];
@@ -313,6 +322,7 @@ function buildResponsesJson(params: {
             },
         },
         status: params.status || 'completed',
+        ...(params.error ? { error: params.error } : {}),
         ...(params.metadata && Object.keys(params.metadata).length > 0 ? { metadata: params.metadata } : {}),
     };
 }
@@ -916,6 +926,11 @@ export async function runV1ResponsesExecution(
                                     toolOutputs: collectedBuiltinToolOutputs,
                                     usage: { promptTokens, completionTokens, totalTokens },
                                     status: 'failed',
+                                    // Also on the response itself: the sibling `error` below is
+                                    // what the OpenAI SDK surfaces, but clients reading the
+                                    // Responses shape look inside `response`, and a block that
+                                    // cannot say why it blocked is indistinguishable from a crash.
+                                    error: { code: outputCheck.code, message: outputCheck.message },
                                     metadata: body.metadata,
                                 });
                                 controller.enqueue(encoder.encode(buildResponsesStreamChunk({
@@ -1091,6 +1106,10 @@ export async function runV1ResponsesExecution(
                         }
                     }
                 } catch (error) {
+                    // The message was computed and dropped here, so every mid-stream provider
+                    // failure reached the client as a bare "upstream response failed" with the
+                    // real cause — rate limits, an exhausted provider, a retired model — left
+                    // behind in the gateway. Carry it on the response the client actually reads.
                     const message = error instanceof Error ? error.message : 'Stream failed';
                     const failedResponse = buildResponsesJson({
                         model: body.model || model,
@@ -1098,6 +1117,7 @@ export async function runV1ResponsesExecution(
                         toolOutputs: collectedBuiltinToolOutputs,
                         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
                         status: 'failed',
+                        error: { code: 'provider_error', message },
                         metadata: body.metadata,
                     });
                     controller.enqueue(

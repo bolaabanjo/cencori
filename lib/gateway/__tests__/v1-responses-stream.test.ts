@@ -212,6 +212,57 @@ describe('/v1/responses streaming', () => {
         expect(body).toContain('output_security_violation');
     });
 
+    /**
+     * The catch path computed the provider's message and dropped it, so every mid-stream failure
+     * reached clients as a bare "upstream response failed" — the codex runtime falls back to that
+     * string when `response.error.message` is absent — and the real cause never left the gateway.
+     */
+    it('reports why a mid-stream provider failure failed', async () => {
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                yield chunk({ delta: 'partial' });
+                throw new Error('All providers exhausted. Primary (cerebras): 402');
+            })()
+        );
+
+        const result = await runV1ResponsesExecution(baseParams());
+        if (!result.ok) throw new Error('expected ok');
+        const body = await new Response(result.response.body).text();
+
+        const done = JSON.parse(
+            body.match(/event: response\.done\ndata: (\{[\s\S]*?\})\n\n/)?.[1] ?? '{}'
+        ) as { response?: { status?: string; error?: { message?: string } } };
+
+        expect(done.response?.status).toBe('failed');
+        // Inside `response`, not beside it: a sibling is not where clients look.
+        expect(done.response?.error?.message).toContain('All providers exhausted');
+    });
+
+    it('says why the guard blocked, on the response itself', async () => {
+        (runGatewayOutputGuard as ReturnType<typeof vi.fn>).mockResolvedValue({
+            ok: false,
+            status: 403,
+            code: 'output_security_violation',
+            message: 'Response blocked',
+        });
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                yield chunk({ delta: 'x'.repeat(60), finishReason: 'stop' });
+            })()
+        );
+
+        const result = await runV1ResponsesExecution(baseParams());
+        if (!result.ok) throw new Error('expected ok');
+        const body = await new Response(result.response.body).text();
+
+        const done = JSON.parse(
+            body.match(/event: response\.done\ndata: (\{[\s\S]*?\})\n\n/)?.[1] ?? '{}'
+        ) as { response?: { error?: { message?: string; code?: string } } };
+
+        expect(done.response?.error?.code).toBe('output_security_violation');
+        expect(done.response?.error?.message).toBe('Response blocked');
+    });
+
     it('marks the stream no-transform so an intermediary cannot re-buffer it', async () => {
         mockStreamGatewayChat.mockImplementation(() =>
             (async function* () {
