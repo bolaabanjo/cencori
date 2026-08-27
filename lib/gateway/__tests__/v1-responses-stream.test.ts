@@ -263,6 +263,35 @@ describe('/v1/responses streaming', () => {
         expect(done.response?.error?.message).toBe('Response blocked');
     });
 
+
+    /**
+     * The agent runtime deserializes `cached_tokens: i64` with no serde default, so omitting the
+     * field fails the entire response with "missing field `cached_tokens`" and kills the turn.
+     * Making it conditional shipped exactly that break. It is always present here, whatever the
+     * provider did or did not report.
+     */
+    it('always emits cached_tokens, even when the provider reports nothing', async () => {
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                // No usage at all: the provider says nothing about caching.
+                yield chunk({ delta: 'hello', finishReason: 'stop' });
+            })()
+        );
+
+        const result = await runV1ResponsesExecution(baseParams());
+        if (!result.ok) throw new Error('expected ok');
+        const body = await new Response(result.response.body).text();
+
+        const done = JSON.parse(
+            body.match(/event: response\.done\ndata: (\{[\s\S]*?\})\n\n/)?.[1] ?? '{}'
+        ) as { response?: { usage?: { input_tokens_details?: Record<string, unknown> } } };
+        const details = done.response?.usage?.input_tokens_details;
+
+        expect(details).toBeDefined();
+        expect(details).toHaveProperty('cached_tokens');
+        expect(typeof details?.cached_tokens).toBe('number');
+    });
+
     it('marks the stream no-transform so an intermediary cannot re-buffer it', async () => {
         mockStreamGatewayChat.mockImplementation(() =>
             (async function* () {

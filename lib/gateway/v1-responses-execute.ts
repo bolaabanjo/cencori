@@ -325,13 +325,15 @@ function buildResponsesJson(params: {
                     0,
                     params.usage.promptTokens - (params.usage.cacheReadTokens ?? 0),
                 ),
-                // Was hardcoded to 0, which made prompt caching unobservable to every client of
-                // this endpoint — a cold prefix and a fully cached one reported identically, so
-                // there was no way to tell a cache that never hit from a provider that never
-                // reports one. Absent stays absent for exactly that reason.
-                ...(params.usage.cacheReadTokens === undefined
-                    ? {}
-                    : { cached_tokens: params.usage.cacheReadTokens }),
+                // Always present, never omitted. It was hardcoded to 0, which made prompt
+                // caching unobservable — a cold prefix and a fully cached one reported
+                // identically — so this now carries the real figure. But the field itself is
+                // required by the Responses API shape: the agent runtime deserializes
+                // `cached_tokens: i64` with no serde default, so omitting it fails the whole
+                // response with "missing field `cached_tokens`" and kills the turn. Unlike
+                // /v1/chat/completions, this endpoint cannot express "the provider said
+                // nothing" — it reports 0, and 0 here means unknown-or-miss.
+                cached_tokens: params.usage.cacheReadTokens ?? 0,
             },
             output_tokens_details: {
                 text_tokens: params.usage.completionTokens,
