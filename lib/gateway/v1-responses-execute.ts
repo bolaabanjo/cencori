@@ -262,7 +262,12 @@ function buildResponsesJson(params: {
     content: string;
     toolOutputs: ToolCallOutput[];
     functionCalls?: Array<{ id: string; name: string; arguments: string; callId: string }>;
-    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    usage: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        cacheReadTokens?: number;
+    };
     status?: 'completed' | 'failed';
     annotations?: Array<{ type: string; start_index: number; end_index: number; url: string; title?: string }>;
     error?: { code: string; message: string };
@@ -314,8 +319,19 @@ function buildResponsesJson(params: {
             output_tokens: params.usage.completionTokens,
             total_tokens: params.usage.totalTokens,
             input_tokens_details: {
-                text_tokens: params.usage.promptTokens,
-                cached_tokens: 0,
+                // Cached tokens are part of the prompt, so text tokens are what is left after
+                // them; reporting the whole prompt as text double-counted the cached part.
+                text_tokens: Math.max(
+                    0,
+                    params.usage.promptTokens - (params.usage.cacheReadTokens ?? 0),
+                ),
+                // Was hardcoded to 0, which made prompt caching unobservable to every client of
+                // this endpoint — a cold prefix and a fully cached one reported identically, so
+                // there was no way to tell a cache that never hit from a provider that never
+                // reports one. Absent stays absent for exactly that reason.
+                ...(params.usage.cacheReadTokens === undefined
+                    ? {}
+                    : { cached_tokens: params.usage.cacheReadTokens }),
             },
             output_tokens_details: {
                 text_tokens: params.usage.completionTokens,
@@ -872,6 +888,7 @@ export async function runV1ResponsesExecution(
                                 completionTokens,
                                 totalTokens,
                                 providerCostUsd,
+                                cacheReadTokens,
                             } = await settleStreamUsage({
                                 reported: reportedUsage,
                                 pricing,
@@ -924,7 +941,7 @@ export async function runV1ResponsesExecution(
                                     model: chunk.actualModel,
                                     content: '',
                                     toolOutputs: collectedBuiltinToolOutputs,
-                                    usage: { promptTokens, completionTokens, totalTokens },
+                                    usage: { promptTokens, completionTokens, totalTokens, cacheReadTokens },
                                     status: 'failed',
                                     // Also on the response itself: the sibling `error` below is
                                     // what the OpenAI SDK surfaces, but clients reading the
@@ -1080,7 +1097,7 @@ export async function runV1ResponsesExecution(
                                     arguments: tc.arguments,
                                     callId: tc.id,
                                 })),
-                                usage: { promptTokens, completionTokens, totalTokens },
+                                usage: { promptTokens, completionTokens, totalTokens, cacheReadTokens },
                                 annotations,
                                 metadata: body.metadata,
                             });

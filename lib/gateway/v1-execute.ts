@@ -12,7 +12,7 @@ import type { SecurityCheckResult } from '@/lib/safety/multi-layer-check';
 import { deTokenize } from '@/lib/safety/custom-data-rules';
 import { executeGatewayChat, streamGatewayChat } from '@/lib/gateway/chat-executor';
 import { resolveGatewayProvider } from '@/lib/gateway/providers-setup';
-import { settleStreamUsage } from '@/lib/gateway/stream-usage';
+import { settleStreamUsage, toOpenAiUsage } from '@/lib/gateway/stream-usage';
 import {
     STREAM_GUARD_EMIT_BATCH_CHARS,
     STREAM_GUARD_HOLDBACK_CHARS,
@@ -110,7 +110,13 @@ function buildOpenAiCompletionJson(params: {
     model: string;
     content: string;
     toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    usage: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+    };
     finishReason?: string;
     fallbackMeta?: { usedFallback: boolean; originalProvider: string; originalModel: string };
 }) {
@@ -136,11 +142,7 @@ function buildOpenAiCompletionJson(params: {
                 finish_reason: finishReason,
             },
         ],
-        usage: {
-            prompt_tokens: params.usage.promptTokens,
-            completion_tokens: params.usage.completionTokens,
-            total_tokens: params.usage.totalTokens,
-        },
+        usage: toOpenAiUsage(params.usage),
     };
 
     if (params.fallbackMeta?.usedFallback) {
@@ -622,11 +624,7 @@ export async function runV1ProviderExecution(
                         // sent usage/cost; parsers tolerate delta-less chunks).
                         controller.enqueue(
                             sse({
-                                usage: {
-                                    prompt_tokens: figures.promptTokens,
-                                    completion_tokens: figures.completionTokens,
-                                    total_tokens: figures.totalTokens,
-                                },
+                                usage: toOpenAiUsage(figures),
                                 cost_usd: figures.cencoriChargeUsd,
                             })
                         );
