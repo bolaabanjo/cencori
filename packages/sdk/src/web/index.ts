@@ -126,7 +126,7 @@ export interface WebSearchResponse {
     query: string;
     results: WebSearchHit[];
     count: number;
-    searchEngine: 'cencori-web-hybrid-v2';
+    searchEngine: 'cencori-web-hybrid-v2' | 'tinyfish-search-v1';
 }
 
 export interface WebCrawlRequest {
@@ -218,7 +218,7 @@ export class WebNamespace {
         return this.post('/api/v1/web/crawl', request);
     }
 
-    /** Search the Cencori-owned public corpus plus this project's indexed pages. */
+    /** Search the public web through Cencori's managed search capability. */
     search(request: WebSearchRequest): Promise<WebSearchResponse> {
         return this.post('/api/v1/web/search', request);
     }
