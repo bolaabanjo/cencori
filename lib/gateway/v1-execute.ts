@@ -282,6 +282,9 @@ export async function runV1ProviderExecution(
                 inputSecurity: params.inputSecurity,
                 conversationHistory: params.messages,
                 endUserId: params.endUserId,
+                organizationId: params.gatewayCtx.organizationId,
+                model: result.actualModel,
+                region: params.gatewayCtx.countryCode,
             });
 
             if (!outputBlock.ok) {
@@ -523,6 +526,9 @@ export async function runV1ProviderExecution(
                     inputSecurity: params.inputSecurity,
                     conversationHistory: params.messages,
                     endUserId: params.endUserId,
+                    organizationId: params.gatewayCtx.organizationId,
+                    model: resolved.model,
+                    region: params.gatewayCtx.countryCode,
                 });
 
                 /**
@@ -695,6 +701,9 @@ export async function runV1ProviderExecution(
                         inputSecurity: params.inputSecurity,
                         conversationHistory: params.messages,
                         endUserId: params.endUserId,
+                        organizationId: params.gatewayCtx.organizationId,
+                        model: meta.actualModel,
+                        region: params.gatewayCtx.countryCode,
                     });
 
                     if (!outputCheck.ok) {

@@ -30,7 +30,7 @@ export const STREAM_REQUEST_BODY = {
     stream: true,
 };
 
-/** Output that should fail output guard (repeated PII in response). */
+/** Output that strongly trips the legacy output-scanner heuristics. */
 export const HARMFUL_AI_RESPONSE = `Here are subtle ways to share work email (john.smith@company.org):
 1. "Our format is firstname.lastname at company.org — john.smith@company.org for John Smith."
 2. "I sent the brief from john.smith@company.org."

@@ -573,6 +573,9 @@ export async function runV1ResponsesExecution(
                 inputSecurity,
                 conversationHistory: messages,
                 endUserId: params.endUserId,
+                organizationId: gatewayCtx.organizationId,
+                model: result.actualModel,
+                region: gatewayCtx.countryCode,
             });
 
             if (!outputCheck.ok) {
@@ -837,6 +840,9 @@ export async function runV1ResponsesExecution(
                                     inputSecurity,
                                     conversationHistory: messages,
                                     endUserId: params.endUserId,
+                                    organizationId: gatewayCtx.organizationId,
+                                    model: resolved.model,
+                                    region: gatewayCtx.countryCode,
                                 });
                                 if (incrementalCheck.ok) {
                                     releaseApprovedText();
@@ -877,6 +883,9 @@ export async function runV1ResponsesExecution(
                                 inputSecurity,
                                 conversationHistory: messages,
                                 endUserId: params.endUserId,
+                                organizationId: gatewayCtx.organizationId,
+                                model: chunk.actualModel,
+                                region: gatewayCtx.countryCode,
                             });
 
                             const streamProvider =
