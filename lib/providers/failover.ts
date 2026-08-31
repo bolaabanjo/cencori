@@ -21,6 +21,8 @@ export const FALLBACK_CHAINS: Record<string, string[]> = {
     'perplexity': ['openai', 'anthropic', 'google'],
     'together': ['openai', 'anthropic', 'google'],
     'qwen': ['openai', 'anthropic', 'google'],
+    // B.AI — falls back to the native providers for the models it serves
+    'bai': ['deepseek', 'openai', 'anthropic', 'google'],
 };
 
 /**
@@ -89,6 +91,8 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'deepseek-reasoner': { 'openai': 'o1', 'anthropic': 'claude-opus-4-6', 'google': 'gemini-3-deep-think' },
     'deepseek-v4-pro': { 'openai': 'gpt-5', 'anthropic': 'claude-opus-4-5', 'google': 'gemini-3.1-pro-preview' },
     'deepseek-v4-flash': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'deepseek-v4-flash-vision-exp': { 'openai': 'gpt-4o', 'anthropic': 'claude-sonnet-4-5', 'google': 'gemini-2.5-flash' },
+    'glm-5.3-flash': { 'openai': 'gpt-4o-mini', 'anthropic': 'claude-haiku-4-5', 'google': 'gemini-2.5-flash-lite' },
 };
 
 // In-memory cache for DB mappings

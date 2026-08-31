@@ -56,6 +56,16 @@ const EXPLICITLY_FREE_MODELS = new Set([
     // Maximo Atlas ran here as a free preview until 2026-07-22. It is now
     // billed from the model_pricing row deployed in
     // 20260803_120000_maximo_atlas_paid_pricing.sql.
+    // B.AI promo — DeepSeek V4 Flash + vision-exp and GLM-5.3 Flash billed at
+    // 0 Credits on B.AI Chat+API (from 2026-08-17/21). Branded under deepseek/zai
+    // but routed through bai (router.ts), so list both namespaces; all resolve
+    // to free static pricing while the upstream offer lasts.
+    'deepseek:deepseek-v4-flash',
+    'deepseek:deepseek-v4-flash-vision-exp',
+    'zai:glm-5.3-flash',
+    'bai:deepseek-v4-flash',
+    'bai:deepseek-v4-flash-vision-exp',
+    'bai:glm-5.3-flash',
 ]);
 
 export function isExplicitlyFree(provider: string, model: string): boolean {

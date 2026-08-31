@@ -21,10 +21,19 @@ describe('free model tier', () => {
     // Everything else in the free tier must pass through unchanged.
     const ALIASED_FREE_MODELS = new Set(['centaur']);
 
+    // B.AI models are branded under deepseek/zai but routed through bai
+    // (MODEL_PROVIDER_OVERRIDES in router.ts). Their catalog entries under
+    // deepseek/zai are for UI branding; the free check must accept bai routing.
+    const BAI_ROUTED_MODELS = new Set(['deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'glm-5.3-flash']);
+
     it('routes every advertised free model to the provider that serves it', () => {
         expect(freeModels.length).toBeGreaterThan(0);
         for (const [providerId, modelId] of freeModels) {
-            expect(router.detectProvider(modelId), `detectProvider(${modelId})`).toBe(providerId);
+            if (BAI_ROUTED_MODELS.has(modelId) && (providerId === 'deepseek' || providerId === 'zai')) {
+                expect(router.detectProvider(modelId), `detectProvider(${modelId})`).toBe('bai');
+            } else {
+                expect(router.detectProvider(modelId), `detectProvider(${modelId})`).toBe(providerId);
+            }
             if (ALIASED_FREE_MODELS.has(modelId)) continue;
             expect(
                 router.normalizeModelName(modelId, providerId),

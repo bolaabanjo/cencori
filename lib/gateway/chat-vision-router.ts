@@ -115,6 +115,10 @@ const VISION_CAPABLE_PATTERNS = [
     // the unfunded OpenAI account. Both are registered in VISION_MODELS.
     /^nvidia\/nemotron-nano-12b-v2-vl:free$/i,
     /^nvidia\/nemotron-3-nano-omni-30b-a3b-reasoning:free$/i,
+    // B.AI — DeepSeek V4 Flash Vision (exp) routes through b.ai but is
+    // vision-capable. Without this pattern an image request would be
+    // "upgraded" to gpt-4o-mini.
+    /^deepseek-v4-flash-vision-exp$/i,
 ];
 
 function isVisionCapable(model: string): boolean {

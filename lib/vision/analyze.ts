@@ -71,6 +71,13 @@ export const VISION_PROVIDER_LIMITS = {
         maxBytes: 20 * 1024 * 1024,
         notes: 'No published limits; the cross-provider safe set is applied.',
     },
+    bai: {
+        // B.AI proxies DeepSeek and Z.AI models. No published image format or
+        // size limits — the cross-provider safe set is applied.
+        formats: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+        maxBytes: 20 * 1024 * 1024,
+        notes: 'No published limits; the cross-provider safe set is applied.',
+    },
 } as const satisfies Record<VisionProvider, { formats: readonly string[]; maxBytes: number; notes: string }>;
 
 // Universal set that works across all three providers
@@ -106,7 +113,7 @@ export class VisionValidationError extends Error {
  * here plus its models in VISION_MODELS is all it takes; nothing about the
  * payload changes.
  */
-export const OPENAI_COMPATIBLE_VISION_PROVIDERS = ['maximo', 'openrouter'] as const;
+export const OPENAI_COMPATIBLE_VISION_PROVIDERS = ['maximo', 'openrouter', 'bai'] as const;
 
 export type OpenAICompatibleVisionProvider = typeof OPENAI_COMPATIBLE_VISION_PROVIDERS[number];
 
@@ -189,6 +196,8 @@ const VISION_MODELS: Record<string, ModelInfo> = {
     // the "vl"/"omni" in their ids.
     'nvidia/nemotron-nano-12b-v2-vl:free': { provider: 'openrouter', apiModel: 'nvidia/nemotron-nano-12b-v2-vl:free', description: 'Free vision — 12B VL, 128k context' },
     'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': { provider: 'openrouter', apiModel: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', description: 'Free vision — 30B omni-modal reasoning, 256k context' },
+    // B.AI — DeepSeek V4 Flash Vision (exp), routed through b.ai
+    'deepseek-v4-flash-vision-exp': { provider: 'bai', apiModel: 'deepseek-v4-flash-vision-exp', description: 'Vision-capable DeepSeek V4 Flash (exp) — image + text input via B.AI' },
 };
 
 const DEFAULT_MODEL = 'gpt-4o-mini';

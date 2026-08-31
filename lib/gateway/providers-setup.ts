@@ -44,6 +44,10 @@ const OPENAI_COMPATIBLE_ENV_VARS: Record<string, string[]> = {
     helix: ['HELIX_API_KEY'],
     // Centaur stealth-preview key (partner-provisioned, one-week window).
     centaur: ['CENTAUR_API_KEY'],
+    // B.AI — backend provider for DeepSeek and GLM models rebranded under
+    // their public-facing provider names (see MODEL_PROVIDER_OVERRIDES in
+    // router.ts and the catalog entries in config.ts).
+    bai: ['BAI_API_KEY'],
 };
 
 function firstConfiguredEnv(names: string[]): string | undefined {

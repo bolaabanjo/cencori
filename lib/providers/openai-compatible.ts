@@ -87,6 +87,10 @@ export const OPENAI_COMPATIBLE_ENDPOINTS: Record<string, { baseURL: string; name
         baseURL: 'https://api.okeymeta.com.ng/v1',
         name: 'Centaur',
     },
+    bai: {
+        baseURL: 'https://api.b.ai/v1',
+        name: 'B.AI',
+    },
 };
 
 /**

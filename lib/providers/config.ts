@@ -34,6 +34,7 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         keyPrefix: '',
         models: [
             { id: 'glm-5.2', name: 'GLM-5.2', type: ['chat', 'reasoning'], contextWindow: 1000000, description: 'Flagship model, 1M context, coding & agentic, reasoning effort (max/high)' },
+            { id: 'glm-5.3-flash', name: 'GLM-5.3 Flash', type: ['chat', 'reasoning'], contextWindow: 1000000, description: 'Fast GLM model, 1M context, economical reasoning — free via B.AI promo', free: true },
         ],
     },
     {
@@ -350,7 +351,8 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         models: [
             // V4 Series (April 2026)
             { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: '1.6T total / 49B active params, flagship performance' },
-            { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: '284B total / 13B active params, fast & economical' },
+            { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: '284B total / 13B active params, fast & economical — free via B.AI promo', free: true },
+            { id: 'deepseek-v4-flash-vision-exp', name: 'DeepSeek V4 Flash Vision (exp)', type: ['chat', 'reasoning', 'code', 'vision'], contextWindow: 1000000, description: 'Vision-capable DeepSeek V4 Flash experimental — image + text input — free via B.AI promo', free: true },
             // V3.2 Series (Dec 2025)
             // V3.1 (Aug 2025)
             // V3 (March 2025 update)
@@ -397,6 +399,25 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         keyPrefix: 'csk_cencori_',
         models: [
             { id: 'helix-advisor', name: 'Helix Advisor', type: ['chat', 'reasoning', 'code'], contextWindow: 128000, description: 'Autonomous engineering agent (advisor mode) by Launchverse — architecture, debugging, and planning guidance. Read-only.' },
+        ],
+    },
+    {
+        id: 'bai',
+        name: 'B.AI',
+        icon: '/providers/deepseek.svg',
+        website: 'https://b.ai',
+        docsUrl: 'https://b.ai/docs',
+        keyPrefix: 'sk-',
+        // Backend provider for DeepSeek and GLM models rebranded under their
+        // public-facing provider names. The catalog entries under 'deepseek' and
+        // 'zai' are for UI branding; these entries are needed so the pricing
+        // catalog test maps active DB rows to catalog entries. Users should
+        // never see 'B.AI' as a selectable provider — the router overrides in
+        // router.ts steer these model IDs here transparently.
+        models: [
+            { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash (via B.AI)', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Fast & economical, routed through B.AI — free', free: true },
+            { id: 'deepseek-v4-flash-vision-exp', name: 'DeepSeek V4 Flash Vision exp (via B.AI)', type: ['chat', 'reasoning', 'code', 'vision'], contextWindow: 1000000, description: 'Vision-capable DeepSeek V4 Flash, routed through B.AI — free', free: true },
+            { id: 'glm-5.3-flash', name: 'GLM-5.3 Flash (via B.AI)', type: ['chat', 'reasoning'], contextWindow: 1000000, description: 'Fast GLM model, routed through B.AI — free', free: true },
         ],
     },
     {

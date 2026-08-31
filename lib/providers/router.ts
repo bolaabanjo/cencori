@@ -55,6 +55,13 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'centaur': 'centaur',
     // OpenRouter stealth preview (`stealth/` prefix → nonexistent stealth provider)
     'stealth/ox-alpha': 'openrouter',
+    // B.AI — backend provider for DeepSeek and GLM models. These are shown
+    // under their public-facing provider names (deepseek, zai) in the catalog
+    // but route through b.ai for inference. See also: catalog entries in
+    // config.ts and OPENAI_COMPATIBLE_ENV_VARS in providers-setup.ts.
+    'deepseek-v4-flash': 'bai',
+    'deepseek-v4-flash-vision-exp': 'bai',
+    'glm-5.3-flash': 'bai',
 };
 
 /**
