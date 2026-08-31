@@ -55,6 +55,23 @@ const MODEL_PROVIDER_OVERRIDES: Record<string, string> = {
     'centaur': 'centaur',
     // OpenRouter stealth preview (`stealth/` prefix → nonexistent stealth provider)
     'stealth/ox-alpha': 'openrouter',
+    // OpenRouter paid catalog — every id is `vendor/model` and would otherwise
+    // be misrouted by the generic `provider/model` split below (e.g.
+    // `openai/gpt-5` → openai, `moonshotai/kimi-*` → moonshotai). Explicit
+    // overrides keep them on OpenRouter so BYOK `openrouter` keys are consulted
+    // and `normalizeModelName` preserves the full id upstream.
+    'openai/gpt-5': 'openrouter',
+    'anthropic/claude-opus-4.5': 'openrouter',
+    'google/gemini-3.1-pro-preview': 'openrouter',
+    'x-ai/grok-4.3': 'openrouter',
+    'x-ai/grok-4.6': 'openrouter',
+    'deepseek/deepseek-v4-pro': 'openrouter',
+    'deepseek/deepseek-v4-flash': 'openrouter',
+    'moonshotai/kimi-k3': 'openrouter',
+    'moonshotai/kimi-k2.7-code': 'openrouter',
+    'moonshotai/kimi-k2.6': 'openrouter',
+    'qwen/qwen3.8-max': 'openrouter',
+    'qwen/qwen3-coder-plus': 'openrouter',
     // B.AI — backend provider for DeepSeek and GLM models. These are shown
     // under their public-facing provider names (deepseek, zai) in the catalog
     // but route through b.ai for inference. See also: catalog entries in
