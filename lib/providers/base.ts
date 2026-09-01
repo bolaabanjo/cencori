@@ -136,6 +136,16 @@ export interface UnifiedChatResponse {
  */
 export interface StreamChunk {
     delta: string;
+    /**
+     * Chain-of-thought tokens, for providers that stream them on a field of their own
+     * (`delta.reasoning_content` in the DeepSeek/GLM dialect) rather than inside `delta.content`.
+     *
+     * Kept separate because it is not the answer: a consumer that concatenated it into `delta`
+     * would put the model's thinking in the user's reply. Reading it at all is what stops a
+     * reasoning model looking frozen — it thinks for tens of seconds before the first content
+     * token, and every one of those tokens used to be dropped here.
+     */
+    reasoningDelta?: string;
     finishReason?: 'stop' | 'length' | 'content_filter' | 'tool_calls';
     /** Error message if the stream encountered an error */
     error?: string;

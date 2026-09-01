@@ -364,7 +364,7 @@ function providerFailureResult(error: unknown, model?: string): V1ResponseExecut
 // ── Streaming ──
 
 function buildResponsesStreamChunk(params: {
-    type: 'response.output_text.delta' | 'response.output_text.done' | 'response.function_call_arguments.delta' | 'response.function_call_arguments.done' | 'response.web_search_call.completed' | 'response.file_search_call.completed' | 'response.code_interpreter_call.completed' | 'response.done';
+    type: 'response.output_text.delta' | 'response.output_text.done' | 'response.reasoning_summary_text.delta' | 'response.reasoning_summary_text.done' | 'response.function_call_arguments.delta' | 'response.function_call_arguments.done' | 'response.web_search_call.completed' | 'response.file_search_call.completed' | 'response.code_interpreter_call.completed' | 'response.done';
     data: Record<string, unknown>;
 }): string {
     return `event: ${params.type}\ndata: ${JSON.stringify(params.data)}\n\n`;
@@ -384,6 +384,7 @@ export async function runV1ResponsesExecution(
             projectId: gatewayCtx.projectId,
             organizationId: gatewayCtx.organizationId,
             requestedModel: model,
+            basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
             allowedModels: gatewayCtx.allowedModels,
             sponsoredModels: gatewayCtx.sponsoredModels,
         });
@@ -539,6 +540,7 @@ export async function runV1ResponsesExecution(
                 organizationId: gatewayCtx.organizationId,
                 allowedModels: gatewayCtx.allowedModels,
                 sponsoredModels: gatewayCtx.sponsoredModels,
+                basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
                 tier,
                 request: chatRequest,
                 resolved,
@@ -723,6 +725,16 @@ export async function runV1ResponsesExecution(
                  */
                 let releasedRawLength = 0;
                 let emittedText = '';
+                /**
+                 * Reasoning is released on the same terms as the answer, never around them.
+                 *
+                 * It is model output like any other, so it goes through the same output guard: the
+                 * alternative is a channel the guard never sees, which is a bypass for exactly what
+                 * the guard exists to catch. It is emitted as its own event type rather than mixed
+                 * into `output_text`, because it is the model thinking rather than the reply.
+                 */
+                let fullReasoning = '';
+                let releasedReasoningLength = 0;
                 /** Set when a mid-stream check fails: stop releasing and let completion report it. */
                 let guardBlockedRelease = false;
                 /**
@@ -790,6 +802,53 @@ export async function runV1ResponsesExecution(
                     );
                 };
 
+                /** Emits reasoning the guard has approved, on the same holdback discipline. */
+                const releaseApprovedReasoning = async () => {
+                    const releasable =
+                        fullReasoning.length - releasedReasoningLength - STREAM_GUARD_HOLDBACK_CHARS;
+                    if (releasable < STREAM_GUARD_EMIT_BATCH_CHARS) return;
+
+                    let releaseEnd = fullReasoning.length - STREAM_GUARD_HOLDBACK_CHARS;
+                    // Never split a UTF-16 surrogate pair across two events.
+                    const previousCodeUnit = fullReasoning.charCodeAt(releaseEnd - 1);
+                    if (previousCodeUnit >= 0xd800 && previousCodeUnit <= 0xdbff) releaseEnd -= 1;
+                    if (releaseEnd <= releasedReasoningLength) return;
+
+                    const candidate = detokenize(fullReasoning.slice(0, releaseEnd));
+                    const check = await runGatewayOutputGuard({
+                        supabase: params.supabase,
+                        projectId: gatewayCtx.projectId,
+                        apiKeyId: gatewayCtx.apiKeyId,
+                        environment: gatewayCtx.environment,
+                        outputText: candidate,
+                        inputText,
+                        inputSecurity,
+                        conversationHistory: messages,
+                        endUserId: params.endUserId,
+                        organizationId: gatewayCtx.organizationId,
+                        model: resolved.model,
+                        region: gatewayCtx.countryCode,
+                    });
+                    // A rejected check stops reasoning release for the rest of the turn. The answer
+                    // has its own gate, and completion still runs the full-output guard.
+                    if (!check.ok) {
+                        releasedReasoningLength = Number.POSITIVE_INFINITY;
+                        return;
+                    }
+
+                    const delta = candidate.slice(detokenize(fullReasoning.slice(0, releasedReasoningLength)).length);
+                    releasedReasoningLength = releaseEnd;
+                    if (!delta) return;
+                    controller.enqueue(
+                        encoder.encode(
+                            buildResponsesStreamChunk({
+                                type: 'response.reasoning_summary_text.delta',
+                                data: { delta, index: 0 },
+                            })
+                        )
+                    );
+                };
+
                 try {
                     for await (const chunk of streamGatewayChat({
                         supabase: params.supabase,
@@ -797,6 +856,7 @@ export async function runV1ResponsesExecution(
                         organizationId: gatewayCtx.organizationId,
                         allowedModels: gatewayCtx.allowedModels,
                         sponsoredModels: gatewayCtx.sponsoredModels,
+                        basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
                         tier,
                         request: chatRequest,
                         resolved,
@@ -807,6 +867,12 @@ export async function runV1ResponsesExecution(
                         }
                         if (chunk.delta) {
                             fullText += chunk.delta;
+                        }
+                        if (chunk.reasoningDelta) {
+                            fullReasoning += chunk.reasoningDelta;
+                            if (releasesIncrementally && !guardBlockedRelease) {
+                                await releaseApprovedReasoning();
+                            }
                         }
 
                         if (chunk.toolCalls) {
@@ -980,6 +1046,38 @@ export async function runV1ResponsesExecution(
                             // If the prefix ever disagreed, re-sending the whole answer would give
                             // the client the prefix twice. `output_text.done` below carries the
                             // authoritative full text, so emitting nothing extra is the safe side.
+                            /**
+                             * Reasoning closes before the answer does. The full-output guard has
+                             * just passed, so the held-back tail is approved; a turn whose
+                             * reasoning was blocked mid-stream keeps its release length at
+                             * infinity and emits nothing further.
+                             */
+                            if (fullReasoning && Number.isFinite(releasedReasoningLength)) {
+                                const finalReasoning = detokenize(fullReasoning);
+                                const sent = detokenize(fullReasoning.slice(0, releasedReasoningLength));
+                                const reasoningTail = finalReasoning.startsWith(sent)
+                                    ? finalReasoning.slice(sent.length)
+                                    : '';
+                                if (reasoningTail) {
+                                    controller.enqueue(
+                                        encoder.encode(
+                                            buildResponsesStreamChunk({
+                                                type: 'response.reasoning_summary_text.delta',
+                                                data: { delta: reasoningTail, index: 0 },
+                                            })
+                                        )
+                                    );
+                                }
+                                controller.enqueue(
+                                    encoder.encode(
+                                        buildResponsesStreamChunk({
+                                            type: 'response.reasoning_summary_text.done',
+                                            data: { text: finalReasoning, index: 0 },
+                                        })
+                                    )
+                                );
+                            }
+
                             const remainder = fullText.startsWith(emittedText)
                                 ? fullText.slice(emittedText.length)
                                 : '';
