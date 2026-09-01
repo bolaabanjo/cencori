@@ -364,7 +364,7 @@ function providerFailureResult(error: unknown, model?: string): V1ResponseExecut
 // ── Streaming ──
 
 function buildResponsesStreamChunk(params: {
-    type: 'response.output_text.delta' | 'response.output_text.done' | 'response.reasoning_summary_text.delta' | 'response.reasoning_summary_text.done' | 'response.function_call_arguments.delta' | 'response.function_call_arguments.done' | 'response.web_search_call.completed' | 'response.file_search_call.completed' | 'response.code_interpreter_call.completed' | 'response.done';
+    type: 'response.output_item.added' | 'response.output_item.done' | 'response.output_text.delta' | 'response.output_text.done' | 'response.reasoning_summary_text.delta' | 'response.reasoning_summary_text.done' | 'response.function_call_arguments.delta' | 'response.function_call_arguments.done' | 'response.web_search_call.completed' | 'response.file_search_call.completed' | 'response.code_interpreter_call.completed' | 'response.done';
     data: Record<string, unknown>;
 }): string {
     return `event: ${params.type}\ndata: ${JSON.stringify(params.data)}\n\n`;
@@ -743,15 +743,42 @@ export async function runV1ResponsesExecution(
                  */
                 const reasoningItemId = `rs_${gatewayCtx.requestId}`;
                 /**
-                 * Off until the item lifecycle is emitted with it.
+                 * Whether the reasoning item has been announced yet.
                  *
-                 * The Responses protocol announces an item with `response.output_item.added`
-                 * before any delta that belongs to it, and a consumer tracking that item rejects
-                 * summary deltas arriving without one — the codex runtime calls `error_or_panic`,
-                 * which panics a debug build and drops the delta in release. Emitting the deltas
-                 * alone was worse than emitting nothing.
+                 * `response.output_item.added` has to reach the client before any delta that
+                 * belongs to the item, and it is sent lazily on the first reasoning token so a
+                 * turn that never reasons announces nothing.
                  */
-                const emitReasoning = false;
+                let reasoningItemOpen = false;
+                const reasoningItem = (summaryText: string | null) => ({
+                    type: 'reasoning',
+                    id: reasoningItemId,
+                    // `summary` and `encrypted_content` are both required by the item schema.
+                    summary: summaryText ? [{ type: 'summary_text', text: summaryText }] : [],
+                    encrypted_content: null,
+                });
+                const openReasoningItem = () => {
+                    if (reasoningItemOpen) return;
+                    reasoningItemOpen = true;
+                    controller.enqueue(
+                        encoder.encode(
+                            buildResponsesStreamChunk({
+                                type: 'response.output_item.added',
+                                data: { item: reasoningItem(null), output_index: 0 },
+                            })
+                        )
+                    );
+                };
+
+                /**
+                 * On, now that every delta is bracketed by its item.
+                 *
+                 * Verified by replaying this exact stream into the codex runtime: without the
+                 * `output_item.added` above it panics on `ReasoningSummaryDelta without active
+                 * item` and forwards nothing; with it the runtime emits
+                 * `item/reasoning/summaryTextDelta` and does not panic.
+                 */
+                const emitReasoning = true;
                 /** Set when a mid-stream check fails: stop releasing and let completion report it. */
                 let guardBlockedRelease = false;
                 /**
@@ -856,6 +883,7 @@ export async function runV1ResponsesExecution(
                     const delta = candidate.slice(detokenize(fullReasoning.slice(0, releasedReasoningLength)).length);
                     releasedReasoningLength = releaseEnd;
                     if (!delta) return;
+                    openReasoningItem();
                     controller.enqueue(
                         encoder.encode(
                             buildResponsesStreamChunk({
@@ -1094,6 +1122,7 @@ export async function runV1ResponsesExecution(
                                         )
                                     );
                                 }
+                                openReasoningItem();
                                 controller.enqueue(
                                     encoder.encode(
                                         buildResponsesStreamChunk({
@@ -1103,6 +1132,18 @@ export async function runV1ResponsesExecution(
                                                 output_index: 0,
                                                 summary_index: 0,
                                                 text: finalReasoning,
+                                            },
+                                        })
+                                    )
+                                );
+                                // Closes the item the deltas belonged to, carrying the summary.
+                                controller.enqueue(
+                                    encoder.encode(
+                                        buildResponsesStreamChunk({
+                                            type: 'response.output_item.done',
+                                            data: {
+                                                item: reasoningItem(finalReasoning),
+                                                output_index: 0,
                                             },
                                         })
                                     )
