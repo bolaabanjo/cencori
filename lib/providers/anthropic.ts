@@ -56,6 +56,23 @@ function toInputSchema(parameters: Record<string, any> | undefined): Anthropic.T
     return parameters as Anthropic.Tool.InputSchema;
 }
 
+/**
+ * Claude Fable 5.1 and Mythos 5.1 removed forced tool use: `tool_choice` of
+ * `any` or `tool` returns a 400 rather than a response. Anthropic's stated
+ * migration is `auto` plus an instruction naming the tool, so a request that
+ * asks to force a call is downgraded to `auto` instead of being forwarded to a
+ * guaranteed rejection — with tools present and a caller who wanted one used,
+ * `auto` almost always calls it, whereas the 400 returns nothing at all.
+ *
+ * Every other Claude model still honours the forced forms, so this is keyed to
+ * the affected ids rather than applied across the provider. `none` is
+ * unaffected on all models, and `disable_parallel_tool_use` still rides along
+ * with `auto`.
+ */
+function rejectsForcedToolChoice(model: string): boolean {
+    return /^claude-(fable|mythos)-5-1\b/.test(model);
+}
+
 export class AnthropicProvider extends AIProvider {
     readonly providerName = 'anthropic';
     readonly supportsTools = true;
@@ -111,11 +128,19 @@ export class AnthropicProvider extends AIProvider {
                 : undefined;
         }
 
+        const noForcing = rejectsForcedToolChoice(request.model);
+
         if (choice === 'auto') return { type: 'auto', ...disableParallel };
-        if (choice === 'required') return { type: 'any', ...disableParallel };
+        if (choice === 'required') {
+            return noForcing
+                ? { type: 'auto', ...disableParallel }
+                : { type: 'any', ...disableParallel };
+        }
         if (choice === 'none') return { type: 'none' };
         if (typeof choice === 'object' && choice.function?.name) {
-            return { type: 'tool', name: choice.function.name, ...disableParallel };
+            return noForcing
+                ? { type: 'auto', ...disableParallel }
+                : { type: 'tool', name: choice.function.name, ...disableParallel };
         }
         return undefined;
     }

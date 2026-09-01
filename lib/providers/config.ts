@@ -89,6 +89,9 @@ export const SUPPORTED_PROVIDERS: AIProviderConfig[] = [
         // Kept in sync with Anthropic's GET /v1/models — a model we list but
         // Anthropic has retired fails upstream no matter what we price it at.
         models: [
+            // Claude 5.1 Series (September 2026)
+            { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Most capable model, succeeds Fable 5 at the same rate with 75% cheaper cache reads' },
+            { id: 'claude-mythos-5-1', name: 'Claude Mythos 5.1', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Fable 5.1 under trusted-access safeguards, for vetted cybersecurity & life-sciences work' },
             // Claude 5 Series (June-July 2026)
             { id: 'claude-fable-5', name: 'Claude Fable 5', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'Most capable model, for the most demanding reasoning & long-horizon agentic work' },
             { id: 'claude-opus-5', name: 'Claude Opus 5', type: ['chat', 'reasoning', 'code'], contextWindow: 1000000, description: 'New flagship for complex agentic coding & enterprise work, succeeds Opus 4.8' },

@@ -237,6 +237,65 @@ describe('AnthropicProvider tool calling', () => {
         });
     });
 
+    it('downgrades forced tool choice to auto on models that reject it', async () => {
+        createMock.mockResolvedValue({
+            model: 'claude-fable-5-1',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+            content: [{ type: 'text', text: 'ok' }],
+        });
+
+        const provider = new AnthropicProvider('test-key');
+        const tools = [{
+            type: 'function' as const,
+            function: { name: 'get_weather', description: 'w', parameters: {} },
+        }];
+
+        // Fable 5.1 and Mythos 5.1 return 400 for tool_choice `any` and `tool`.
+        for (const model of ['claude-fable-5-1', 'claude-mythos-5-1']) {
+            await provider.chat({
+                model,
+                messages: [{ role: 'user', content: 'hi' }],
+                tools,
+                toolChoice: 'required',
+            });
+            await provider.chat({
+                model,
+                messages: [{ role: 'user', content: 'hi' }],
+                tools,
+                toolChoice: { type: 'function', function: { name: 'get_weather' } },
+            });
+        }
+
+        for (const call of createMock.mock.calls) {
+            expect(call[0].tool_choice).toEqual({ type: 'auto' });
+        }
+
+        // The parallel opt-out still rides along with the downgraded choice.
+        createMock.mockClear();
+        await provider.chat({
+            model: 'claude-fable-5-1',
+            messages: [{ role: 'user', content: 'hi' }],
+            tools,
+            toolChoice: 'required',
+            parallelToolCalls: false,
+        });
+        expect(createMock.mock.calls[0][0].tool_choice).toEqual({
+            type: 'auto',
+            disable_parallel_tool_use: true,
+        });
+
+        // `none` is unaffected on these models.
+        createMock.mockClear();
+        await provider.chat({
+            model: 'claude-fable-5-1',
+            messages: [{ role: 'user', content: 'hi' }],
+            tools,
+            toolChoice: 'none',
+        });
+        expect(createMock.mock.calls[0][0].tool_choice).toEqual({ type: 'none' });
+    });
+
     it('omits tool fields entirely when no tools are passed', async () => {
         createMock.mockResolvedValue({
             model: 'claude-opus-5',

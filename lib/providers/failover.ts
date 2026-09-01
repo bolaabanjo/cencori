@@ -52,6 +52,8 @@ export const MODEL_MAPPINGS: Record<string, Record<string, string>> = {
     'claude-opus-4-6': { 'openai': 'gpt-5.4', 'google': 'gemini-3.1-pro-preview' },
     'claude-sonnet-4-6': { 'openai': 'gpt-5.4-mini', 'google': 'gemini-3.5-flash' },
     'claude-sonnet-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-fable-5-1': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
+    'claude-mythos-5-1': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
     'claude-fable-5': { 'openai': 'gpt-5.5', 'google': 'gemini-3.1-pro-preview' },
     'claude-opus-4-5': { 'openai': 'gpt-5', 'google': 'gemini-3-pro' },
     'claude-sonnet-4-5': { 'openai': 'gpt-4o', 'google': 'gemini-2.5-flash' },

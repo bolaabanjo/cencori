@@ -11,6 +11,11 @@ export const ALL_MODELS_GRANT = '*';
 // while 1.1 stays gated under its existing arrangement.
 const RESTRICTED_MODELS = new Set([
     'maximo:maximo-atlas-1.1',
+    // Anthropic serves Mythos 5.1 only to its trusted-access program (vetted
+    // cybersecurity and life-sciences professionals). Fable 5.1 is the same
+    // model under general safeguards and stays open, so the restriction is on
+    // the Mythos id alone.
+    'anthropic:claude-mythos-5-1',
 ]);
 
 export function canonicalModelKey(provider: string, model: string): string {

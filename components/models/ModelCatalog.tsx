@@ -221,6 +221,12 @@ function getModelPrice(modelId: string, type: string | string[], free?: boolean)
     if (id === "claude-opus-5") {
         return { input: "$5.00", output: "$25.00" };
     }
+    // Priced above the Opus tier. Without this the Fable/Mythos ids match none
+    // of the Claude branches below and fall through to the generic catch-all,
+    // which quoted Fable 5 at $0.50/$1.50 — 20x under its real rate.
+    if (id.startsWith("claude-fable") || id.startsWith("claude-mythos")) {
+        return { input: "$10.00", output: "$50.00" };
+    }
     if (id.includes("opus")) {
         return { input: "$15.00", output: "$75.00" };
     }
@@ -318,7 +324,7 @@ function flattenModels(): FlatModel[] {
     }
 
     // Models pinned to the top (newly added, remove from this list after a while)
-    const pinnedIds = new Set(['claude-opus-5', 'claude-sonnet-5', 'glm-5.2', 'axiveri/africlaude-7b', 'claude-opus-4.8', 'gemini-3.5-flash']);
+    const pinnedIds = new Set(['claude-fable-5-1', 'claude-opus-5', 'claude-sonnet-5', 'glm-5.2', 'axiveri/africlaude-7b', 'claude-opus-4.8', 'gemini-3.5-flash']);
     const pinned: FlatModel[] = [];
     const rest: FlatModel[] = [];
 
