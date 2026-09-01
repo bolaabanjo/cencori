@@ -106,10 +106,20 @@ export async function writeProfile(
     .from("user_profiles")
     .upsert({ id: userId, ...patch, updated_at: new Date().toISOString() }, { onConflict: "id" });
   if (!error) return { error: null };
+
+  const detail = `${error.message ?? ""} ${error.details ?? ""}`;
   // The unique index is the authority on a taken handle, not the read that preceded it: two
   // requests can both find it free and only one can have it.
-  if (error.code === "23505") return { error: "That username is taken." };
-  if (error.code === "23514") return { error: "That username is not valid." };
-  console.error("[Basecode Profile] Could not write profile", error);
+  //
+  // Only when it is *that* index, though. A unique violation on anything else is a different
+  // problem wearing the same error code, and telling someone their username is taken when it is
+  // not sends them off renaming something that was never the matter.
+  if (error.code === "23505" && detail.includes("user_profiles_username_lower_uidx")) {
+    return { error: "That username is taken." };
+  }
+  if (error.code === "23514" && detail.includes("user_profiles_username_format")) {
+    return { error: "That username is not valid." };
+  }
+  console.error("[Basecode Profile] Could not write profile", { code: error.code, detail });
   return { error: "Your profile could not be saved." };
 }
