@@ -209,6 +209,17 @@ export async function getBasecodeBillingSnapshot(admin: Admin, userId: string) {
       name: plan.name,
       modelPolicy: plan.model_policy,
       renewsAt: planCode === "free" ? null : account.entitlement_ends_at,
+      // Both currencies, because nothing here knows which one a given account pays in -- checkout
+      // decides that from the payment provider, not from the account. The client picks; a plan
+      // priced in neither (enterprise) reports null rather than zero, which would read as free.
+      price:
+        plan.price_ngn_minor === null && plan.price_usd_minor === null
+          ? null
+          : {
+              ngnMinor: plan.price_ngn_minor,
+              periodDays: plan.billing_period_days,
+              usdMinor: plan.price_usd_minor,
+            },
     },
     usage: {
       percentageUsed: Math.max(0, Math.min(100, Math.round(rawPercentage))),
