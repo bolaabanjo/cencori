@@ -1,0 +1,109 @@
+---
+title: "Claude Fable 5.1 is on Cencori"
+slug: "claude-fable-5-1-on-cencori"
+date: "2026-09-01"
+excerpt: "Anthropic's most capable model gets a successor at the same per-token price — and cache reads drop 75%, to $0.25 per million. Claude Fable 5.1 is live on Cencori today, with the API's breaking changes handled at the gateway."
+coverImage: "/blog/images/covers/antt.png"
+tags: ["Product", "Anthropic", "AI Models", "Release"]
+category: "changelog"
+published: true
+---
+
+**Claude Fable 5.1** is live on Cencori.
+
+Anthropic shipped it today alongside **Claude Mythos 5.1** — the same underlying model under a different safeguard configuration, available only to vetted professionals through Anthropic's trusted-access program. Fable 5.1 is the generally available half, and you can target `claude-fable-5-1` across the Cencori stack now.
+
+The headline is not the base price. That hasn't moved: $10 in, $50 out per million tokens, same as Fable 5. The number that moved is the one most people never look at.
+
+## Cache Reads Dropped 75%
+
+Fable 5 read from cache at $1.00 per million tokens — the usual 0.1x of the input rate. Fable 5.1 reads at **$0.25 per million**. That's 0.025x, and it is where Anthropic's claimed ~25% typical and ~45% agentic cost reduction actually comes from.
+
+The distinction matters because of who benefits. If you send one-shot prompts with no shared prefix, your bill is unchanged. If you run agent loops — a stable system prompt and tool list, a conversation that grows over many turns, the same context re-read on every iteration — the cached portion of your input is most of your input, and it just got four times cheaper.
+
+That is the workload Fable 5.1 is built for, and now the pricing agrees.
+
+## Benchmarks
+
+| Benchmark | Score |
+|---|---|
+| Terminal-Bench 4.0 | 55.8% (Fable) / 60.9% (Mythos) |
+| CursorBench 3.2.0 | 73.4% |
+| Humanity's Last Exam | 60.9% (no tools) |
+| Terminal-Bench-Science 0.1 | 52.6% |
+
+## Pricing & Specs
+
+| | |
+|---|---|
+| **Input Tokens** | $10.00 / million |
+| **Output Tokens** | $50.00 / million |
+| **Cache Reads** | $0.25 / million |
+| **Context Window** | 1,000,000 tokens |
+| **Max Output** | 128,000 tokens |
+| **Thinking** | Adaptive (always on) |
+| **Effort Levels** | `low` · `medium` · `high` · `xhigh` · `max` |
+
+## The Breaking Changes, Handled
+
+Fable 5.1 is not a drop-in replacement at the API level. Three changes will break code written for earlier Claude models:
+
+**Forced tool use is gone.** `tool_choice` of `any` or `tool` — "you must call a tool", "you must call *this* tool" — now returns a 400 instead of a response. Anthropic's guidance is to use `auto` plus an instruction naming the tool.
+
+**Thinking is always on.** Sending `thinking: {type: "disabled"}` or a `budget_tokens` figure is rejected. Depth is controlled through effort levels instead.
+
+**History is append-only.** Thinking blocks are bound to the model that produced them, and editing an earlier turn invalidates them. Harnesses that rewrite or compact their own history need to account for this.
+
+If you call Fable 5.1 through Cencori, the first one is already handled: a request that asks to force a tool call is translated to the supported form at the gateway rather than forwarded to a guaranteed rejection. Your existing tool-calling code keeps working.
+
+This is the part of an AI gateway that only shows up on a day like today. A model launch is not just a new ID in a config file — it is a set of API changes that break working code, arriving on someone else's schedule. Absorbing that is infrastructure work, and it is the reason to have infrastructure.
+
+## Using Fable 5.1
+
+### SDK
+
+```typescript
+import { Cencori } from 'cencori';
+
+const cencori = new Cencori({ apiKey: process.env.CENCORI_API_KEY });
+
+const response = await cencori.chat.create({
+  model: 'claude-fable-5-1',
+  messages: [
+    {
+      role: 'user',
+      content: 'Trace this failure across the three services in the repo and propose a fix.'
+    }
+  ]
+});
+```
+
+### REST
+
+```bash
+curl https://api.cencori.com/v1/chat/completions \
+  -H "Authorization: Bearer $CENCORI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-fable-5-1",
+    "messages": [{"role": "user", "content": "Hello from Fable 5.1"}]
+  }'
+```
+
+## A Note on Mythos 5.1
+
+`claude-mythos-5-1` appears in the Cencori model catalog, but it is not generally callable. Anthropic serves Mythos only to vetted cybersecurity and life-sciences professionals through its trusted-access program, so on Cencori it requires an explicit grant on your API key rather than being open to every project.
+
+If your organization is enrolled with Anthropic and you want it enabled, talk to us.
+
+## Where It Fits
+
+Fable 5.1 sits at the top of the Claude lineup, above the Opus tier. Claude Opus 5 ($5/$25 per MTok) remains the right default for most production work, and Claude Sonnet 5 ($3/$15) for high-volume routes where latency and cost dominate. Both are on Cencori and both are unaffected by today's changes.
+
+Reach for Fable 5.1 when the task is genuinely hard and long-running — multi-file refactors, deep research, autonomous agent loops that run for many turns. Those are also exactly the workloads where the new cache rate does the most work, which makes the gap between it and the Opus tier narrower in practice than the per-token rates suggest.
+
+Claude Fable 5 remains available if you need to pin to it.
+
+---
+
+*Claude Fable 5.1 is available now for all Cencori customers. Check your [Model Catalog](/ai/models) to see it in action.*
