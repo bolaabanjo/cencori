@@ -218,7 +218,7 @@ export function resolveBasecodePlanModel(
 ): string {
     if (!policy || policy === 'frontier' || policy === 'custom') return requestedModel;
     if (policy === 'auto') {
-        return process.env.BASECODE_AUTO_MODEL?.trim() || 'maximo-atlas-1.2';
+        return process.env.BASECODE_AUTO_MODEL?.trim() || 'glm-5.3-flash';
     }
 
     const normalized = requestedModel.trim().toLowerCase();

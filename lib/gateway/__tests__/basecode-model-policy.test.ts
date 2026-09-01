@@ -14,6 +14,10 @@ describe('Basecode plan model policy', () => {
     );
   });
 
+  it('defaults Free Auto requests to GLM 5.3 Flash', () => {
+    expect(resolveBasecodePlanModel('auto', 'auto')).toBe('glm-5.3-flash');
+  });
+
   it('allows open-weight Builder models and rejects frontier models', () => {
     expect(resolveBasecodePlanModel('deepseek-v4-flash', 'open_weight')).toBe(
       'deepseek-v4-flash',
