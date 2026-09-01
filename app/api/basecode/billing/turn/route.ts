@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateBasecodeBillingRequest } from "@/lib/basecode-billing";
-import { isUuid } from "@/lib/basecode-data";
+import { isUuid, readThreadUsageEntries } from "@/lib/basecode-data";
 import { noStoreHeaders } from "@/lib/basecode-auth";
 
 type TurnBillingBody = {
@@ -8,6 +8,8 @@ type TurnBillingBody = {
   clientTurnKey?: unknown;
   model?: unknown;
   runtimeTurnId?: unknown;
+  threadId?: unknown;
+  threadTokens?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -71,6 +73,22 @@ export async function POST(request: NextRequest) {
         { headers: noStoreHeaders(), status: 503 },
       );
     }
+    // The count is the *thread's* running total, not this turn's own spend, so it is stored as a
+    // replace against the thread rather than summed across the thread's turns. Recorded after the
+    // lease closes and never allowed to fail it: a turn must release its reservation either way.
+    const [usage] = readThreadUsageEntries([
+      { threadId: body.threadId, tokens: body.threadTokens, updatedAt: Date.now() },
+    ]);
+    if (usage) {
+      const { error: usageError } = await session.admin.rpc("basecode_record_thread_usage", {
+        p_user_id: session.user.id,
+        p_threads: [usage],
+      });
+      if (usageError) {
+        console.error("[Basecode Billing] Thread usage could not be recorded", usageError);
+      }
+    }
+
     return NextResponse.json({ finished: data === true }, { headers: noStoreHeaders() });
   }
 

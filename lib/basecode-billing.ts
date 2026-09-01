@@ -178,6 +178,17 @@ export async function getBasecodeBillingSnapshot(admin: Admin, userId: string) {
   const cost = Number(period?.cost_used_microusd ?? 0) + Number(period?.cost_reserved_microusd ?? 0);
   const rawPercentage = requestLimit > 0 ? (requestsUsed / requestLimit) * 100 : budget > 0 ? (cost / budget) * 100 : 0;
 
+  // Token spend across every device on this account. Deliberately separate from the meter above:
+  // the plan is billed on requests and provider cost, never on tokens. Left off entirely when the
+  // account has no rows yet, because absent has to read as unknown rather than as zero.
+  const { data: tokenTotals, error: tokenError } = await admin.rpc("basecode_account_token_usage", {
+    p_user_id: userId,
+  });
+  if (tokenError) {
+    console.error("[Basecode Billing] Account token usage failed", tokenError);
+  }
+  const tokens = readAccountTokens(tokenTotals);
+
   return {
     plan: {
       code: plan.code,
@@ -188,8 +199,33 @@ export async function getBasecodeBillingSnapshot(admin: Admin, userId: string) {
     usage: {
       percentageUsed: Math.max(0, Math.min(100, Math.round(rawPercentage))),
       resetsAt: period?.ends_at ?? null,
+      ...(tokens ? { tokens } : {}),
     },
   };
+}
+
+/**
+ * The summed figure, only when every field is a real count. Postgres returns bigint sums as
+ * strings once they are large, which is exactly the case this has to survive.
+ */
+function readAccountTokens(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const fields = [
+    "totalTokens",
+    "inputTokens",
+    "cachedInputTokens",
+    "cacheWriteInputTokens",
+    "outputTokens",
+    "reasoningOutputTokens",
+  ] as const;
+  const tokens = {} as Record<(typeof fields)[number], number>;
+  for (const field of fields) {
+    const count = Number(source[field]);
+    if (!Number.isFinite(count) || count < 0) return null;
+    tokens[field] = count;
+  }
+  return tokens;
 }
 
 export function flutterwavePaymentOptions(method: BasecodePaymentMethod): string {

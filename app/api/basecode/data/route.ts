@@ -3,6 +3,7 @@ import {
   authenticateBasecodeDataRequest,
   cleanText,
   isUuid,
+  readThreadUsageEntries,
   threadsWithPersistedTurns,
 } from "@/lib/basecode-data";
 import { noStoreHeaders } from "@/lib/basecode-auth";
@@ -359,6 +360,25 @@ export async function POST(request: NextRequest) {
       .eq("workspace_id", body.workspaceId)
       .eq("user_id", session.user.id);
     return error ? json({ error: "Chats could not be archived." }, 500) : json({ ok: true });
+  }
+
+  /**
+   * Spend for threads that ran before the turn lease ever carried a count -- imported from the
+   * agent runtime's own transcripts on a device. Filed under the same thread key the lease uses, so
+   * a thread that later runs again simply replaces its imported figure.
+   */
+  if (body.action === "record_thread_usage") {
+    const threads = readThreadUsageEntries(body.threads);
+    if (threads.length === 0) return json({ recorded: 0 });
+    const { data, error } = await session.admin.rpc("basecode_record_thread_usage", {
+      p_user_id: session.user.id,
+      p_threads: threads,
+    });
+    if (error) {
+      console.error("[Basecode Data] Thread usage could not be recorded", error);
+      return json({ error: "Usage could not be recorded." }, 503);
+    }
+    return json({ recorded: Number(data ?? 0) });
   }
 
   return json({ error: "Unknown Basecode action." }, 400);

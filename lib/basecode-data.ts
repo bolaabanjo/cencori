@@ -46,3 +46,55 @@ export function threadsWithPersistedTurns<T extends { id?: unknown }>(
     (thread) => typeof thread.id === "string" && persistedThreadIds.has(thread.id),
   );
 }
+
+/** The six counts a token figure has to carry. A partial one is a total with holes in it. */
+const TOKEN_FIELDS = [
+  "totalTokens",
+  "inputTokens",
+  "cachedInputTokens",
+  "cacheWriteInputTokens",
+  "outputTokens",
+  "reasoningOutputTokens",
+] as const;
+
+export type BasecodeThreadUsageEntry = {
+  threadId: string;
+  tokens: Record<(typeof TOKEN_FIELDS)[number], number>;
+  updatedAt: number;
+};
+
+/**
+ * Reads the thread-spend payload the desktop sends, from a turn lease or from a transcript import.
+ *
+ * Entries that do not survive are dropped rather than failing the batch: a device filing months of
+ * imported history must not lose the lot because one transcript was odd.
+ */
+export function readThreadUsageEntries(value: unknown): BasecodeThreadUsageEntry[] {
+  if (!Array.isArray(value)) return [];
+  const entries: BasecodeThreadUsageEntry[] = [];
+  for (const raw of value.slice(0, 500)) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = raw as Record<string, unknown>;
+    const threadId = typeof candidate.threadId === "string" ? candidate.threadId.slice(0, 200) : "";
+    if (!threadId) continue;
+    const source = candidate.tokens;
+    if (!source || typeof source !== "object") continue;
+    const tokens = {} as BasecodeThreadUsageEntry["tokens"];
+    let complete = true;
+    for (const field of TOKEN_FIELDS) {
+      const count = (source as Record<string, unknown>)[field];
+      if (typeof count !== "number" || !Number.isFinite(count) || count < 0) {
+        complete = false;
+        break;
+      }
+      tokens[field] = Math.round(count);
+    }
+    if (!complete) continue;
+    const updatedAt =
+      typeof candidate.updatedAt === "number" && Number.isFinite(candidate.updatedAt)
+        ? Math.round(candidate.updatedAt)
+        : Date.now();
+    entries.push({ threadId, tokens, updatedAt });
+  }
+  return entries;
+}
