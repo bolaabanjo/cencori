@@ -282,12 +282,6 @@ export class OpenAICompatibleProvider extends AIProvider {
 
             for await (const chunk of stream) {
                 const delta = chunk.choices[0]?.delta?.content || '';
-                // Reasoning models stream their thinking here and leave `content` empty until it
-                // is done. Ignoring the field made those tokens invisible, so a model that reasons
-                // for thirty seconds sent nothing for thirty seconds.
-                const reasoningDelta =
-                    (chunk.choices[0]?.delta as { reasoning_content?: string } | undefined)
-                        ?.reasoning_content || '';
                 const finishReason = chunk.choices[0]?.finish_reason;
                 const toolCallDeltas = chunk.choices[0]?.delta?.tool_calls;
 
@@ -337,7 +331,6 @@ export class OpenAICompatibleProvider extends AIProvider {
 
                 yield {
                     delta,
-                    ...(reasoningDelta ? { reasoningDelta } : {}),
                     finishReason: finishReason === 'tool_calls' ? 'tool_calls'
                         : finishReason === 'stop' || finishReason === 'length' || finishReason === 'content_filter'
                             ? finishReason
