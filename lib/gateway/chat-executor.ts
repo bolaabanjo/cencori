@@ -130,6 +130,7 @@ export async function executeGatewayChat(params: {
     organizationId: string;
     allowedModels?: string[] | null;
     sponsoredModels?: string[] | null;
+    basecodeModelPolicy?: 'auto' | 'open_weight' | 'frontier' | 'custom' | null;
     tier: SubscriptionTier;
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
@@ -163,6 +164,7 @@ export async function executeGatewayChat(params: {
             projectId: params.projectId,
             organizationId: params.organizationId,
             requestedModel: params.request.model,
+            basecodeModelPolicy: params.basecodeModelPolicy,
             allowedModels: params.allowedModels,
             sponsoredModels: params.sponsoredModels,
         }));
@@ -334,6 +336,7 @@ export async function* streamGatewayChat(params: {
     organizationId: string;
     allowedModels?: string[] | null;
     sponsoredModels?: string[] | null;
+    basecodeModelPolicy?: 'auto' | 'open_weight' | 'frontier' | 'custom' | null;
     tier: SubscriptionTier;
     request: UnifiedChatRequest;
     resolved?: ResolvedGatewayProvider;
@@ -348,6 +351,7 @@ export async function* streamGatewayChat(params: {
             projectId: params.projectId,
             organizationId: params.organizationId,
             requestedModel: params.request.model,
+            basecodeModelPolicy: params.basecodeModelPolicy,
             allowedModels: params.allowedModels,
             sponsoredModels: params.sponsoredModels,
         }));

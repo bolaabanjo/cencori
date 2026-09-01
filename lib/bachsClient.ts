@@ -21,7 +21,11 @@ export function getWebhookSecret(): string {
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 
-export type BachsProductType = 'subscription' | 'credits_topup' | 'scan_subscription';
+export type BachsProductType =
+  | 'subscription'
+  | 'credits_topup'
+  | 'scan_subscription'
+  | 'basecode_subscription';
 export type SubscriptionTier = 'pro' | 'team';
 export type BillingInterval = 'month' | 'year';
 
@@ -284,6 +288,8 @@ export const BACHS_CONFIG = {
     creditsScale: process.env.BACHS_PRODUCT_CREDITS_SCALE || '',
     scanMonthly: process.env.BACHS_PRODUCT_SCAN_MONTHLY || '',
     scanTeamMonthly: process.env.BACHS_PRODUCT_SCAN_TEAM_MONTHLY || '',
+    basecodeBuilderMonthly: process.env.BACHS_PRODUCT_BASECODE_BUILDER_MONTHLY || '',
+    basecodeProMonthly: process.env.BACHS_PRODUCT_BASECODE_PRO_MONTHLY || '',
   } as const,
 } as const;
 
@@ -378,6 +384,23 @@ export function getScanProductId(tier: 'scan' | 'scan_team'): string {
   return id;
 }
 
+export function getBasecodeProductId(tier: 'builder' | 'pro'): string {
+  const id =
+    tier === 'builder'
+      ? BACHS_CONFIG.products.basecodeBuilderMonthly
+      : BACHS_CONFIG.products.basecodeProMonthly;
+  if (!id) throw new Error(`No Bachs Basecode product configured for ${tier}`);
+  return id;
+}
+
+export function getBasecodePlanByProductId(
+  productId: string
+): 'builder' | 'pro' | null {
+  if (productId === BACHS_CONFIG.products.basecodeBuilderMonthly) return 'builder';
+  if (productId === BACHS_CONFIG.products.basecodeProMonthly) return 'pro';
+  return null;
+}
+
 export function getScanTierByProductId(
   productId: string
 ): 'scan' | 'scan_team' | null {
@@ -436,6 +459,12 @@ export function getProductTypeFromId(
   }
   if (productId === p.scanMonthly || productId === p.scanTeamMonthly) {
     return 'scan_subscription';
+  }
+  if (
+    productId === p.basecodeBuilderMonthly ||
+    productId === p.basecodeProMonthly
+  ) {
+    return 'basecode_subscription';
   }
   return null;
 }

@@ -200,6 +200,7 @@ export async function POST(
             projectId: gatewayCtx.projectId,
             organizationId: gatewayCtx.organizationId,
             requestedModel: resumeModel,
+            basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
             allowedModels: gatewayCtx.allowedModels,
             sponsoredModels: gatewayCtx.sponsoredModels,
         });

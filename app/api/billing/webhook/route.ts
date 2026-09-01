@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import {
   verifyBachsWebhook,
+  getCharge,
   getProductTypeFromId,
   getSubscriptionTierFromProductId,
   getBillingInterval,
   getScanTierByProductId,
   getCreditTopupCreditsByProductId,
+  getBasecodePlanByProductId,
   netCreditsAfterFee,
   computePeriodEnd,
-  TIER_LIMITS,
   type BachsCollectionData,
   type BachsSubscriptionData,
   type BachsWebhookEvent,
 } from '@/lib/bachsClient';
+import {
+  applyVerifiedBasecodePayment,
+  majorAmountToMinor,
+} from '@/lib/basecode-billing';
 import { addCredits } from '@/lib/credits';
 import {
   buildOrganizationSubscriptionUpdate,
@@ -162,6 +167,43 @@ async function handleCollectionSucceeded(
           error
         );
       }
+      break;
+    }
+
+    case 'basecode_subscription': {
+      if (!data.charge_id) {
+        throw new Error('Bachs Basecode collection is missing a charge ID');
+      }
+      const planCode = getBasecodePlanByProductId(productId);
+      if (!planCode) {
+        throw new Error(`Unknown Bachs Basecode product: ${productId}`);
+      }
+
+      // The signed webhook starts the workflow; the independently retrieved
+      // charge is the only object allowed to grant the entitlement.
+      const charge = await getCharge(data.charge_id);
+      const amountMinor = majorAmountToMinor(charge.amount);
+      if (
+        !['succeeded', 'successful', 'paid'].includes(charge.status) ||
+        !charge.reference ||
+        charge.currency !== 'USD' ||
+        !amountMinor
+      ) {
+        throw new Error('Bachs Basecode charge did not verify');
+      }
+
+      await applyVerifiedBasecodePayment(supabase, {
+        provider: 'bachs',
+        providerTransactionId: charge.charge_id,
+        reference: charge.reference,
+        amountMinor,
+        currency: 'USD',
+        paymentMethod: charge.payment_method,
+        paidAt: charge.created_at,
+        providerCustomerId: charge.customer.id,
+        providerPayload: charge as unknown as Record<string, unknown>,
+        planCode,
+      });
       break;
     }
 

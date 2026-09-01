@@ -205,6 +205,7 @@ export async function runV1ProviderExecution(
             projectId: params.gatewayCtx.projectId,
             organizationId: params.gatewayCtx.organizationId,
             requestedModel: params.model,
+            basecodeModelPolicy: params.gatewayCtx.basecodeModelPolicy,
             allowedModels: params.gatewayCtx.allowedModels,
             sponsoredModels: params.gatewayCtx.sponsoredModels,
         });
@@ -245,6 +246,7 @@ export async function runV1ProviderExecution(
                 organizationId: params.gatewayCtx.organizationId,
                 allowedModels: params.gatewayCtx.allowedModels,
                 sponsoredModels: params.gatewayCtx.sponsoredModels,
+                basecodeModelPolicy: params.gatewayCtx.basecodeModelPolicy,
                 tier,
                 request: chatRequest,
                 resolved,
@@ -820,6 +822,7 @@ export async function runV1ProviderExecution(
                         organizationId: params.gatewayCtx.organizationId,
                         allowedModels: params.gatewayCtx.allowedModels,
                         sponsoredModels: params.gatewayCtx.sponsoredModels,
+                        basecodeModelPolicy: params.gatewayCtx.basecodeModelPolicy,
                         tier,
                         request: chatRequest,
                         resolved,

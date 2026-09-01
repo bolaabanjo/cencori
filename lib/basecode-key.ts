@@ -152,6 +152,7 @@ export async function issueBasecodeApiKey(
       created_by: userId,
       environment: "production",
       key_type: "secret",
+      client_app: "basecode",
     });
 
     if (error) {

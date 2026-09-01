@@ -33,6 +33,10 @@ export interface GatewayContext {
     projectId: string;
     organizationId: string;
     apiKeyId: string | null;
+    /** Present only for server-issued Basecode Desktop credentials. */
+    basecodeUserId?: string | null;
+    /** Server-controlled Basecode model class for this entitlement. */
+    basecodeModelPolicy?: 'auto' | 'open_weight' | 'frontier' | 'custom' | null;
     allowedModels: string[] | null;
     sponsoredModels: string[] | null;
     fullySponsoredKey: boolean;
@@ -447,6 +451,9 @@ return {
             .from('api_keys')
             .select(`
                 id,
+                name,
+                created_by,
+                client_app,
                 project_id,
                 environment,
                 key_type,
@@ -540,6 +547,10 @@ return {
         ? keyData.sponsored_models.filter((model: unknown): model is string => typeof model === 'string')
         : null;
     const fullySponsoredKey = isFullySponsoredApiKey(allowedModels, sponsoredModels);
+    const basecodeUserId =
+        keyData.client_app === 'basecode' && typeof keyData.created_by === 'string'
+            ? keyData.created_by
+            : null;
 
     const shouldEnforceCredits = tier !== 'free' && tier !== 'enterprise' && !fullySponsoredKey;
 
@@ -584,7 +595,10 @@ return {
             return cached ?? Number(organization.credits_balance ?? 0);
         })
         : Promise.resolve(Number(organization.credits_balance ?? 0));
-    const [networkDenial, creditsBalance, rateLimitResult, spendCapResult] = await Promise.all([
+    const basecodeAccessPromise = basecodeUserId
+        ? supabase.rpc('basecode_gateway_access', { p_user_id: basecodeUserId })
+        : Promise.resolve({ data: null, error: null });
+    const [networkDenial, creditsBalance, rateLimitResult, spendCapResult, basecodeAccess] = await Promise.all([
         enforceProjectIngressPolicy({
             supabase,
             projectId: project.id,
@@ -594,9 +608,57 @@ return {
         creditsBalancePromise,
         checkRateLimit(project.id, { requestId, route }),
         checkSpendCap(project.id),
+        basecodeAccessPromise,
     ]);
 
     if (networkDenial) return { success: false, response: networkDenial };
+
+    if (basecodeUserId) {
+        if (basecodeAccess.error) {
+            console.error('[GatewayMiddleware] Basecode entitlement lookup failed:', basecodeAccess.error);
+            return {
+                success: false,
+                response: addGatewayHeaders(
+                    NextResponse.json(
+                        {
+                            error: 'Basecode usage unavailable',
+                            message: 'Basecode could not verify this turn. Try again shortly.',
+                            code: 'basecode_usage_unavailable',
+                        },
+                        { status: 503 }
+                    ),
+                    { requestId }
+                ),
+            };
+        }
+        const access = basecodeAccess.data as {
+            allowed?: boolean;
+            model_policy?: 'auto' | 'open_weight' | 'frontier' | 'custom';
+            reason?: string;
+            reset_at?: string;
+        } | null;
+        if (!access?.allowed) {
+            const concurrency = access?.reason === 'concurrency_limit';
+            return {
+                success: false,
+                response: addGatewayHeaders(
+                    NextResponse.json(
+                        {
+                            error: concurrency ? 'Basecode turn already running' : 'Basecode usage limit reached',
+                            message: concurrency
+                                ? 'Finish the active Basecode turn before starting another.'
+                                : 'Your Basecode usage resets automatically. Upgrade or wait for the reset to continue.',
+                            code: concurrency ? 'basecode_concurrency_limit' : 'basecode_usage_limited',
+                            reset_at: access?.reset_at ?? null,
+                            upgrade_url: '/basecode',
+                        },
+                        { status: concurrency ? 409 : 429 }
+                    ),
+                    { requestId }
+                ),
+            };
+        }
+    }
 
     if (shouldEnforceCredits && creditsBalance <= 0) {
         return {
@@ -680,6 +742,12 @@ return {
         projectId: project.id,
         organizationId,
         apiKeyId: keyData.id,
+        basecodeUserId,
+        basecodeModelPolicy:
+            basecodeUserId
+                ? ((basecodeAccess.data as { model_policy?: GatewayContext['basecodeModelPolicy'] } | null)
+                    ?.model_policy ?? null)
+                : null,
         allowedModels,
         sponsoredModels,
         fullySponsoredKey,
@@ -880,6 +948,24 @@ export async function incrementUsage(context: GatewayContext, costUsd?: number):
         }
 
         await chargeCreditsForRequest(context, costUsd);
+
+        if (context.basecodeUserId) {
+            const costMicrousd = Math.max(0, Math.ceil((costUsd ?? 0) * 1_000_000));
+            const { data: recorded, error: basecodeUsageError } = await context.supabase.rpc(
+                'basecode_record_gateway_usage',
+                {
+                    p_user_id: context.basecodeUserId,
+                    p_gateway_request_id: context.requestId,
+                    p_cost_microusd: costMicrousd,
+                }
+            );
+            if (basecodeUsageError || recorded !== true) {
+                console.error(
+                    `[Gateway] Failed to record Basecode usage for request ${context.requestId}:`,
+                    basecodeUsageError ?? 'no active reservation'
+                );
+            }
+        }
 
         // Try RPC first (atomic increment)
         const { error } = await context.supabase.rpc('increment_monthly_usage', {

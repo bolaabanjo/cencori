@@ -12,6 +12,7 @@ import { decryptApiKey } from '@/lib/encryption';
 import { getGoogleApiKey } from '@/lib/providers/google-env';
 import { resolveCustomProviderForProject } from '@/lib/providers/custom-provider-routing';
 import type { AIProvider } from '@/lib/providers/base';
+import { ModelAccessDeniedError } from '@/lib/providers/errors';
 import {
     assertApiKeyModelAccess,
     type GatewayBillingMode,
@@ -198,14 +199,51 @@ export type ResolvedGatewayProvider = {
     customProviderTag?: string;
 };
 
+const BASECODE_OPEN_WEIGHT_MODEL_MARKERS = [
+    'deepseek',
+    'glm-',
+    'qwen',
+    'kimi',
+    'llama',
+    'mistral',
+    'devstral',
+    'nemotron',
+    'gpt-oss',
+    'maximo-atlas',
+];
+
+export function resolveBasecodePlanModel(
+    requestedModel: string,
+    policy: 'auto' | 'open_weight' | 'frontier' | 'custom' | null | undefined,
+): string {
+    if (!policy || policy === 'frontier' || policy === 'custom') return requestedModel;
+    if (policy === 'auto') {
+        return process.env.BASECODE_AUTO_MODEL?.trim() || 'maximo-atlas-1.2';
+    }
+
+    const normalized = requestedModel.trim().toLowerCase();
+    if (normalized === 'auto' || normalized === 'basecode-auto') {
+        return process.env.BASECODE_BUILDER_AUTO_MODEL?.trim() || 'deepseek-v4-flash';
+    }
+    if (!BASECODE_OPEN_WEIGHT_MODEL_MARKERS.some((marker) => normalized.includes(marker))) {
+        throw new ModelAccessDeniedError('basecode-builder', requestedModel);
+    }
+    return requestedModel;
+}
+
 export async function resolveGatewayProvider(params: {
     supabase: SupabaseAdmin;
     projectId: string;
     organizationId: string;
     requestedModel: string;
+    basecodeModelPolicy?: 'auto' | 'open_weight' | 'frontier' | 'custom' | null;
     allowedModels?: string[] | null;
     sponsoredModels?: string[] | null;
 }): Promise<ResolvedGatewayProvider> {
+    const requestedModel = resolveBasecodePlanModel(
+        params.requestedModel,
+        params.basecodeModelPolicy,
+    );
     const router = new ProviderRouter();
     registerDefaultProviders(router);
 
@@ -213,7 +251,7 @@ export async function resolveGatewayProvider(params: {
         supabase: params.supabase,
         projectId: params.projectId,
         organizationId: params.organizationId,
-        requestedModel: params.requestedModel,
+        requestedModel,
     });
 
     let providerName: string;
@@ -245,8 +283,8 @@ export async function resolveGatewayProvider(params: {
             router.registerProvider(providerName, impl);
         }
     } else {
-        providerName = router.detectProvider(params.requestedModel);
-        model = router.normalizeModelName(params.requestedModel, providerName);
+        providerName = router.detectProvider(requestedModel);
+        model = router.normalizeModelName(requestedModel, providerName);
 
         const byokResult = await initializeBYOKProviders(
             router,
@@ -269,7 +307,7 @@ export async function resolveGatewayProvider(params: {
 
     const provider = customProvider
         ? router.getProvider(providerName)
-        : router.getProviderForModel(params.requestedModel);
+        : router.getProviderForModel(requestedModel);
 
     const billingMode = assertApiKeyModelAccess({
         allowedModels: params.allowedModels,

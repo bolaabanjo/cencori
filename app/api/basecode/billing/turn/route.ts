@@ -1,0 +1,81 @@
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateBasecodeBillingRequest } from "@/lib/basecode-billing";
+import { isUuid } from "@/lib/basecode-data";
+import { noStoreHeaders } from "@/lib/basecode-auth";
+
+type TurnBillingBody = {
+  action?: unknown;
+  clientTurnKey?: unknown;
+  model?: unknown;
+  runtimeTurnId?: unknown;
+};
+
+export async function POST(request: NextRequest) {
+  const session = await authenticateBasecodeBillingRequest(request);
+  if (!session) {
+    return NextResponse.json(
+      { error: "Your Cencori session is invalid." },
+      { headers: noStoreHeaders(), status: 401 },
+    );
+  }
+
+  let body: TurnBillingBody;
+  try {
+    body = (await request.json()) as TurnBillingBody;
+  } catch {
+    return NextResponse.json(
+      { error: "The Basecode usage request is invalid." },
+      { headers: noStoreHeaders(), status: 400 },
+    );
+  }
+  if (!isUuid(body.clientTurnKey)) {
+    return NextResponse.json(
+      { error: "The Basecode turn key is invalid." },
+      { headers: noStoreHeaders(), status: 400 },
+    );
+  }
+
+  if (body.action === "reserve") {
+    const model = typeof body.model === "string" ? body.model.slice(0, 160) : null;
+    const { data, error } = await session.admin.rpc("basecode_reserve_turn", {
+      p_user_id: session.user.id,
+      p_client_turn_key: body.clientTurnKey,
+      p_model: model,
+    });
+    if (error) {
+      console.error("[Basecode Billing] Turn reservation failed", error);
+      return NextResponse.json(
+        { error: "Basecode could not reserve usage for this turn." },
+        { headers: noStoreHeaders(), status: 503 },
+      );
+    }
+    const result = data as { allowed?: boolean; reason?: string } | null;
+    return NextResponse.json(result ?? { allowed: false }, {
+      headers: noStoreHeaders(),
+      status: result?.allowed ? 200 : result?.reason === "concurrency_limit" ? 409 : 429,
+    });
+  }
+
+  if (body.action === "finish") {
+    const runtimeTurnId =
+      typeof body.runtimeTurnId === "string" ? body.runtimeTurnId.slice(0, 200) : null;
+    const { data, error } = await session.admin.rpc("basecode_finish_turn", {
+      p_user_id: session.user.id,
+      p_client_turn_key: body.clientTurnKey,
+      p_runtime_turn_id: runtimeTurnId,
+    });
+    if (error) {
+      console.error("[Basecode Billing] Turn finalization failed", error);
+      return NextResponse.json(
+        { error: "Basecode could not finish the usage reservation." },
+        { headers: noStoreHeaders(), status: 503 },
+      );
+    }
+    return NextResponse.json({ finished: data === true }, { headers: noStoreHeaders() });
+  }
+
+  return NextResponse.json(
+    { error: "The Basecode usage action is invalid." },
+    { headers: noStoreHeaders(), status: 400 },
+  );
+}

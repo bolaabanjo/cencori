@@ -2,6 +2,7 @@ import Navbar from "@/components/landing/Navbar";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
+import { BasecodePlans } from "./BasecodePlans";
 
 export default function BasecodePage() {
   return (
@@ -37,8 +38,8 @@ export default function BasecodePage() {
         homeUrl="/"
         className="border-b-0 bg-transparent backdrop-blur-none"
       />
-      <main className="relative px-5 pb-16 pt-24 md:px-8 md:pt-28">
-        <header className="mx-auto mb-6 max-w-4xl text-left md:mb-8">
+      <main className="relative pt-24 md:pt-28">
+        <header className="mx-auto mb-6 max-w-4xl px-5 text-left md:mb-8 md:px-8">
           <p className="mb-5 flex items-center gap-2 text-lg font-semibold tracking-[-0.04em]">
             <Logo variant="mark" className="h-3.5" />
             Basecode
@@ -56,7 +57,7 @@ export default function BasecodePage() {
             <a href="#download">Download for macOS</a>
           </Button>
         </header>
-        <section className="mx-auto max-w-4xl overflow-hidden rounded-lg border border-white/15 bg-white/[0.03] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+        <section className="mx-5 max-w-4xl overflow-hidden rounded-lg border border-white/15 bg-white/[0.03] shadow-[0_24px_80px_rgba(0,0,0,0.45)] md:mx-auto">
           <Image
             alt="Basecode desktop workspace showing an agent task and code review"
             className="block h-auto w-full"
@@ -66,6 +67,7 @@ export default function BasecodePage() {
             width={3132}
           />
         </section>
+        <BasecodePlans />
       </main>
     </div>
   );
