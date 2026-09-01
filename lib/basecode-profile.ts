@@ -36,8 +36,8 @@ export function validateUsername(raw: unknown): UsernameProblem {
   if (typeof raw !== "string") return { ok: false, reason: "That username is not valid." };
   const value = raw.trim();
   if (!value) return { ok: true, value: null };
-  if (value.length < 3) return { ok: false, reason: "Usernames are at least 3 characters." };
-  if (value.length > 30) return { ok: false, reason: "Usernames are at most 30 characters." };
+  if (value.length < 5) return { ok: false, reason: "Usernames are at least 5 characters." };
+  if (value.length > 15) return { ok: false, reason: "Usernames are at most 15 characters." };
   if (!USERNAME_SHAPE.test(value)) {
     return {
       ok: false,

@@ -21,11 +21,17 @@ describe("username rules", () => {
   });
 
   it("refuses shapes the table would refuse anyway, with a reason a person can act on", () => {
-    expect(validateUsername("ab")).toEqual({
+    expect(validateUsername("abcd")).toEqual({
       ok: false,
-      reason: "Usernames are at least 3 characters.",
+      reason: "Usernames are at least 5 characters.",
     });
-    expect(validateUsername("a".repeat(31)).ok).toBe(false);
+    expect(validateUsername("a".repeat(16))).toEqual({
+      ok: false,
+      reason: "Usernames are at most 15 characters.",
+    });
+    // The ends of the range are allowed, not merely near-misses.
+    expect(validateUsername("abcde").ok).toBe(true);
+    expect(validateUsername("a".repeat(15)).ok).toBe(true);
     expect(validateUsername("-leading").ok).toBe(false);
     expect(validateUsername("trailing-").ok).toBe(false);
     expect(validateUsername("has space").ok).toBe(false);
