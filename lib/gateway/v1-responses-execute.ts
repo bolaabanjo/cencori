@@ -742,6 +742,16 @@ export async function runV1ResponsesExecution(
                  * `index`. Nothing here has a real item id, so one is derived from the request.
                  */
                 const reasoningItemId = `rs_${gatewayCtx.requestId}`;
+                /**
+                 * Off until the item lifecycle is emitted with it.
+                 *
+                 * The Responses protocol announces an item with `response.output_item.added`
+                 * before any delta that belongs to it, and a consumer tracking that item rejects
+                 * summary deltas arriving without one — the codex runtime calls `error_or_panic`,
+                 * which panics a debug build and drops the delta in release. Emitting the deltas
+                 * alone was worse than emitting nothing.
+                 */
+                const emitReasoning = false;
                 /** Set when a mid-stream check fails: stop releasing and let completion report it. */
                 let guardBlockedRelease = false;
                 /**
@@ -879,7 +889,7 @@ export async function runV1ResponsesExecution(
                         if (chunk.delta) {
                             fullText += chunk.delta;
                         }
-                        if (chunk.reasoningDelta) {
+                        if (emitReasoning && chunk.reasoningDelta) {
                             fullReasoning += chunk.reasoningDelta;
                             if (releasesIncrementally && !guardBlockedRelease) {
                                 await releaseApprovedReasoning();
@@ -1063,7 +1073,7 @@ export async function runV1ResponsesExecution(
                              * reasoning was blocked mid-stream keeps its release length at
                              * infinity and emits nothing further.
                              */
-                            if (fullReasoning && Number.isFinite(releasedReasoningLength)) {
+                            if (emitReasoning && fullReasoning && Number.isFinite(releasedReasoningLength)) {
                                 const finalReasoning = detokenize(fullReasoning);
                                 const sent = detokenize(fullReasoning.slice(0, releasedReasoningLength));
                                 const reasoningTail = finalReasoning.startsWith(sent)
