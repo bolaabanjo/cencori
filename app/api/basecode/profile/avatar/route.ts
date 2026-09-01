@@ -5,12 +5,16 @@ import { profileJson, readProfileRow, writeProfile } from "@/lib/basecode-profil
 
 const BUCKET = "avatars";
 const MAX_BYTES = 2 * 1024 * 1024;
-/** Matched against what the bytes say they are, not against a filename anyone can rename. */
+/**
+ * Matched against what the bytes say they are, not against a filename anyone can rename.
+ *
+ * JPEG and PNG only. GIF invites an animated avatar, which is a decision about the product rather
+ * than a format; WebP is fine but nothing here produces it, and every extra type is another shape
+ * every surface that draws an avatar has to cope with.
+ */
 const ALLOWED = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
-  ["image/gif", "gif"],
-  ["image/webp", "webp"],
 ]);
 
 export async function POST(request: NextRequest) {
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
   const extension = ALLOWED.get(file.type);
   if (!extension) {
     return NextResponse.json(
-      { error: "Use a JPG, PNG, GIF or WebP picture." },
+      { error: "Pictures have to be JPG, JPEG or PNG." },
       { headers: noStoreHeaders(), status: 400 },
     );
   }
