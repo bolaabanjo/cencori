@@ -384,7 +384,6 @@ export async function runV1ResponsesExecution(
             projectId: gatewayCtx.projectId,
             organizationId: gatewayCtx.organizationId,
             requestedModel: model,
-            basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
             allowedModels: gatewayCtx.allowedModels,
             sponsoredModels: gatewayCtx.sponsoredModels,
         });
@@ -540,7 +539,6 @@ export async function runV1ResponsesExecution(
                 organizationId: gatewayCtx.organizationId,
                 allowedModels: gatewayCtx.allowedModels,
                 sponsoredModels: gatewayCtx.sponsoredModels,
-                basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
                 tier,
                 request: chatRequest,
                 resolved,
@@ -856,7 +854,6 @@ export async function runV1ResponsesExecution(
                         organizationId: gatewayCtx.organizationId,
                         allowedModels: gatewayCtx.allowedModels,
                         sponsoredModels: gatewayCtx.sponsoredModels,
-                        basecodeModelPolicy: gatewayCtx.basecodeModelPolicy,
                         tier,
                         request: chatRequest,
                         resolved,
