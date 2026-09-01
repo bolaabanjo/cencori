@@ -733,6 +733,15 @@ export async function runV1ResponsesExecution(
                  */
                 let fullReasoning = '';
                 let releasedReasoningLength = 0;
+                /**
+                 * Identifies the reasoning item these events belong to.
+                 *
+                 * The Responses shape carries `item_id` and `summary_index` on reasoning events,
+                 * and a consumer that requires them drops anything missing them without
+                 * complaining — which is what happened when these were first emitted with a bare
+                 * `index`. Nothing here has a real item id, so one is derived from the request.
+                 */
+                const reasoningItemId = `rs_${gatewayCtx.requestId}`;
                 /** Set when a mid-stream check fails: stop releasing and let completion report it. */
                 let guardBlockedRelease = false;
                 /**
@@ -841,7 +850,12 @@ export async function runV1ResponsesExecution(
                         encoder.encode(
                             buildResponsesStreamChunk({
                                 type: 'response.reasoning_summary_text.delta',
-                                data: { delta, index: 0 },
+                                data: {
+                                    delta,
+                                    item_id: reasoningItemId,
+                                    output_index: 0,
+                                    summary_index: 0,
+                                },
                             })
                         )
                     );
@@ -1060,7 +1074,12 @@ export async function runV1ResponsesExecution(
                                         encoder.encode(
                                             buildResponsesStreamChunk({
                                                 type: 'response.reasoning_summary_text.delta',
-                                                data: { delta: reasoningTail, index: 0 },
+                                                data: {
+                                                    delta: reasoningTail,
+                                                    item_id: reasoningItemId,
+                                                    output_index: 0,
+                                                    summary_index: 0,
+                                                },
                                             })
                                         )
                                     );
@@ -1069,7 +1088,12 @@ export async function runV1ResponsesExecution(
                                     encoder.encode(
                                         buildResponsesStreamChunk({
                                             type: 'response.reasoning_summary_text.done',
-                                            data: { text: finalReasoning, index: 0 },
+                                            data: {
+                                                item_id: reasoningItemId,
+                                                output_index: 0,
+                                                summary_index: 0,
+                                                text: finalReasoning,
+                                            },
                                         })
                                     )
                                 );
