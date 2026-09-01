@@ -8,7 +8,21 @@ export type BasecodePaidPlanCode = Exclude<BasecodePlanCode, "free" | "enterpris
 export type BasecodePaymentProvider = "flutterwave" | "bachs";
 export type BasecodePaymentMethod = "auto" | "opay" | "banktransfer";
 
+const BASECODE_PRODUCTION_ORIGIN = "https://cencori.com";
+
 type Admin = ReturnType<typeof createAdminClient>;
+
+export function resolveBasecodeCheckoutOrigin(
+  requestOrigin: string,
+  vercelEnvironment: string | undefined = process.env.VERCEL_ENV,
+): string {
+  if (vercelEnvironment === "production") return BASECODE_PRODUCTION_ORIGIN;
+  try {
+    return new URL(requestOrigin).origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+}
 
 export type BasecodeBillingSession = {
   admin: Admin;

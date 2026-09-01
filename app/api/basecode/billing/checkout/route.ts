@@ -7,13 +7,15 @@ import {
   getBasecodePlan,
   getOrCreateBasecodeBillingAccount,
   parseBasecodeCheckoutInput,
+  resolveBasecodeCheckoutOrigin,
 } from "@/lib/basecode-billing";
 import { createCheckoutSession, getBasecodeProductId } from "@/lib/bachsClient";
 import { createFlutterwaveCheckout } from "@/lib/flutterwaveClient";
 import { noStoreHeaders } from "@/lib/basecode-auth";
+import { resolvePublicOrigin } from "@/lib/public-origin";
 
 function appBaseUrl(request: NextRequest): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_URL || request.nextUrl.origin).replace(/\/$/, "");
+  return resolveBasecodeCheckoutOrigin(resolvePublicOrigin(request));
 }
 
 export async function POST(request: NextRequest) {

@@ -5,6 +5,7 @@ import {
   flutterwavePaymentOptions,
   majorAmountToMinor,
   parseBasecodeCheckoutInput,
+  resolveBasecodeCheckoutOrigin,
 } from "@/lib/basecode-billing";
 
 describe("Basecode billing contracts", () => {
@@ -63,5 +64,14 @@ describe("Basecode billing contracts", () => {
     expect(basecodeCheckoutReference("d8b6c53e-1fcb-44e1-b6f7-23aa19c6a3c1")).toBe(
       "basecode_d8b6c53e1fcb44e1b6f723aa19c6a3c1",
     );
+  });
+
+  it("always returns production checkouts to cencori.com", () => {
+    expect(resolveBasecodeCheckoutOrigin("https://cencori.vercel.app", "production")).toBe(
+      "https://cencori.com",
+    );
+    expect(
+      resolveBasecodeCheckoutOrigin("https://cencori-feature.vercel.app", "preview"),
+    ).toBe("https://cencori-feature.vercel.app");
   });
 });
