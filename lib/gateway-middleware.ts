@@ -491,10 +491,53 @@ return {
     }
 
     if (keyError || !keyData) {
+        // A key that matched nothing may still be one this gateway issued and later revoked —
+        // Basecode supersedes its desktop key on every sign-in, so signing in on a second machine
+        // silently retires the first one's. Looking the hash up again without the `revoked_at`
+        // filter costs one query on a path that has already failed, and buys two things: the row
+        // can be attributed to its project and therefore logged, and the caller can be told the key
+        // was revoked rather than left guessing at "invalid".
+        const { data: revokedKey } = await supabase
+            .from('api_keys')
+            .select('id, project_id, projects!inner(organization_id)')
+            .eq('key_hash', keyHash)
+            .not('revoked_at', 'is', null)
+            .maybeSingle();
+
+        if (revokedKey?.project_id) {
+            waitUntil(
+                logGatewayRefusal({
+                    apiKeyId: revokedKey.id as string,
+                    clientIp,
+                    countryCode,
+                    endpoint: req.nextUrl.pathname,
+                    errorMessage: 'API key revoked',
+                    organizationId:
+                        (revokedKey.projects as { organization_id?: string } | null)?.organization_id
+                        ?? null,
+                    projectId: revokedKey.project_id as string,
+                    requestId,
+                    startTime,
+                    status: 'blocked',
+                    supabase,
+                })
+            );
+        }
+
         return {
             success: false,
             response: addGatewayHeaders(
-                NextResponse.json({ error: 'Invalid API key', code: 'invalid_api_key' }, { status: 401 }),
+                NextResponse.json(
+                    revokedKey
+                        ? {
+                            error: 'API key revoked',
+                            message:
+                                'This key has been revoked. Signing in to Basecode again issues a new one.',
+                            code: 'revoked_api_key',
+                        }
+                        : { error: 'Invalid API key', code: 'invalid_api_key' },
+                    { status: 401 }
+                ),
                 { requestId }
             ),
         };
@@ -638,21 +681,34 @@ return {
             reset_at?: string;
         } | null;
         if (!access?.allowed) {
-            const concurrency = access?.reason === 'concurrency_limit';
+            const refusal = describeBasecodeRefusal(access?.reason);
+            waitUntil(
+                logGatewayRefusal({
+                    apiKeyId: keyData.id,
+                    clientIp,
+                    countryCode,
+                    endpoint: req.nextUrl.pathname,
+                    errorMessage: `${refusal.error}: ${access?.reason ?? 'unknown'}`,
+                    organizationId: project.organization_id,
+                    projectId: keyData.project_id,
+                    requestId,
+                    startTime,
+                    status: refusal.status === 429 ? 'rate_limited' : 'blocked',
+                    supabase,
+                })
+            );
             return {
                 success: false,
                 response: addGatewayHeaders(
                     NextResponse.json(
                         {
-                            error: concurrency ? 'Basecode turn already running' : 'Basecode usage limit reached',
-                            message: concurrency
-                                ? 'Finish the active Basecode turn before starting another.'
-                                : 'Your Basecode usage resets automatically. Upgrade or wait for the reset to continue.',
-                            code: concurrency ? 'basecode_concurrency_limit' : 'basecode_usage_limited',
+                            error: refusal.error,
+                            message: refusal.message,
+                            code: refusal.code,
                             reset_at: access?.reset_at ?? null,
-                            upgrade_url: '/basecode',
+                            ...(refusal.status === 429 ? { upgrade_url: '/basecode' } : {}),
                         },
-                        { status: concurrency ? 409 : 429 }
+                        { status: refusal.status }
                     ),
                     { requestId }
                 ),
@@ -860,7 +916,7 @@ export async function logGatewayRequest(context: GatewayContext, params: LogRequ
     waitUntil(recordGatewayGovernanceDecision(context, params));
 
     try {
-        const { data } = await context.supabase.from('ai_requests').insert({
+        const { data, error } = await context.supabase.from('ai_requests').insert({
             project_id: context.projectId,
             api_key_id: context.apiKeyId,
             environment: context.environment === 'test' ? 'test' : 'production',
@@ -890,10 +946,137 @@ export async function logGatewayRequest(context: GatewayContext, params: LogRequ
             fallback_model: params.fallbackModel,
         }).select('id').single();
 
+        // Reported, not swallowed. Only `data` used to be read here, so a rejected insert returned
+        // null and said nothing — the catch below never fires for a PostgREST error, it only
+        // catches a thrown one. That is how a whole class of logging loss stayed invisible: a
+        // widened constraint or a new column is exactly the kind of thing that fails this way, and
+        // the console simply showed fewer rows than requests.
+        if (error) {
+            console.error(
+                `[Gateway] Log insert rejected for ${context.requestId}: ${error.message}`
+            );
+            return null;
+        }
+
         return data?.id ?? null;
     } catch (error) {
         console.error(`[Gateway] Failed to log request ${context.requestId}:`, error);
         return null;
+    }
+}
+
+/**
+ * What to tell a caller the entitlement check turned down, and why.
+ *
+ * Every reason except `concurrency_limit` used to be reported as "Basecode usage limit reached",
+ * which sent people to the upgrade page over problems an upgrade cannot fix. `turn_not_reserved`
+ * is the sharpest example: it means the request reached the gateway without the turn the client is
+ * supposed to reserve first — a sequencing fault, and the one reason that carries no `reset_at`,
+ * so the reply also claimed a reset that was null.
+ */
+/**
+ * Record a request the gateway turned down before any provider saw it.
+ *
+ * Only successes were ever written, so every 401, 429 and 409 vanished: a key that stopped working
+ * produced days of failing turns and a console showing nothing at all, which reads as "the gateway
+ * is idle" rather than "every request is being refused". The refusal is the row that matters most,
+ * because it is the one the user cannot otherwise see.
+ *
+ * No provider was called, so there are no tokens and no cost — the row exists to say a request
+ * arrived, and why it went no further.
+ */
+async function logGatewayRefusal(params: {
+    apiKeyId: string | null;
+    clientIp: string;
+    countryCode: string | null;
+    endpoint: string;
+    errorMessage: string;
+    organizationId: string | null;
+    projectId: string;
+    requestId: string;
+    startTime: number;
+    status: 'blocked' | 'rate_limited';
+    supabase: ReturnType<typeof createAdminClient>;
+}): Promise<void> {
+    try {
+        const { error } = await params.supabase.from('ai_requests').insert({
+            project_id: params.projectId,
+            api_key_id: params.apiKeyId,
+            environment: 'production',
+            endpoint: params.endpoint,
+            // Refusal happens before the body is read, so the model is genuinely not known yet.
+            model: 'unknown',
+            provider: 'cencori',
+            status: params.status,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            cost_usd: 0,
+            provider_cost_usd: 0,
+            cencori_charge_usd: 0,
+            markup_percentage: 0,
+            latency_ms: Date.now() - params.startTime,
+            ip_address: params.clientIp,
+            country_code: params.countryCode,
+            error_message: params.errorMessage,
+            request_payload: {},
+            request_id: params.requestId,
+        });
+        if (error) {
+            console.error(`[Gateway] Refusal log rejected for ${params.requestId}: ${error.message}`);
+        }
+    } catch (error) {
+        console.error(`[Gateway] Refusal log failed for ${params.requestId}:`, error);
+    }
+}
+
+export function describeBasecodeRefusal(reason: string | undefined): {
+    code: string;
+    error: string;
+    message: string;
+    status: number;
+} {
+    switch (reason) {
+        case 'concurrency_limit':
+            return {
+                code: 'basecode_concurrency_limit',
+                error: 'Basecode turn already running',
+                message: 'Finish the active Basecode turn before starting another.',
+                status: 409,
+            };
+        case 'turn_not_reserved':
+            return {
+                code: 'basecode_turn_not_reserved',
+                error: 'Basecode turn was not reserved',
+                message:
+                    'This request arrived without a reserved turn. Basecode reserves one before each '
+                    + 'turn, so this usually means the request did not come from the app, or the app '
+                    + 'is out of date.',
+                status: 409,
+            };
+        case 'account_missing':
+            return {
+                code: 'basecode_account_missing',
+                error: 'Basecode account not found',
+                message: 'This user has no Basecode billing account. Sign in to Basecode to create one.',
+                status: 403,
+            };
+        case 'plan_unavailable':
+            return {
+                code: 'basecode_plan_unavailable',
+                error: 'Basecode plan unavailable',
+                message: 'The plan on this account is not currently enabled. Contact support.',
+                status: 403,
+            };
+        default:
+            // `weekly_budget_limit`, and anything a later migration adds: a real usage ceiling,
+            // which is the only one an upgrade or a reset actually resolves.
+            return {
+                code: 'basecode_usage_limited',
+                error: 'Basecode usage limit reached',
+                message: 'Your Basecode usage resets automatically. Upgrade or wait for the reset to continue.',
+                status: 429,
+            };
     }
 }
 

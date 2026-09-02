@@ -168,7 +168,11 @@ describe('validateGatewayRequest', () => {
         }
     });
 
-    it('returns 401 for unknown key hash', async () => {
+    /**
+     * `is` is the live-key lookup; `not` is the second one, which asks whether the same hash
+     * belongs to a key that was revoked. `revoked` decides what that second lookup finds.
+     */
+    function mockApiKeyLookup(revoked: Record<string, unknown> | null) {
         mockSupabaseFrom.mockImplementation((table: string) => {
             if (table === 'api_keys') {
                 return {
@@ -177,17 +181,45 @@ describe('validateGatewayRequest', () => {
                             is: () => ({
                                 single: async () => ({ data: null, error: { code: 'PGRST116' } }),
                             }),
+                            not: () => ({ maybeSingle: async () => ({ data: revoked, error: null }) }),
                         }),
                     }),
                 };
             }
             return { select: () => ({ eq: () => ({ single: async () => ({ data: null, error: null }) }) }) };
         });
+    }
+
+    it('returns 401 for unknown key hash', async () => {
+        mockApiKeyLookup(null);
 
         const result = await validateGatewayRequest(authRequest('/api/ai/chat'));
         expect(result.success).toBe(false);
         if (!result.success) {
             expect(result.response.status).toBe(401);
+            expect((await result.response.json()).code).toBe('invalid_api_key');
+        }
+    });
+
+    /**
+     * Basecode supersedes its desktop key on every sign-in, so signing in on a second machine
+     * retires the first one's key. The first machine then repeats a request that can never succeed,
+     * and "Invalid API key" tells it nothing about why or what to do.
+     */
+    it('says a revoked key was revoked, rather than invalid', async () => {
+        mockApiKeyLookup({
+            id: 'key-revoked-1',
+            project_id: 'proj-val-1',
+            projects: { organization_id: 'org-val-1' },
+        });
+
+        const result = await validateGatewayRequest(authRequest('/api/ai/chat'));
+        expect(result.success).toBe(false);
+        if (!result.success) {
+            expect(result.response.status).toBe(401);
+            const body = await result.response.json();
+            expect(body.code).toBe('revoked_api_key');
+            expect(body.message).toMatch(/sign(ing)? in.*again/i);
         }
     });
 
