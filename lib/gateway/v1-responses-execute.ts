@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { recoverXmlToolCalls } from '@/lib/gateway/tool-call-xml';
 import {
     type TokenUsage,
     type UnifiedMessage,
@@ -626,12 +627,38 @@ export async function runV1ResponsesExecution(
                 }
             }
 
-            const openAiToolCalls = result.toolCalls?.map(tc => ({
+            const structuredToolCalls = result.toolCalls?.map(tc => ({
                 id: tc.id,
                 name: tc.function.name,
                 arguments: tc.function.arguments,
                 callId: tc.id,
             }));
+
+            /*
+             * Some models write the tool-call syntax into the message instead of emitting a call.
+             * Nothing downstream looks for that: the runtime records it as assistant text, the tool
+             * never runs, and the user is shown the markup. Recovering it here puts the call back on
+             * the ordinary path, where it meets the same approval and sandbox checks as any other.
+             *
+             * Only tools this request actually advertised are recovered, so a model quoting or
+             * explaining the syntax stays text.
+             */
+            const recovered = recoverXmlToolCalls(content, functionTools.map(tool => tool.function.name));
+            if (recovered.calls.length > 0) {
+                console.warn('[Gateway] Recovered tool calls written as text', {
+                    model: result.actualModel,
+                    recovered: recovered.calls.length,
+                    structured: structuredToolCalls?.length ?? 0,
+                });
+            }
+            content = recovered.text;
+            const openAiToolCalls = [
+                ...(structuredToolCalls ?? []),
+                ...recovered.calls.map(call => {
+                    const id = generateId('call');
+                    return { id, name: call.name, arguments: call.arguments, callId: id };
+                }),
+            ];
 
             // Shadow mode: create pending actions for tool calls
             if (params.agentId && openAiToolCalls && openAiToolCalls.length > 0) {
