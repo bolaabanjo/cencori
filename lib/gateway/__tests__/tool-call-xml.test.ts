@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recoverXmlToolCalls } from "@/lib/gateway/tool-call-xml";
+import { recoverXmlToolCalls, releasableLength } from "@/lib/gateway/tool-call-xml";
 
 const OFFERED = ["read_file", "exec_command", "update_plan"];
 
@@ -83,5 +83,46 @@ describe("recovering tool calls written as text", () => {
     const text = "one<tool_call> <function=read_file> <parameter=path>a</parameter> </function> </tool_call>two";
 
     expect(recoverXmlToolCalls(text, OFFERED).text).toBe("onetwo");
+  });
+});
+
+describe("what a partially received message may show", () => {
+  it("releases everything when no tool call is in sight", () => {
+    const text = "Here is what I found in the repository.";
+
+    expect(releasableLength(text)).toBe(text.length);
+  });
+
+  it("stops at the opening tag, so the markup is never shown", () => {
+    const text = "Now I will look at the file.<tool_call> <function=read_file>";
+
+    expect(text.slice(0, releasableLength(text))).toBe("Now I will look at the file.");
+  });
+
+  it("holds back a tag split across chunks", () => {
+    // `<tool_` and `call>` arrive separately; half a tag on screen is no better than a whole one.
+    for (const partial of ["<", "<tool", "<tool_c", "<tool_call"]) {
+      const text = `Reading the file.${partial}`;
+      expect(text.slice(0, releasableLength(text))).toBe("Reading the file.");
+    }
+  });
+
+  it("does not hold back a bracket that is just part of the prose", () => {
+    const text = "The comparison was a < b";
+
+    expect(releasableLength(text)).toBe(text.length);
+  });
+
+  it("holds back a trailing bracket, which might be the start of one", () => {
+    // Costs one character of latency and is repaid on the next chunk.
+    const text = "The comparison was a <";
+
+    expect(releasableLength(text)).toBe(text.length - 1);
+  });
+
+  it("stops at the first tag when a message carries several", () => {
+    const text = "one<tool_call>a</tool_call>two<tool_call>b</tool_call>";
+
+    expect(text.slice(0, releasableLength(text))).toBe("one");
   });
 });

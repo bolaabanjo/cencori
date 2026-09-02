@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { recoverXmlToolCalls } from '@/lib/gateway/tool-call-xml';
+import { recoverXmlToolCalls, releasableLength } from '@/lib/gateway/tool-call-xml';
 import {
     type TokenUsage,
     type UnifiedMessage,
@@ -770,7 +770,11 @@ export async function runV1ResponsesExecution(
                  * internal marker to the client.
                  */
                 const safeReleaseEnd = (proposedEnd: number) => {
-                    let safeEnd = proposedEnd;
+                    // Nothing from the first `<tool_call>` onward, and nothing that might be the
+                    // start of one. A block written as text is recovered into a real call at
+                    // completion, but only if it has not already been streamed to the client --
+                    // released text cannot be taken back, and markup on screen is the bug.
+                    let safeEnd = Math.min(proposedEnd, releasableLength(fullText));
                     if (effectiveTokenMap.size > 0 && proposedEnd < fullText.length) {
                         const prefix = fullText.slice(0, proposedEnd);
                         for (const placeholder of effectiveTokenMap.keys()) {
@@ -893,6 +897,35 @@ export async function runV1ResponsesExecution(
                                 const schemaCall = Object.values(collectedToolCalls).find(tc => tc.name === schemaToolName);
                                 if (schemaCall?.arguments) {
                                     fullText = schemaCall.arguments;
+                                }
+                            }
+
+                            /**
+                             * Same recovery as the non-streaming path: a model that writes a call
+                             * as `<tool_call>` markup instead of emitting a structured one gets it
+                             * turned back into an ordinary call, subject to the same approval and
+                             * sandbox checks as any other. `safeReleaseEnd` held the markup back,
+                             * so this runs before the client has seen any of it.
+                             *
+                             * Merged into `collectedToolCalls` rather than handled separately, so
+                             * the schema extraction, the output guard, the emitted events, the
+                             * pending actions and the usage record below all see one set of calls.
+                             */
+                            const recovered = recoverXmlToolCalls(
+                                fullText,
+                                functionTools.map(tool => tool.function.name)
+                            );
+                            if (recovered.calls.length > 0) {
+                                console.warn('[Gateway] Recovered tool calls written as text', {
+                                    model: chunk.actualModel,
+                                    recovered: recovered.calls.length,
+                                    streaming: true,
+                                    structured: Object.keys(collectedToolCalls).length,
+                                });
+                                fullText = recovered.text;
+                                for (const call of recovered.calls) {
+                                    const id = generateId('call');
+                                    collectedToolCalls[id] = { ...call, id };
                                 }
                             }
 

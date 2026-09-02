@@ -81,3 +81,27 @@ export function recoverXmlToolCalls(text: string, offered: readonly string[]): T
   cleaned += text.slice(cursor);
   return { calls, text: cleaned.replace(/\n{3,}/g, '\n\n').trim() };
 }
+
+const OPENING_TAG = '<tool_call>';
+
+/**
+ * How much of a partially received message is safe to show.
+ *
+ * Streaming releases text as it arrives, so by the time a block is complete the markup has already
+ * reached the client and cannot be taken back. Nothing after the opening tag is released: either it
+ * becomes a recovered call at the end of the message, or it stays text and is released then. A
+ * message with no tool call in it is unaffected, which is nearly all of them.
+ *
+ * The tail is checked for a partial opening tag as well, because `<tool_` and `call>` can arrive in
+ * different chunks and half a tag on screen is no better than a whole one.
+ */
+export function releasableLength(text: string): number {
+  const opened = text.indexOf(OPENING_TAG);
+  if (opened >= 0) return opened;
+
+  for (let length = OPENING_TAG.length - 1; length > 0; length -= 1) {
+    if (text.endsWith(OPENING_TAG.slice(0, length))) return text.length - length;
+  }
+
+  return text.length;
+}

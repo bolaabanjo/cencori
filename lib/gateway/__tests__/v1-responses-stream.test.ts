@@ -307,3 +307,94 @@ describe('/v1/responses streaming', () => {
         await new Response(result.response.body).text();
     });
 });
+
+describe('/v1/responses streaming tool calls written as text', () => {
+    const readFile = {
+        type: 'function',
+        function: {
+            name: 'read_file',
+            parameters: { type: 'object', properties: { path: { type: 'string' } } },
+        },
+    };
+
+    /** Prose long enough to force a real mid-stream release, then markup split across chunks. */
+    function streamWithMarkup(markup: string[]) {
+        const prose = 'B'.repeat(STREAM_GUARD_HOLDBACK_CHARS + 40);
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                yield chunk({ delta: prose });
+                for (const piece of markup) yield chunk({ delta: piece });
+                yield chunk({ delta: '', finishReason: 'stop' });
+            })()
+        );
+        return prose;
+    }
+
+    async function readAll(body: ReadableStream<Uint8Array>) {
+        const reader = body.getReader();
+        let text = '';
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) return text;
+            text += new TextDecoder().decode(value);
+        }
+    }
+
+    it('never shows the markup, and emits a real call instead', async () => {
+        // Split mid-tag: `<tool` and `_call>` arrive separately, which is how it actually comes off
+        // the wire and the case a naive whole-tag check misses.
+        streamWithMarkup([
+            '<tool',
+            '_call><function=read_file><parameter=path>src/a.ts</parameter>',
+            '</function></tool_call>',
+        ]);
+
+        const result = await runV1ResponsesExecution(baseParams({
+            body: { model: 'gpt-4o', input: 'Hello', stream: true, tools: [readFile] },
+        }));
+        if (!result.ok) throw new Error('expected ok');
+        const text = await readAll(result.response.body!);
+
+        const released = joinedDeltaText(text);
+        expect(released).not.toContain('<tool_call>');
+        expect(released).not.toContain('<function=');
+        expect(released).not.toContain('<tool');
+
+        // The call itself took the ordinary path.
+        expect(text).toContain('response.function_call_arguments.done');
+        expect(text).toContain('read_file');
+        expect(text).toContain(JSON.stringify({ path: 'src/a.ts' }).replace(/"/g, '\\"'));
+    });
+
+    it('still delivers the prose that came before the call', async () => {
+        const prose = streamWithMarkup([
+            '<tool_call><function=read_file><parameter=path>src/a.ts</parameter></function></tool_call>',
+        ]);
+
+        const result = await runV1ResponsesExecution(baseParams({
+            body: { model: 'gpt-4o', input: 'Hello', stream: true, tools: [readFile] },
+        }));
+        if (!result.ok) throw new Error('expected ok');
+
+        expect(joinedDeltaText(await readAll(result.response.body!))).toBe(prose);
+    });
+
+    it('leaves markup for a tool the request never offered as text', async () => {
+        // A model quoting or explaining the syntax is not making a call. Holding it back must not
+        // mean losing it: the text is owed to the client either way.
+        const prose = streamWithMarkup([
+            '<tool_call><function=delete_everything></function></tool_call>',
+        ]);
+
+        const result = await runV1ResponsesExecution(baseParams({
+            body: { model: 'gpt-4o', input: 'Hello', stream: true, tools: [readFile] },
+        }));
+        if (!result.ok) throw new Error('expected ok');
+        const text = await readAll(result.response.body!);
+
+        expect(joinedDeltaText(text)).toBe(
+            `${prose}<tool_call><function=delete_everything></function></tool_call>`
+        );
+        expect(text).not.toContain('delete_everything"');
+    });
+});
