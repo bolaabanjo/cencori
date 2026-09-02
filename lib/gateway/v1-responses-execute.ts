@@ -170,6 +170,12 @@ type V1ResponseExecuteParams = {
          * Left unset on guard-blocked paths — nothing was delivered to the caller.
          */
         responseText?: string;
+        /**
+         * Tool calls the model made, including any recovered from XML markup. An agentic turn
+         * often produces no prose at all, so without these the log records that a request happened
+         * and nothing whatsoever about the work it did.
+         */
+        toolCalls?: Array<{ name: string; arguments: string }>;
     }) => void;
     incrementUsage: (chargeUsd: number) => void;
     agentId?: string | null;
@@ -693,6 +699,10 @@ export async function runV1ResponsesExecution(
                 cencoriChargeUsd: result.cost.cencoriChargeUsd,
                 markupPercentage: result.cost.markupPercentage,
                 responseText: content,
+                toolCalls: openAiToolCalls.map(tc => ({
+                    name: tc.name,
+                    arguments: tc.arguments,
+                })),
             });
             params.incrementUsage(result.cost.cencoriChargeUsd);
             params.recordEndUserUsage({
@@ -1148,6 +1158,10 @@ export async function runV1ResponsesExecution(
                                 cencoriChargeUsd,
                                 markupPercentage,
                                 responseText: fullText,
+                                toolCalls: toolCallValues.map(tc => ({
+                                    name: tc.name,
+                                    arguments: tc.arguments,
+                                })),
                             });
                             params.incrementUsage(cencoriChargeUsd);
                             params.recordEndUserUsage({

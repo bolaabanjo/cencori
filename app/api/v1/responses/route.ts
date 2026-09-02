@@ -355,6 +355,15 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Captured before execution: agent-configured tools are merged into `body.tools` above, so
+        // this is the full set the model actually saw.
+        const offeredToolNames = (body.tools || [])
+            .map((tool) => {
+                const named = tool as { type?: string; function?: { name?: string }; name?: string };
+                return named.function?.name || named.name || named.type || '';
+            })
+            .filter(Boolean);
+
         const execResult = await runV1ResponsesExecution({
             supabase: adminClient,
             gatewayCtx: activeGatewayCtx,
@@ -379,14 +388,16 @@ export async function POST(req: NextRequest) {
                 // console shows a row with nothing to inspect.
                 waitUntil(
                     (async () => {
-                        const { loggedMessages, loggedResponse } = await buildMaskedLogPayloads({
-                            messages: inputPipeline.messages.map((m) => ({
-                                role: m.role,
-                                content: m.content,
-                            })),
-                            responseText: meta.responseText ?? '',
-                            customRules: inputPipeline.customRules,
-                        });
+                        const { loggedMessages, loggedResponse, loggedToolCalls } =
+                            await buildMaskedLogPayloads({
+                                messages: inputPipeline.messages.map((m) => ({
+                                    role: m.role,
+                                    content: m.content,
+                                })),
+                                responseText: meta.responseText ?? '',
+                                toolCalls: meta.toolCalls,
+                                customRules: inputPipeline.customRules,
+                            });
 
                         await logGatewayRequest(activeGatewayCtx, {
                             endpoint: "/v1/responses",
@@ -406,9 +417,20 @@ export async function POST(req: NextRequest) {
                                 messages: loggedMessages,
                                 model,
                                 stream: body.stream || false,
+                                // What the model was allowed to do, beside what it did. A turn that
+                                // called nothing reads very differently depending on whether it was
+                                // offered twelve tools or none.
+                                ...(offeredToolNames.length > 0
+                                    ? { tools: offeredToolNames }
+                                    : {}),
                             },
                             responsePayload: meta.responseText !== undefined
-                                ? { content: loggedResponse }
+                                ? {
+                                    content: loggedResponse,
+                                    ...(loggedToolCalls.length > 0
+                                        ? { tool_calls: loggedToolCalls }
+                                        : {}),
+                                }
                                 : undefined,
                         });
                     })().catch((err) =>

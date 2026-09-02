@@ -398,3 +398,41 @@ describe('/v1/responses streaming tool calls written as text', () => {
         expect(text).not.toContain('delete_everything"');
     });
 });
+
+describe('/v1/responses streaming logs the work, not just the prose', () => {
+    it('hands the tool calls to the request log, recovered ones included', async () => {
+        const logSuccess = vi.fn();
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                yield chunk({
+                    delta: '<tool_call><function=read_file><parameter=path>a.ts</parameter></function></tool_call>',
+                });
+                yield chunk({ delta: '', finishReason: 'stop' });
+            })()
+        );
+
+        const result = await runV1ResponsesExecution(baseParams({
+            logSuccess,
+            body: {
+                model: 'gpt-4o',
+                input: 'Hello',
+                stream: true,
+                tools: [{ type: 'function', function: { name: 'read_file' } }],
+            },
+        }));
+        if (!result.ok) throw new Error('expected ok');
+        const reader = result.response.body!.getReader();
+        while (!(await reader.read()).done) {
+            // Drain so settlement and logging complete.
+        }
+
+        // The turn produced no prose whatsoever -- this row would have logged blank.
+        expect(logSuccess).toHaveBeenCalledTimes(1);
+        const meta = logSuccess.mock.calls[0]?.[0] as {
+            responseText?: string;
+            toolCalls?: Array<{ name: string; arguments: string }>;
+        };
+        expect(meta.responseText).toBe('');
+        expect(meta.toolCalls).toEqual([{ name: 'read_file', arguments: '{"path":"a.ts"}' }]);
+    });
+});

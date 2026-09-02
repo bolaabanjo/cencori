@@ -22,6 +22,7 @@ import {
 import type { CustomRulesPipelineResult } from '@/lib/gateway/custom-rules';
 import { evaluateWithRagMetrics, extractRAGContext } from '@/lib/integrations/ragmetrics';
 import { checkAndSendBudgetAlerts } from '@/lib/budgets';
+import { truncateForLog } from '@/lib/gateway/log-payload';
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 
@@ -34,16 +35,42 @@ type SupabaseAdmin = ReturnType<typeof createAdminClient>;
 export async function buildMaskedLogPayloads(params: {
     messages: Array<{ role: string; content: string }>;
     responseText: string;
+    /**
+     * Tool calls the model made on this request.
+     *
+     * Without them an agentic turn logs as blank: the model that called shell four times and wrote
+     * no prose produced an empty `content`, so the console showed that a request happened and
+     * nothing about the work. The arguments are masked with the same rules as the response text —
+     * they carry file contents and paths, and are frequently the most sensitive part of the turn.
+     */
+    toolCalls?: Array<{ name: string; arguments: string }>;
     customRules?: CustomRulesPipelineResult | null;
 }): Promise<{
     loggedMessages: Array<{ role: string; content: string }>;
     loggedResponse: string;
+    loggedToolCalls: Array<{ name: string; arguments: string }>;
 }> {
     const { messages, responseText, customRules } = params;
+    const toolCalls = (params.toolCalls ?? []).map((call) => ({
+        name: call.name,
+        arguments: truncateForLog(call.arguments),
+    }));
 
     if (!customRules || customRules.rules.length === 0) {
-        return { loggedMessages: messages, loggedResponse: responseText };
+        return { loggedMessages: messages, loggedResponse: responseText, loggedToolCalls: toolCalls };
     }
+
+    const loggedToolCalls = await Promise.all(
+        toolCalls.map(async (call) => {
+            try {
+                const processed = await processCustomRules(call.arguments, customRules.rules);
+                return { name: call.name, arguments: processed.content };
+            } catch {
+                // Keep the call in the log rather than losing the record of it.
+                return call;
+            }
+        })
+    );
 
     let loggedResponse = responseText;
     try {
@@ -68,7 +95,7 @@ export async function buildMaskedLogPayloads(params: {
         }));
     }
 
-    return { loggedMessages, loggedResponse };
+    return { loggedMessages, loggedResponse, loggedToolCalls };
 }
 
 /**
