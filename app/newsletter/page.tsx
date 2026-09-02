@@ -28,6 +28,16 @@ export const metadata: Metadata = {
 
 export const revalidate = 3600;
 
+/**
+ * How long the build will wait for the subscriber count before giving up on it.
+ *
+ * This page is prerendered, so this query runs on the build machine. It had no bound, and when the
+ * database was unreachable from there the request hung until Next's own 60s page limit killed it —
+ * three times, and then the whole deployment failed on a decorative number. The page already
+ * renders perfectly well without a count; it just never got the chance to.
+ */
+const SUBSCRIBER_COUNT_TIMEOUT_MS = 5_000;
+
 async function getConfirmedSubscriberCount() {
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -42,7 +52,8 @@ async function getConfirmedSubscriberCount() {
     const { count, error } = await admin
       .from("newsletter_subscribers")
       .select("*", { count: "exact", head: true })
-      .eq("status", "confirmed");
+      .eq("status", "confirmed")
+      .abortSignal(AbortSignal.timeout(SUBSCRIBER_COUNT_TIMEOUT_MS));
 
     if (error) {
       console.error("[NewsletterPage] Failed to load subscriber count:", error);
