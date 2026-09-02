@@ -40,8 +40,14 @@ export interface SessionEventRecord {
 export interface SessionEventPayloadMap {
     'turn.started': { turn_number: number; model: string; instructions?: string; input_text?: string; input_messages?: Array<{ role: string; content: string | null }>; input_security?: SecurityCheckResult; input_token_map?: Record<string, string> };
     'output_text.delta': { delta: string; index?: number };
-    'tool_call.started': { tool: string; arguments: Record<string, unknown>; action_id?: string };
-    'tool_call.completed': { tool: string; output: unknown; action_id?: string };
+    // `arguments` and `output` are optional because the stateless /v1/responses path records the
+    // shape of a turn without duplicating its content: the prompt, the response and the tool
+    // arguments are already written to ai_requests, masked by the project's own rules. Copying them
+    // here would mean a second copy of the most sensitive text in the system and a second masking
+    // path to keep in step with the first. The timeline carries what ai_requests cannot: ordering,
+    // and how long each step took.
+    'tool_call.started': { tool: string; arguments?: Record<string, unknown>; action_id?: string; call_id?: string; arguments_bytes?: number };
+    'tool_call.completed': { tool?: string; output?: unknown; action_id?: string; call_id?: string; output_bytes?: number };
     'turn.paused': { reason: string; action_id: string; tool: string; arguments: Record<string, unknown>; actions?: Array<{ action_id: string; tool: string; arguments: string }> };
     'turn.resumed': { action_id: string; resolution: 'approved' | 'rejected' };
     'turn.completed': { turn_number: number; output?: unknown; usage?: { input_tokens: number; output_tokens: number; total_tokens: number } };

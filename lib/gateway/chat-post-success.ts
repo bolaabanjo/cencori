@@ -32,6 +32,24 @@ type SupabaseAdmin = ReturnType<typeof createAdminClient>;
  * masked/redacted/tokenized values, never the raw ones.
  * (Extracted from the legacy handler's inline logging block.)
  */
+/**
+ * Render an assistant turn that called tools so it does not log as an empty string.
+ *
+ * A tool-calling turn frequently has no prose at all, and the history of an agent run is mostly
+ * such turns. Logging them by `content` alone produced a prompt full of blank assistant messages
+ * with the tool results in between — the answers to questions the log did not show.
+ */
+export function describeToolCallTurn(message: {
+    content: string;
+    tool_calls?: Array<{ function: { name: string; arguments: string } }>;
+}): string {
+    if (!message.tool_calls?.length) return message.content;
+    const calls = message.tool_calls
+        .map((call) => `${call.function.name}(${truncateForLog(call.function.arguments, 2_000)})`)
+        .join('\n');
+    return message.content ? `${message.content}\n${calls}` : calls;
+}
+
 export async function buildMaskedLogPayloads(params: {
     messages: Array<{ role: string; content: string }>;
     responseText: string;

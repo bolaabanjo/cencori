@@ -436,3 +436,56 @@ describe('/v1/responses streaming logs the work, not just the prose', () => {
         expect(meta.toolCalls).toEqual([{ name: 'read_file', arguments: '{"path":"a.ts"}' }]);
     });
 });
+
+describe('/v1/responses replaying an agent\'s own history', () => {
+    /**
+     * A `function_call` input item used to become an assistant turn with empty content and a bare
+     * `toolCallId`, dropping the tool name and arguments entirely. On its eighth request an agent
+     * was replaying seven blank assistant turns: the model could not see what it had already
+     * called, and neither could the request log.
+     */
+    it('sends the prior tool call to the provider, not an empty turn', async () => {
+        mockStreamGatewayChat.mockImplementation(() =>
+            (async function* () {
+                yield chunk({ delta: 'done', finishReason: 'stop' });
+            })()
+        );
+
+        const result = await runV1ResponsesExecution(baseParams({
+            // Omitted so body.input is parsed, which is the code under test.
+            messages: undefined,
+            body: {
+                model: 'gpt-4o',
+                stream: true,
+                input: [
+                    { type: 'message', role: 'user', content: 'read it' },
+                    {
+                        type: 'function_call',
+                        id: 'fc_1',
+                        call_id: 'call_a',
+                        name: 'read_file',
+                        arguments: '{"path":"a.ts"}',
+                    },
+                    { type: 'function_call_output', call_id: 'call_a', output: 'file body' },
+                ],
+            },
+        }));
+        if (!result.ok) throw new Error('expected ok');
+        const reader = result.response.body!.getReader();
+        while (!(await reader.read()).done) {
+            // Drain.
+        }
+
+        const sent = mockStreamGatewayChat.mock.calls[0]?.[0] as {
+            request: { messages: Array<{ role: string; content: string; tool_calls?: unknown[] }> };
+        };
+        const assistant = sent.request.messages.find((message) => message.role === 'assistant');
+        expect(assistant?.tool_calls).toEqual([
+            {
+                id: 'call_a',
+                type: 'function',
+                function: { name: 'read_file', arguments: '{"path":"a.ts"}' },
+            },
+        ]);
+    });
+});

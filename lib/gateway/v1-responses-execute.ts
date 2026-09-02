@@ -176,6 +176,8 @@ type V1ResponseExecuteParams = {
          * and nothing whatsoever about the work it did.
          */
         toolCalls?: Array<{ name: string; arguments: string }>;
+        /** This response's id, so the log row can be joined to the run it belongs to. */
+        responseId?: string;
     }) => void;
     incrementUsage: (chargeUsd: number) => void;
     agentId?: string | null;
@@ -217,10 +219,22 @@ function parseInputToMessages(
                 break;
             }
             case 'function_call':
+                // The call itself, not just its id. This used to push an assistant turn with empty
+                // content and a bare `toolCallId`, which dropped the tool name and arguments on the
+                // floor: on its eighth request an agent was replaying seven blank assistant turns,
+                // so neither the model nor the request log could see what had already been called.
+                // `tool_calls` is the shape the provider adapters already serialize.
                 messages.push({
                     role: 'assistant',
                     content: '',
                     toolCallId: item.call_id,
+                    tool_calls: [
+                        {
+                            id: item.call_id,
+                            type: 'function',
+                            function: { name: item.name, arguments: item.arguments },
+                        },
+                    ],
                 });
                 break;
             case 'function_call_output':
@@ -265,6 +279,12 @@ function generateId(prefix: string): string {
 }
 
 function buildResponsesJson(params: {
+    /**
+     * The id this response is published under. Passed in rather than minted here so that every
+     * body built during one execution -- the answer, and the failure bodies -- carries the same id
+     * as the request log, which is what lets a run be followed across rows.
+     */
+    id?: string;
     model: string;
     content: string;
     toolOutputs: ToolCallOutput[];
@@ -316,7 +336,7 @@ function buildResponsesJson(params: {
     }
 
     return {
-        id: generateId('resp'),
+        id: params.id ?? generateId('resp'),
         object: 'response',
         created: Math.floor(Date.now() / 1000),
         model: params.model,
@@ -384,6 +404,8 @@ export async function runV1ResponsesExecution(
 ): Promise<V1ResponseExecuteResult> {
     const { gatewayCtx, model, body, inputSecurity, inputText, tokenMap, tier } = params;
     const effectiveTokenMap = new Map(tokenMap ?? []);
+    // One id for this execution, so the response, its failure bodies and the request log all agree.
+    const responseId = generateId('resp');
 
     try {
         const resolved = await resolveGatewayProvider({
@@ -699,6 +721,7 @@ export async function runV1ResponsesExecution(
                 cencoriChargeUsd: result.cost.cencoriChargeUsd,
                 markupPercentage: result.cost.markupPercentage,
                 responseText: content,
+                responseId,
                 toolCalls: openAiToolCalls.map(tc => ({
                     name: tc.name,
                     arguments: tc.arguments,
@@ -717,6 +740,7 @@ export async function runV1ResponsesExecution(
             const annotations = buildAnnotations(content, preProcessResult.toolOutputs);
 
             const json = buildResponsesJson({
+                id: responseId,
                 model: result.actualModel,
                 content,
                 toolOutputs: codeOutputs,
@@ -1022,6 +1046,7 @@ export async function runV1ResponsesExecution(
                                 });
 
                                 const failedResponse = buildResponsesJson({
+                                    id: responseId,
                                     model: chunk.actualModel,
                                     content: '',
                                     toolOutputs: collectedBuiltinToolOutputs,
@@ -1158,6 +1183,7 @@ export async function runV1ResponsesExecution(
                                 cencoriChargeUsd,
                                 markupPercentage,
                                 responseText: fullText,
+                                responseId,
                                 toolCalls: toolCallValues.map(tc => ({
                                     name: tc.name,
                                     arguments: tc.arguments,
@@ -1176,6 +1202,7 @@ export async function runV1ResponsesExecution(
                             const annotations = buildAnnotations(fullText, collectedBuiltinToolOutputs);
 
                             const response = buildResponsesJson({
+                                id: responseId,
                                 model: chunk.actualModel,
                                 content: fullText,
                                 toolOutputs: collectedBuiltinToolOutputs,
@@ -1217,6 +1244,7 @@ export async function runV1ResponsesExecution(
                     // behind in the gateway. Carry it on the response the client actually reads.
                     const message = error instanceof Error ? error.message : 'Stream failed';
                     const failedResponse = buildResponsesJson({
+                        id: responseId,
                         model: body.model || model,
                         content: fullText || '',
                         toolOutputs: collectedBuiltinToolOutputs,

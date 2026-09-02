@@ -9,7 +9,7 @@
  * console said a request had happened and nothing about what it did.
  */
 import { describe, expect, it } from 'vitest';
-import { buildMaskedLogPayloads } from '@/lib/gateway/chat-post-success';
+import { buildMaskedLogPayloads, describeToolCallTurn } from '@/lib/gateway/chat-post-success';
 import { LOG_TEXT_LIMIT } from '@/lib/gateway/log-payload';
 import type { CustomDataRule } from '@/lib/safety/custom-data-rules';
 
@@ -87,5 +87,39 @@ describe('logging a turn that used tools', () => {
 
         expect(loggedToolCalls[0]?.arguments.length).toBeLessThan(LOG_TEXT_LIMIT + 200);
         expect(loggedToolCalls[0]?.arguments).toContain('truncated');
+    });
+});
+
+describe('logging the history of a run', () => {
+    /**
+     * An agent replays its prior tool calls as input. Those turns have no prose, so logging them
+     * by `content` alone produced a prompt full of blank assistant messages with the tool results
+     * in between: the answers, without the questions.
+     */
+    it('renders a tool-calling turn that has no prose', () => {
+        expect(
+            describeToolCallTurn({
+                content: '',
+                tool_calls: [
+                    { function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+                    { function: { name: 'shell', arguments: '{"command":["ls"]}' } },
+                ],
+            })
+        ).toBe('read_file({"path":"a.ts"})\nshell({"command":["ls"]})');
+    });
+
+    it('keeps the prose when a turn has both', () => {
+        expect(
+            describeToolCallTurn({
+                content: 'Checking the file first.',
+                tool_calls: [{ function: { name: 'read_file', arguments: '{}' } }],
+            })
+        ).toBe('Checking the file first.\nread_file({})');
+    });
+
+    it('leaves an ordinary message exactly as it was', () => {
+        expect(describeToolCallTurn({ content: 'The tokens live in styles.css.' })).toBe(
+            'The tokens live in styles.css.'
+        );
     });
 });

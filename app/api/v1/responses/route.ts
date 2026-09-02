@@ -20,7 +20,8 @@ import {
     utf8Bytes,
     validateResponsesInput,
 } from "@/lib/gateway/responses-input";
-import { buildMaskedLogPayloads } from "@/lib/gateway/chat-post-success";
+import { buildMaskedLogPayloads, describeToolCallTurn } from "@/lib/gateway/chat-post-success";
+import { recordResponseTurnEvents, toolResultsIn } from "@/lib/gateway/agentic-events";
 import { waitUntil } from "@vercel/functions";
 import { toOpenAiErrorBody } from "@/lib/gateway/guard-types";
 import { runV1ResponsesExecution } from "@/lib/gateway/v1-responses-execute";
@@ -392,7 +393,7 @@ export async function POST(req: NextRequest) {
                             await buildMaskedLogPayloads({
                                 messages: inputPipeline.messages.map((m) => ({
                                     role: m.role,
-                                    content: m.content,
+                                    content: describeToolCallTurn(m),
                                 })),
                                 responseText: meta.responseText ?? '',
                                 toolCalls: meta.toolCalls,
@@ -413,6 +414,16 @@ export async function POST(req: NextRequest) {
                             markupPercentage: meta.markupPercentage,
                             endUserId: endUserId || undefined,
                             errorMessage: meta.errorMessage,
+                            // What ties this row to the run it belongs to. Without it an agent
+                            // task spanning twelve requests is twelve unrelated rows, and the
+                            // console can show a request but not a run.
+                            metadata: {
+                                ...(meta.responseId ? { response_id: meta.responseId } : {}),
+                                ...(body.previous_response_id
+                                    ? { previous_response_id: body.previous_response_id }
+                                    : {}),
+                                ...(agentId ? { agent_id: agentId } : {}),
+                            },
                             requestPayload: {
                                 messages: loggedMessages,
                                 model,
@@ -432,6 +443,25 @@ export async function POST(req: NextRequest) {
                                         : {}),
                                 }
                                 : undefined,
+                        });
+
+                        // The timeline beside the row. See lib/gateway/agentic-events.ts for why
+                        // it carries the shape of the turn and not its content.
+                        await recordResponseTurnEvents({
+                            supabase: adminClient,
+                            projectId: activeGatewayCtx.projectId,
+                            organizationId: activeGatewayCtx.organizationId,
+                            responseId: meta.responseId ?? '',
+                            previousResponseId: body.previous_response_id,
+                            model: meta.model,
+                            toolsOffered: offeredToolNames,
+                            toolCalls: meta.toolCalls ?? [],
+                            toolResults: toolResultsIn(body.input),
+                            usage: {
+                                promptTokens: meta.promptTokens,
+                                completionTokens: meta.completionTokens,
+                                totalTokens: meta.totalTokens,
+                            },
                         });
                     })().catch((err) =>
                         console.error('[Responses] request logging failed:', err)
