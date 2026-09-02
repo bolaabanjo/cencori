@@ -18,6 +18,7 @@ import {
     STREAM_GUARD_HOLDBACK_CHARS,
 } from '@/lib/gateway/stream-guard';
 import { runGatewayOutputGuard } from '@/lib/gateway/output-guard';
+import { recoverXmlToolCalls, releasableLength } from '@/lib/gateway/tool-call-xml';
 import { mapProviderErrorToHttpResponse } from '@/lib/gateway-reliability';
 import { buildCencoriChatResponse } from '@/lib/gateway/ai-chat-support';
 import { estimateTokenCount } from '@/lib/providers/utils';
@@ -154,6 +155,11 @@ function buildOpenAiCompletionJson(params: {
     return body;
 }
 
+/** Recovered calls need an id the way a structured call has one. */
+function generateCallId(): string {
+    return `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+}
+
 function buildOpenAiStreamChunk(model: string, delta: Record<string, unknown>, finishReason: string | null) {
     return {
         id: 'chatcmpl-' + Math.random().toString(36).substr(2, 9),
@@ -265,11 +271,47 @@ export async function runV1ProviderExecution(
                 content = content.slice(0, params.maxTokens * 4);
             }
 
-            const openAiToolCalls = result.toolCalls?.map((tc) => ({
-                id: tc.id,
-                type: tc.type,
-                function: tc.function,
-            }));
+            /**
+             * Same recovery as /v1/responses. A model that writes its call as `<tool_call>` markup
+             * instead of emitting a structured one had it pass straight through this endpoint as
+             * ordinary text: the caller was shown the syntax and no call was ever made. Only tools
+             * this request advertised are recovered, so a model quoting or explaining the syntax
+             * stays text.
+             */
+            const recovered = recoverXmlToolCalls(
+                content,
+                (params.tools ?? []).map((tool) => tool.function.name)
+            );
+            if (recovered.calls.length > 0) {
+                console.warn('[Gateway] Recovered tool calls written as text', {
+                    model: result.actualModel,
+                    recovered: recovered.calls.length,
+                    structured: result.toolCalls?.length ?? 0,
+                });
+                content = recovered.text;
+            }
+            /**
+             * A turn that called a tool did not stop. The provider reported `stop` because it
+             * believed it had written prose, and a client following the OpenAI contract reads that
+             * as a final answer and never runs the call — which would leave the recovery pointless.
+             */
+            const effectiveFinishReason =
+                recovered.calls.length > 0 ? 'tool_calls' : result.finishReason;
+            const mergedToolCalls = [
+                ...(result.toolCalls ?? []).map((tc) => ({
+                    id: tc.id,
+                    type: tc.type,
+                    function: tc.function,
+                })),
+                ...recovered.calls.map((call) => ({
+                    id: generateCallId(),
+                    type: 'function',
+                    function: { name: call.name, arguments: call.arguments },
+                })),
+            ];
+            // Undefined, not an empty array, when nothing was called: the Cencori wire contract
+            // publishes `tool_calls: null` for a turn with no calls, and the SDKs read that field.
+            const openAiToolCalls = mergedToolCalls.length > 0 ? mergedToolCalls : undefined;
             const outputTextForGuard = [
                 content,
                 ...(openAiToolCalls ?? []).map((toolCall) => toolCall.function.arguments),
@@ -359,7 +401,7 @@ export async function runV1ProviderExecution(
                 cencoriChargeUsd: result.cost.cencoriChargeUsd,
                 markupPercentage: result.cost.markupPercentage,
                 responseText: content,
-                finishReason: result.finishReason,
+                finishReason: effectiveFinishReason,
             });
             params.incrementUsage(result.cost.cencoriChargeUsd);
             params.recordEndUserUsage({
@@ -378,7 +420,7 @@ export async function runV1ProviderExecution(
                       actualProvider: providerLogName,
                       usage: result.usage,
                       costUsd: result.cost.cencoriChargeUsd,
-                      finishReason: result.finishReason,
+                      finishReason: effectiveFinishReason,
                       toolCalls: openAiToolCalls,
                       usedFallback: result.usedFallback,
                       originalModel: result.originalModel,
@@ -389,7 +431,7 @@ export async function runV1ProviderExecution(
                       content,
                       toolCalls: openAiToolCalls,
                       usage: result.usage,
-                      finishReason: result.finishReason,
+                      finishReason: effectiveFinishReason,
                       fallbackMeta: result.usedFallback
                           ? {
                                 usedFallback: true,
@@ -441,7 +483,10 @@ export async function runV1ProviderExecution(
                  * cannot be detokenized and would leak the internal marker.
                  */
                 const adjustReleaseEndForTokenPlaceholders = (proposedEnd: number) => {
-                    let safeEnd = proposedEnd;
+                    // Nothing from an opening tool-call tag onward, and nothing that might be the
+                    // start of one. A block written as text is recovered at completion, but only
+                    // if it has not already been streamed: released text cannot be taken back.
+                    let safeEnd = Math.min(proposedEnd, releasableLength(fullText));
                     if (params.tokenMap && proposedEnd < fullText.length) {
                         const prefix = fullText.slice(0, proposedEnd);
                         for (const placeholder of params.tokenMap.keys()) {
@@ -688,6 +733,33 @@ export async function runV1ProviderExecution(
                     originalModel: string;
                     finishReason: string;
                 }) => {
+                    // Recover before the guard runs and before the retained tail is released, so
+                    // the markup is judged and shown as the calls it was, not as prose. Merged
+                    // into `collectedToolCalls` so everything below sees one set of calls.
+                    const recovered = recoverXmlToolCalls(
+                        fullText,
+                        (params.tools ?? []).map((tool) => tool.function.name)
+                    );
+                    if (recovered.calls.length > 0) {
+                        console.warn('[Gateway] Recovered tool calls written as text', {
+                            model: meta.actualModel,
+                            recovered: recovered.calls.length,
+                            streaming: true,
+                            structured: Object.keys(collectedToolCalls).length,
+                        });
+                        fullText = recovered.text;
+                        for (const call of recovered.calls) {
+                            const id = generateCallId();
+                            collectedToolCalls[id] = {
+                                id,
+                                type: 'function',
+                                // `fullText` is still tokenized here, so the arguments carry
+                                // placeholders that the caller must not receive.
+                                function: { name: call.name, arguments: detokenize(call.arguments) },
+                            };
+                        }
+                    }
+
                     const toolCallValues = Object.values(collectedToolCalls);
                     const outputTextForGuard = [
                         detokenize(fullText),
@@ -803,7 +875,11 @@ export async function runV1ProviderExecution(
                     params.onCompletion?.({ fullText: figures.finalText });
                     finishStream(figures, {
                         actualModel: meta.actualModel,
-                        finishReason: meta.finishReason,
+                        // A turn that called a tool did not stop. The provider reported `stop`
+                        // because it believed it had written prose; a client following the OpenAI
+                        // contract reads that as a final answer and never runs the call.
+                        finishReason:
+                            recovered.calls.length > 0 ? 'tool_calls' : meta.finishReason,
                     });
                 };
 

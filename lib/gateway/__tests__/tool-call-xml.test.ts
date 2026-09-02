@@ -126,3 +126,78 @@ describe("what a partially received message may show", () => {
     expect(text.slice(0, releasableLength(text))).toBe("one");
   });
 });
+
+describe("the other dialects models write", () => {
+  it("recovers a call written as JSON inside the tags", () => {
+    // What the Qwen family emits most often. It was held back from the stream but never converted,
+    // so the reader saw markup and the tool never ran.
+    const text =
+      'Reading it.\n<tool_call>\n{"name": "read_file", "arguments": {"path": "a.ts"}}\n</tool_call>';
+
+    const recovered = recoverXmlToolCalls(text, ["read_file"]);
+
+    expect(recovered.calls).toEqual([
+      { name: "read_file", arguments: '{"path":"a.ts"}' },
+    ]);
+    expect(recovered.text).toBe("Reading it.");
+  });
+
+  it("recovers the same body under a function_call tag", () => {
+    const text = '<function_call>{"name": "read_file", "parameters": {"path": "a.ts"}}</function_call>';
+
+    expect(recoverXmlToolCalls(text, ["read_file"]).calls).toEqual([
+      { name: "read_file", arguments: '{"path":"a.ts"}' },
+    ]);
+  });
+
+  it("accepts arguments already written as a JSON string", () => {
+    const text = '<tool_call>{"name":"read_file","arguments":"{\\"path\\":\\"a.ts\\"}"}</tool_call>';
+
+    expect(recoverXmlToolCalls(text, ["read_file"]).calls).toEqual([
+      { name: "read_file", arguments: '{"path":"a.ts"}' },
+    ]);
+  });
+
+  it("recovers several JSON blocks in one message", () => {
+    const text =
+      '<tool_call>{"name":"read_file","arguments":{"path":"a.ts"}}</tool_call>' +
+      'and then\n' +
+      '<tool_call>{"name":"read_file","arguments":{"path":"b.ts"}}</tool_call>';
+
+    expect(recoverXmlToolCalls(text, ["read_file"]).calls).toHaveLength(2);
+  });
+
+  it("leaves a malformed block as text rather than guessing", () => {
+    for (const text of [
+      '<tool_call>{"name":"read_file",</tool_call>',
+      '<tool_call>{"arguments":{"path":"a.ts"}}</tool_call>',
+      '<tool_call>{"name":"read_file","arguments":"not json"}</tool_call>',
+    ]) {
+      const recovered = recoverXmlToolCalls(text, ["read_file"]);
+      expect(recovered.calls).toEqual([]);
+      expect(recovered.text).toBe(text);
+    }
+  });
+
+  it("does not recover a JSON block naming a tool that was never offered", () => {
+    const text = '<tool_call>{"name":"delete_everything","arguments":{}}</tool_call>';
+
+    expect(recoverXmlToolCalls(text, ["read_file"]).calls).toEqual([]);
+  });
+
+  it("holds back a function_call tag too, including a split one", () => {
+    expect("Reading.<function_call>{".slice(0, releasableLength("Reading.<function_call>{"))).toBe(
+      "Reading.",
+    );
+    expect("Reading.<function_".slice(0, releasableLength("Reading.<function_"))).toBe("Reading.");
+  });
+
+  it("recovers a call whose argument value contains a brace", () => {
+    // The two dialects can match the same span here; the overlap resolution must not let the call
+    // be recovered twice, which would run the tool twice.
+    const text =
+      "<tool_call><function=shell><parameter=command>{\"a\": 1}</parameter></function></tool_call>";
+
+    expect(recoverXmlToolCalls(text, ["shell"]).calls).toHaveLength(1);
+  });
+});
