@@ -7,7 +7,6 @@ import {
   sameValue,
   sha256,
 } from "@/lib/basecode-auth";
-import { issueBasecodeApiKey } from "@/lib/basecode-key";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -70,16 +69,14 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (!consumed) return errorResponse();
 
-  // The session authenticates the user; the key is what names a project to bill against, which
-  // is what `/v1/*` needs and a session cannot carry. Issued here because this is the only point
-  // that holds the user's identity and admin rights at once. A null means the user signs in
-  // without inference rather than not signing in at all.
-  const apiKey = await issueBasecodeApiKey(admin, data.user.id);
-
+  // No key is issued here any more. Sign-in used to mint a Cencori key with admin rights and bind
+  // it to whichever project the account created first, which made every Basecode user a separate
+  // Cencori customer and logged their usage in a project they never chose. Basecode is one
+  // customer with one project and one key, that key lives on the server, and inference goes
+  // through /api/basecode/inference — so the session below is the whole credential.
   return NextResponse.json(
     {
       access_token: data.session.access_token,
-      api_key: apiKey,
       expires_in: data.session.expires_in,
       refresh_token: data.session.refresh_token,
       user: data.user,
