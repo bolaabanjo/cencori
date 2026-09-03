@@ -30,34 +30,6 @@ export async function POST(request: NextRequest) {
       { headers: noStoreHeaders(), status: 400 },
     );
   }
-  if (!isUuid(body.clientTurnKey)) {
-    return NextResponse.json(
-      { error: "The Basecode turn key is invalid." },
-      { headers: noStoreHeaders(), status: 400 },
-    );
-  }
-
-  if (body.action === "reserve") {
-    const model = typeof body.model === "string" ? body.model.slice(0, 160) : null;
-    const { data, error } = await session.admin.rpc("basecode_reserve_turn", {
-      p_user_id: session.user.id,
-      p_client_turn_key: body.clientTurnKey,
-      p_model: model,
-    });
-    if (error) {
-      console.error("[Basecode Billing] Turn reservation failed", error);
-      return NextResponse.json(
-        { error: "Basecode could not reserve usage for this turn." },
-        { headers: noStoreHeaders(), status: 503 },
-      );
-    }
-    const result = data as { allowed?: boolean; reason?: string } | null;
-    return NextResponse.json(result ?? { allowed: false }, {
-      headers: noStoreHeaders(),
-      status: result?.allowed ? 200 : result?.reason === "concurrency_limit" ? 409 : 429,
-    });
-  }
-
   /**
    * Release the leases a previous run of the app left behind.
    *
@@ -69,6 +41,9 @@ export async function POST(request: NextRequest) {
    *
    * A freshly started app has no turn in flight by definition, which is the one moment this can be
    * said safely. It is called there and nowhere else.
+   *
+   * Answered before the turn-key guard below, because this action carries no turn key — it is
+   * closing keys that no longer exist anywhere.
    */
   if (body.action === "release-stale") {
     const { data: account } = await session.admin
@@ -97,6 +72,34 @@ export async function POST(request: NextRequest) {
       { released: released?.length ?? 0 },
       { headers: noStoreHeaders() },
     );
+  }
+
+  if (!isUuid(body.clientTurnKey)) {
+    return NextResponse.json(
+      { error: "The Basecode turn key is invalid." },
+      { headers: noStoreHeaders(), status: 400 },
+    );
+  }
+
+  if (body.action === "reserve") {
+    const model = typeof body.model === "string" ? body.model.slice(0, 160) : null;
+    const { data, error } = await session.admin.rpc("basecode_reserve_turn", {
+      p_user_id: session.user.id,
+      p_client_turn_key: body.clientTurnKey,
+      p_model: model,
+    });
+    if (error) {
+      console.error("[Basecode Billing] Turn reservation failed", error);
+      return NextResponse.json(
+        { error: "Basecode could not reserve usage for this turn." },
+        { headers: noStoreHeaders(), status: 503 },
+      );
+    }
+    const result = data as { allowed?: boolean; reason?: string } | null;
+    return NextResponse.json(result ?? { allowed: false }, {
+      headers: noStoreHeaders(),
+      status: result?.allowed ? 200 : result?.reason === "concurrency_limit" ? 409 : 429,
+    });
   }
 
   if (body.action === "finish") {
