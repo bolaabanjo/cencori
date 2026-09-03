@@ -58,6 +58,47 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  /**
+   * Release the leases a previous run of the app left behind.
+   *
+   * A reservation is held for two hours and closed by the turn that opened it. A process that dies
+   * first — a crash, a force quit, a developer killing the app — closes nothing, and the key is a
+   * per-turn UUID held only in that process's memory, so nothing can ever close it again. The next
+   * launch then meets its own abandoned lease as a concurrency limit and the user is locked out
+   * until the two hours elapse, with no action available to them that helps.
+   *
+   * A freshly started app has no turn in flight by definition, which is the one moment this can be
+   * said safely. It is called there and nowhere else.
+   */
+  if (body.action === "release-stale") {
+    const { data: account } = await session.admin
+      .from("basecode_billing_accounts")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    if (!account?.id) {
+      return NextResponse.json({ released: 0 }, { headers: noStoreHeaders() });
+    }
+
+    const { data: released, error } = await session.admin
+      .from("basecode_turn_reservations")
+      .update({ status: "released", completed_at: new Date().toISOString() })
+      .eq("account_id", account.id)
+      .in("status", ["reserved", "running"])
+      .select("id");
+    if (error) {
+      console.error("[Basecode Billing] Releasing stale reservations failed", error);
+      return NextResponse.json(
+        { error: "Basecode could not release the previous reservations." },
+        { headers: noStoreHeaders(), status: 503 },
+      );
+    }
+    return NextResponse.json(
+      { released: released?.length ?? 0 },
+      { headers: noStoreHeaders() },
+    );
+  }
+
   if (body.action === "finish") {
     const runtimeTurnId =
       typeof body.runtimeTurnId === "string" ? body.runtimeTurnId.slice(0, 200) : null;
