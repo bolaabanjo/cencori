@@ -102,7 +102,8 @@ test('scaffolds TanStack with ignored env files and streaming config', () => {
         assert.equal(existsSync(join(projectDir, 'app/favicon.ico')), false);
         assert.match(server, /cencoriConfig\.defaultModel/);
         assert.match(server, /chatStream/);
-        assert.doesNotMatch(hook, /model: 'gpt-4o'/);
+        // the client must not pin a model id; the server resolves it from cencori.config.ts
+        assert.doesNotMatch(hook, /model: '[^']+'/);
         assert.match(hook, /TextDecoder/);
     });
 });
@@ -120,6 +121,8 @@ test('scaffolds Next.js no-chat without chat-only assets', () => {
         assert.equal(existsSync(join(projectDir, 'public/logos/bw.png')), false);
         assert.equal(packageJson.dependencies['@ai-sdk/react'], undefined);
         assert.match(route, /cencoriConfig\.defaultModel/);
+        // and must actually use it — a hardcoded id here silently ignores the config
+        assert.match(route, /cencori\(selectedModel\)/);
         assert.equal(existsSync(join(projectDir, '.env.example')), true);
     });
 });
@@ -145,7 +148,8 @@ test('scaffolds Cencori agent starter without integration dependencies', () => {
         assert.equal(packageJson.dependencies, undefined);
         assert.match(env, /CENCORI_API_KEY=csk_secret/);
         assert.match(env, /CENCORI_BASE_URL=https:\/\/api\.cencori\.com\/v1/);
-        assert.match(readme, /default Cencori-native agent scaffold/);
+        // the base scaffold is integration-neutral; the Celo variant is the one that isn't
+        assert.match(readme, /Integrations for Celo, MiniPay, Slack, GitHub, databases, and MCP can be layered on top/);
         assert.match(readme, /Celo Sepolia receipts on top of the Cencori agent core/);
         assert.match(index, /Cencori Agent Starter Demo/);
         assert.equal(existsSync(join(projectDir, 'src/run-receipt.mjs')), true);

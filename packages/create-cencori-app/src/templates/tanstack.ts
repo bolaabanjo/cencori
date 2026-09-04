@@ -1001,13 +1001,14 @@ export function Chat() {
  * Docs: https://cencori.com/docs
  */
 export const cencoriConfig = {
-    defaultModel: 'gpt-4o',
+    defaultModel: 'dots-studio/dots-3-note-preview:free',
 
     models: [
-        { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
-        { id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', provider: 'anthropic' },
-        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
-        { id: 'grok-4', name: 'Grok 4', provider: 'xai' },
+        { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots 3 Note Preview', provider: 'cencori' },
+        { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', provider: 'openai' },
+        { id: 'claude-opus-5', name: 'Claude Opus 5', provider: 'anthropic' },
+        { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'google' },
+        { id: 'grok-4.6', name: 'Grok 4.6', provider: 'xai' },
         { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek' },
     ],
 
@@ -1052,7 +1053,7 @@ const cencori = getCencori();
 
 // Chat
 const response = await cencori.ai.chat({
-    model: 'gpt-4o',
+    model: 'dots-studio/dots-3-note-preview:free',
     messages: [{ role: 'user', content: 'Hello!' }],
 });
 
@@ -1065,7 +1066,7 @@ Update the default model in \`cencori.config.ts\`; the local API server reads th
 
 \`\`\`typescript
 export const cencoriConfig = {
-    defaultModel: 'claude-sonnet-4.5',
+    defaultModel: 'dots-studio/dots-3-note-preview:free',
     temperature: 0.7,
     maxTokens: 4096,
 };

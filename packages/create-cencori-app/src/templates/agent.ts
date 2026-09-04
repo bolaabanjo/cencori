@@ -39,8 +39,8 @@ output/
 # Create an agent-scoped key: POST /v1/agents/:id/keys
 CENCORI_API_KEY=${options.apiKey || ''}
 CENCORI_AGENT_ID=
-CENCORI_BASE_URL=https://cencori.com/v1
-CENCORI_MODEL=claude-sonnet-4-5
+CENCORI_BASE_URL=https://api.cencori.com/v1
+CENCORI_MODEL=dots-studio/dots-3-note-preview:free
 
 # Demo controls
 AGENT_NAME=Cencori Research Agent
@@ -52,8 +52,8 @@ AGENT_MAX_SPEND_USD=0.10
 # Create an agent-scoped key: POST /v1/agents/:id/keys
 CENCORI_API_KEY=csk_...
 CENCORI_AGENT_ID=
-CENCORI_BASE_URL=https://cencori.com/v1
-CENCORI_MODEL=claude-sonnet-4-5
+CENCORI_BASE_URL=https://api.cencori.com/v1
+CENCORI_MODEL=dots-studio/dots-3-note-preview:free
 
 # Demo controls
 AGENT_NAME=Cencori Research Agent
@@ -249,7 +249,7 @@ const result = await runCencoriAgent({
   apiKey: readEnv("CENCORI_API_KEY"),
   baseUrl: readEnv("CENCORI_BASE_URL", "https://api.cencori.com/v1"),
   agentId,
-  model: readEnv("CENCORI_MODEL", "claude-sonnet-4-5"),
+  model: readEnv("CENCORI_MODEL", "dots-studio/dots-3-note-preview:free"),
   task,
   externalRunId,
 });
@@ -259,7 +259,7 @@ const completedAt = new Date().toISOString();
 const receipt = createRunReceipt({
   agentId,
   agentName: readEnv("AGENT_NAME", agentId ? "Cencori Research Agent" : "Cencori project agent"),
-  model: readEnv("CENCORI_MODEL", "claude-sonnet-4-5"),
+  model: readEnv("CENCORI_MODEL", "dots-studio/dots-3-note-preview:free"),
   externalRunId,
   task,
   status: "completed",
@@ -326,10 +326,10 @@ CENCORI_API_KEY=csk_...
 Set \`CENCORI_AGENT_ID\` to an agent UUID to enable agent-scoped features (built-in tools, shadow mode). Create one via the API:
 
 \`\`\`bash
-curl -X POST https://cencori.com/v1/agents \\
+curl -X POST https://api.cencori.com/v1/agents \\
   -H "Authorization: Bearer \${CENCORI_API_KEY}" \\
   -H "Content-Type: application/json" \\
-  -d '{"name": "my-agent", "config": {"model": "claude-sonnet-4-5", "system_prompt": "You are a helpful assistant."}}'
+  -d '{"name": "my-agent", "config": {"model": "dots-studio/dots-3-note-preview:free", "system_prompt": "You are a helpful assistant."}}'
 \`\`\`
 
 ## Expected Output
