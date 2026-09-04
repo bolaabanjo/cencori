@@ -55,10 +55,22 @@ const SPECIFIC_REGIONS = [
   { value: "af-south-1", label: "Africa (Cape Town)", code: "af-south-1", flag: "🇿🇦", recommended: false },
 ] as const;
 
+/**
+ * Every region the database will accept, which is the two lists above and nothing else. The column
+ * default is 'auto' and projects_region_check rejects it, so a project created without opening the
+ * dropdown used to fail on submit -- the form said "Select region" and meant it literally.
+ */
+const REGION_VALUES = [
+  ...GENERAL_REGIONS.map((r) => r.value),
+  ...SPECIFIC_REGIONS.map((r) => r.value),
+] as [string, ...string[]];
+
+const DEFAULT_REGION = "europe";
+
 const formSchema = z.object({
   name: z.string().min(2, { message: "Project name must be at least 2 characters." }),
   description: z.string().optional(),
-  region: z.string(),
+  region: z.enum(REGION_VALUES),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -105,7 +117,7 @@ export default function NewProjectPage({ params }: PageProps) {
     defaultValues: {
       name: "",
       description: "",
-      region: "auto",
+      region: DEFAULT_REGION,
     },
   });
 
