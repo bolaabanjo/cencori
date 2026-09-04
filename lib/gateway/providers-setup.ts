@@ -217,15 +217,31 @@ export function resolveBasecodePlanModel(
     policy: 'auto' | 'open_weight' | 'frontier' | 'custom' | null | undefined,
 ): string {
     if (!policy || policy === 'frontier' || policy === 'custom') return requestedModel;
-    if (policy === 'auto') {
-        return process.env.BASECODE_AUTO_MODEL?.trim() || 'glm-5.3-flash';
-    }
 
     const normalized = requestedModel.trim().toLowerCase();
-    if (normalized === 'auto' || normalized === 'basecode-auto') {
+    const askedForAuto = !normalized || normalized === 'auto' || normalized === 'basecode-auto';
+    const isOpenWeight = BASECODE_OPEN_WEIGHT_MODEL_MARKERS.some((marker) =>
+        normalized.includes(marker),
+    );
+
+    if (policy === 'auto') {
+        const autoModel = process.env.BASECODE_AUTO_MODEL?.trim() || 'glm-5.3-flash';
+        if (askedForAuto) return autoModel;
+        // Auto is the default on this plan, not the only option. Every request used to be replaced
+        // by the auto model whatever it named, so a client offering a choice would have been lying:
+        // the pick was discarded and every turn ran on the same model. An open-weight model named
+        // explicitly is now served.
+        if (isOpenWeight) return requestedModel;
+        // A frontier model is not an error here, it is simply not on this plan, and the auto model
+        // answers instead — which is what this policy did for every request before. Refusing would
+        // break callers that have always been quietly substituted.
+        return autoModel;
+    }
+
+    if (askedForAuto) {
         return process.env.BASECODE_BUILDER_AUTO_MODEL?.trim() || 'deepseek-v4-flash';
     }
-    if (!BASECODE_OPEN_WEIGHT_MODEL_MARKERS.some((marker) => normalized.includes(marker))) {
+    if (!isOpenWeight) {
         throw new ModelAccessDeniedError('basecode-builder', requestedModel);
     }
     return requestedModel;

@@ -18,6 +18,22 @@ describe('Basecode plan model policy', () => {
     expect(resolveBasecodePlanModel('auto', 'auto')).toBe('glm-5.3-flash');
   });
 
+  /**
+   * Auto is the default on the Free plan, not the only option. Every request used to be replaced by
+   * the auto model whatever it named, so a picker offering a choice would have been lying — the
+   * pick was discarded and every turn ran on the same model.
+   */
+  it('serves a Free user the open-weight model they asked for', () => {
+    for (const model of ['maximo-atlas-1.2', 'glm-5.3-flash', 'deepseek-v4-flash']) {
+      expect(resolveBasecodePlanModel(model, 'auto')).toBe(model);
+    }
+  });
+
+  /** A frontier model is not on this plan, and is answered rather than refused, as it always was. */
+  it('still substitutes rather than refusing a frontier model on Free', () => {
+    expect(resolveBasecodePlanModel('claude-opus-5', 'auto')).toBe('glm-5.3-flash');
+  });
+
   it('allows open-weight Builder models and rejects frontier models', () => {
     expect(resolveBasecodePlanModel('deepseek-v4-flash', 'open_weight')).toBe(
       'deepseek-v4-flash',
