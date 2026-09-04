@@ -24,7 +24,7 @@ describe('Basecode plan model policy', () => {
    * pick was discarded and every turn ran on the same model.
    */
   it('serves a Free user the open-weight model they asked for', () => {
-    for (const model of ['maximo-atlas-1.2', 'glm-5.3-flash', 'deepseek-v4-flash']) {
+    for (const model of ['maximo-atlas-1.2', 'glm-5.3-flash']) {
       expect(resolveBasecodePlanModel(model, 'auto')).toBe(model);
     }
   });

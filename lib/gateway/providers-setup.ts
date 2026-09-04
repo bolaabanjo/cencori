@@ -239,7 +239,9 @@ export function resolveBasecodePlanModel(
     }
 
     if (askedForAuto) {
-        return process.env.BASECODE_BUILDER_AUTO_MODEL?.trim() || 'deepseek-v4-flash';
+        // GLM rather than DeepSeek: the DeepSeek quota is spent, so the old default resolved every
+        // Builder Auto turn onto a model that cannot answer. The env var still overrides this.
+        return process.env.BASECODE_BUILDER_AUTO_MODEL?.trim() || 'glm-5.3-flash';
     }
     if (!isOpenWeight) {
         throw new ModelAccessDeniedError('basecode-builder', requestedModel);
